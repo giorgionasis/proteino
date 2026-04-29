@@ -6,17 +6,18 @@ import { cn } from "@/lib/utils/cn";
 
 // ── Types ──────────────────────────────────────────────────────
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  label?:      string;
-  error?:      string;
-  hint?:       string;
-  leftIcon?:   React.ReactNode;
-  rightIcon?:  React.ReactNode;
+  label?:          string;
+  labelClassName?: string;
+  error?:          string;
+  hint?:           string;
+  leftIcon?:       React.ReactNode;
+  rightIcon?:      React.ReactNode;
 }
 
 // ── Component ──────────────────────────────────────────────────
 const Input = forwardRef<HTMLInputElement, InputProps>(
   (
-    { label, error, hint, leftIcon, rightIcon, className, type, id: idProp, disabled, ...props },
+    { label, labelClassName, error, hint, leftIcon, rightIcon, className, type, id: idProp, disabled, ...props },
     ref,
   ) => {
     const [showPassword, setShowPassword] = useState(false);
@@ -32,7 +33,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
       <div className="flex flex-col gap-1.5">
         {/* Label */}
         {label && (
-          <label htmlFor={id}>{label}</label>
+          <label htmlFor={id} className={labelClassName}>{label}</label>
         )}
 
         {/* Input wrapper */}

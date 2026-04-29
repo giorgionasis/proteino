@@ -4,7 +4,7 @@ import { forwardRef } from "react";
 import { cn } from "@/lib/utils/cn";
 
 // ── Types ──────────────────────────────────────────────────────
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "dark";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "dark" | "black";
 export type ButtonSize    = "sm" | "md" | "lg";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -64,6 +64,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             "hover:bg-red-100",
           ],
           variant === "dark"      && "bg-white/10 text-white border-[0.5px] border-white/20 hover:bg-white/20",
+          variant === "black"     && "bg-gray-900 text-white hover:bg-gray-800 active:bg-black",
 
           // Active / press feedback
           !isDisabled && "active:scale-[0.97]",

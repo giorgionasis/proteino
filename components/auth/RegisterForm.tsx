@@ -10,6 +10,8 @@ import { AuthDivider } from "./AuthDivider";
 import { PasswordRuleList, checkPasswordRules, allRulesMet } from "./PasswordRuleList";
 import { cn } from "@/lib/utils/cn";
 
+const LABEL = "text-[13px] font-medium text-gray-700 normal-case tracking-normal";
+
 // ── Validation helpers ─────────────────────────────────────────
 const HANDLE_RE = /^[a-zA-Z0-9_.]{3,30}$/;
 
@@ -171,7 +173,8 @@ export function RegisterForm() {
       <Input
         type="email"
         label="Email"
-        placeholder="you@example.com"
+        labelClassName={LABEL}
+        placeholder="Συμπλήρωσε το email σου"
         value={email}
         onChange={(e) => { setEmail(e.target.value); setServerError(""); }}
         error={email.length > 4 ? emailError : undefined}
@@ -185,6 +188,7 @@ export function RegisterForm() {
       <Input
         type="text"
         label="Username"
+        labelClassName={LABEL}
         placeholder="your_handle"
         value={handle}
         onChange={(e) => { setHandle(e.target.value.toLowerCase()); setServerError(""); }}
@@ -200,7 +204,8 @@ export function RegisterForm() {
         <Input
           type="password"
           label="Κωδικός"
-          placeholder="••••••••"
+          labelClassName={LABEL}
+          placeholder="Δημιούργησε κωδικό"
           value={password}
           onChange={(e) => { setPassword(e.target.value); setServerError(""); }}
           autoComplete="new-password"
@@ -215,7 +220,8 @@ export function RegisterForm() {
       <Input
         type="password"
         label="Επιβεβαίωση κωδικού"
-        placeholder="••••••••"
+        labelClassName={LABEL}
+        placeholder="Επανάλαβε τον κωδικό σου"
         value={confirmPassword}
         onChange={(e) => setConfirmPassword(e.target.value)}
         error={confirmError}
@@ -274,6 +280,7 @@ export function RegisterForm() {
       {/* Submit */}
       <Button
         type="submit"
+        variant="black"
         fullWidth
         size="lg"
         loading={loading}

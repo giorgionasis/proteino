@@ -5,7 +5,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { Mail, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+
+const LABEL = "text-[13px] font-medium text-gray-700 normal-case tracking-normal";
 import { cn } from "@/lib/utils/cn";
 
 // ── Animated checkmark ─────────────────────────────────────────
@@ -141,10 +143,10 @@ export function ForgotPasswordForm() {
       <Input
         type="email"
         label="Email λογαριασμού"
-        placeholder="you@example.com"
+        labelClassName={LABEL}
+        placeholder="Συμπλήρωσε το email σου"
         value={email}
         onChange={(e) => { setEmail(e.target.value); setError(""); }}
-        leftIcon={<Mail size={16} strokeWidth={1.5} />}
         autoComplete="email"
         inputMode="email"
         autoFocus
@@ -164,6 +166,7 @@ export function ForgotPasswordForm() {
 
       <Button
         type="submit"
+        variant="black"
         fullWidth
         size="lg"
         loading={loading}

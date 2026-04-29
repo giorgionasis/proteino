@@ -10,7 +10,8 @@ import { OAuthButtons } from "./OAuthButtons";
 import { AuthDivider } from "./AuthDivider";
 import { cn } from "@/lib/utils/cn";
 
-// ── Error mapping ──────────────────────────────────────────────
+const LABEL = "text-[13px] font-medium text-gray-700 normal-case tracking-normal";
+
 function mapError(msg: string): string {
   if (msg.includes("Invalid login credentials"))  return "Λάθος email ή κωδικός. Δοκίμασε ξανά.";
   if (msg.includes("Email not confirmed"))         return "Επιβεβαίωσε πρώτα το email σου.";
@@ -19,7 +20,6 @@ function mapError(msg: string): string {
   return "Κάτι πήγε στραβά. Δοκίμασε ξανά.";
 }
 
-// ── Component ──────────────────────────────────────────────────
 export function LoginForm() {
   const router       = useRouter();
   const searchParams = useSearchParams();
@@ -30,7 +30,6 @@ export function LoginForm() {
   const [loading,  setLoading]  = useState(false);
   const [shake,    setShake]    = useState(false);
 
-  // Surface OAuth errors passed via query param
   useEffect(() => {
     if (searchParams.get("error") === "oauth") {
       setError("Η σύνδεση με OAuth απέτυχε. Δοκίμασε ξανά.");
@@ -44,7 +43,6 @@ export function LoginForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-
     if (!email.trim() || !password) return;
 
     setLoading(true);
@@ -75,11 +73,16 @@ export function LoginForm() {
       noValidate
       className={cn("space-y-4", shake && "animate-shake")}
     >
+      {/* OAuth — top */}
+      <OAuthButtons mode="login" />
+      <AuthDivider />
+
       {/* Email */}
       <Input
         type="email"
         label="Email"
-        placeholder="you@example.com"
+        labelClassName={LABEL}
+        placeholder="Συμπλήρωσε το email σου"
         value={email}
         onChange={(e) => { setEmail(e.target.value); setError(""); }}
         autoComplete="email"
@@ -93,7 +96,8 @@ export function LoginForm() {
         <Input
           type="password"
           label="Κωδικός"
-          placeholder="••••••••"
+          labelClassName={LABEL}
+          placeholder="Συμπλήρωσε τον κωδικό σου"
           value={password}
           onChange={(e) => { setPassword(e.target.value); setError(""); }}
           autoComplete="current-password"
@@ -102,18 +106,18 @@ export function LoginForm() {
         <div className="flex justify-end">
           <Link
             href="/forgot-password"
-            className="text-xs text-coral-600 hover:text-coral-800 transition-colors"
+            className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
           >
-            Ξέχασες τον κωδικό;
+            Ξέχασες τον κωδικό σου;
           </Link>
         </div>
       </div>
 
-      {/* Inline error banner */}
+      {/* Inline error */}
       {error && (
         <div
           role="alert"
-          className="flex items-start gap-2.5 rounded-input border-[0.5px] border-danger/40 bg-red-50 px-4 py-3"
+          className="flex items-start gap-2.5 rounded-xl border-[0.5px] border-danger/40 bg-red-50 px-4 py-3"
         >
           <span className="text-danger mt-0.5 shrink-0" aria-hidden>✕</span>
           <p className="text-sm text-danger leading-snug">{error}</p>
@@ -123,6 +127,7 @@ export function LoginForm() {
       {/* Submit */}
       <Button
         type="submit"
+        variant="black"
         fullWidth
         size="lg"
         loading={loading}
@@ -132,15 +137,11 @@ export function LoginForm() {
         Σύνδεση
       </Button>
 
-      {/* OAuth */}
-      <AuthDivider />
-      <OAuthButtons mode="login" />
-
       {/* Footer */}
-      <p className="text-center text-sm text-gray-500 pt-2">
+      <p className="text-center text-sm text-gray-500 pt-1">
         Δεν έχεις λογαριασμό;{" "}
         <Link href="/register" className="text-coral-600 font-medium hover:underline">
-          Εγγραφή
+          Κάνε Εγγραφή
         </Link>
       </p>
     </form>
