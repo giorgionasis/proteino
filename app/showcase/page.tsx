@@ -605,7 +605,7 @@ export default function ShowcasePage() {
       </div>
 
       {/* Live FAB — as it appears in the real app */}
-      <FAB href="/submit" />
+      <FAB />
 
     </div>
   );

@@ -269,32 +269,47 @@ analytics.search_log          -- search queries for improvement
 ## 6. Design System
 
 ### Theme
-- **Base:** Light theme throughout
-- **Exception:** Dark theme ONLY for celebration moments (Published screen, achievement unlocks)
-- **Primary accent:** Coral `#D85A30` — used for AI elements, CTAs, active states
-- **Gradient:** `#D85A30` → `#F0997B` (buttons, progress bars)
+- **Base:** Light theme throughout — white background, zinc text scale, coral accent
+- **Exception:** Dark theme ONLY for Syncing + Published + Achievement unlock screens
+- **AI flows (Search + Suggestion):** Light theme — same design system, NOT dark
+- **Primary accent:** Coral `#FE6F5E` — verified from Figma (replaces old `#D85A30`)
+- **Gradient:** `#FE6F5E` → `#FF9980` (buttons, progress bars, FAB shadow)
 
-### Color Palette
+### Color Palette (Figma-verified)
 ```
-Coral-600:  #D85A30  (primary accent, CTAs)
-Coral-500:  #F0997B  (hover states, borders)
-Coral-50:   #FAECE7  (light backgrounds, selected states)
-Coral-800:  #993C1D  (dark text on coral bg)
-Green:      #1D9E75  (success, match found)
-Red:        #E24B4A  (errors, validation)
+Coral-600:   #FE6F5E  (primary accent, CTAs, AI elements, active states)
+Coral-700:   #E05A4A  (hover)
+Coral-50:    #FFF5EC  (light backgrounds, selected states)
+ios-gray:    #F2F2F7  (search/pill input backgrounds — iOS-style)
+Zinc-950:    #18181b  (headings)
+Zinc-800:    #27272a  (primary body text)
+Zinc-700:    #3f3f46  (secondary text)
+Zinc-600:    #52525b  (muted text)
+Zinc-500:    #71717a  (labels, captions)
+Zinc-400:    #a1a1aa  (placeholders, disabled)
+Zinc-200:    #e4e4e7  (borders default)
+Zinc-100:    #f4f4f5  (surface backgrounds)
+Zinc-50:     #fafafa  (subtle backgrounds)
+Success:     #1D9E75
+Danger:      #E24B4A
+Warning:     #FF9123
+Gold:        #F8D160  (achievements)
+Badge-red:   #C51501  (notification dot)
 ```
 
 ### Typography
-- Font: System font stack (mobile-native feel)
-- Weights: 400 (regular), 500 (medium) only — never 600/700
-- Labels: UPPERCASE, letter-spacing: 0.5px
-- Body: 13-14px, line-height: 1.6
+- **Font:** Open Sans (imported via Google Fonts)
+- **Weights used:** 400 (body), 500 (medium), 600 (semibold), 700 (bold), 800 (extrabold), 900 (logo/display)
+- **Labels:** UPPERCASE, letter-spacing: 0.1px, weight 500–600
+- **Body:** 16px base, line-height 1.5
+- **Scale:** 9 / 12 / 14 / 16 / 18 / 20 / 22 / 24 / 26 / 32 / 36px
 
 ### Components
-- Border radius: 12px (inputs), 14-16px (cards), 20px (pills/chips)
-- Borders: 0.5px solid (default), 1.5px solid (focus/active)
+- Border radius: 4px (micro), 8px (cards/stat boxes), 12px (auth inputs), 16px (large cards), 50px (search pill), 9999px (avatars, icon buttons)
+- Borders: 1px solid zinc-200 (default), 1.5px coral (focus)
+- Icon buttons: 36px circle, zinc-100 background (header icons, close buttons)
 - Bottom navigation: HOME / SEARCH / YOU (3 items only)
-- FAB (floating action button): coral, bottom-right, for new submission
+- FAB: coral gradient, 56px circle, bottom-right, `shadow-fab`
 
 ---
 
@@ -483,7 +498,7 @@ Every screen must have a next action. Examples:
 | AI provider | Abstracted (mock now) | No access yet, swappable |
 | Recommendations | Vector + LLM hybrid | Speed + explainability |
 | Theme | Light + coral accent | Content-heavy screens need light |
-| Dark theme | Only celebration moments | Published, achievement unlocks |
+| Dark theme | Syncing + Published + Achievement only | AI flows stay light |
 | Levels | Suggestion count only | Simple, transparent, no confusion |
 | Admin | Same codebase /admin | Simplicity, role-based access |
 | Recipes | User-generated + discovered | Both use cases are valid |
@@ -491,4 +506,143 @@ Every screen must have a next action. Examples:
 | Blockchain | Not needed | content_hash achieves same goal |
 | Revenue sharing | Parked | Legal complexity |
 | Location tracking | Parked | Requires native app |
+| Primary coral | #FE6F5E | Verified from Figma (replaced #D85A30) |
+| Font | Open Sans | Verified from Figma (replaced system stack) |
+| Search/Suggestion UI | Light theme, full-screen slide-up | Consistent with design system |
+| Category filters | Sub-category tabs + filter row | AI search is primary, filters secondary |
+| Sub-category dimension | Type/cuisine-first (food/bars), destination-first (hotels/events/theater), genre-first (movies/books) | Matches dominant browsing intent per category |
+| Filter access | Inline quick-filters + "⊞ Filters" chip → bottom sheet | One tap away, never competing with FAB |
+
+---
+
+## 15. Navigation Architecture
+
+### Global Layout
+```
+Header (sticky, z-30):
+  Left:  Proteino• logo (text + coral dot)
+  Right: Bell icon (registered users only) — guest sees nothing
+
+Content area (scrollable)
+
+FAB (fixed, z-30, bottom-right):
+  Visible on: Home, category pages, item detail, profile
+  Hidden on: Search overlay, suggestion overlay, auth pages
+
+Bottom Nav (sticky, z-40):
+  3 tabs: HOME · SEARCH · YOU
+  Active tab: coral icon + coral label
+  Inactive: zinc-400 icon + zinc-400 label
+```
+
+### Full-Screen Overlays (cover header + content + bottom nav)
+Both search and suggestion are `fixed inset-0 z-50` overlays that slide up from the bottom.
+
+**Search overlay** (triggered by SEARCH tab):
+- Custom header: search icon + "SMART SEARCH" label + X close button
+- X close → returns to previous page, dismisses overlay
+- No bottom nav visible
+- Light theme throughout
+
+**Suggestion overlay** (triggered by FAB):
+- Custom header: waveform + "LISTENING LIVE" label + X close button (changes to "LOCKED" badge when match found)
+- X close → returns to previous page, dismisses overlay
+- No bottom nav visible
+- Light theme throughout
+- State machine: IDLE → LISTENING → ANALYZING → MATCHED → LOCKED → SYNCING → PREVIEW → PUBLISHED
+- SYNCING + PUBLISHED states: dark theme (exception)
+
+### YOU tab — Guest behavior
+Renders a value-proposition page (not a login redirect):
+- Preview of what a profile looks like (blurred/dimmed)
+- 3 bullet value props with icons
+- CTA: "Δημιούργησε λογαριασμό" + "Έχω ήδη λογαριασμό →"
+
+### Overlay State Management
+Managed via Zustand store (`useOverlay`):
+```typescript
+{ 
+  overlay: 'search' | 'suggestion' | null,
+  openSearch: () => void,
+  openSuggestion: () => void,
+  close: () => void,
+}
+```
+
+---
+
+## 16. Sub-Categories & Filter System
+
+### Principle
+- **Sub-categories** = what kind it IS (genre, cuisine, type) — fixed taxonomy via `categories.parent_id`
+- **Region/Location** = WHERE it is — always a filter attribute, never a sub-category
+- **AI search** = primary power tool (handles all filtering via natural language)
+- **Sub-category tabs + filter row** = secondary discovery/browsing tool
+
+### Primary Tab Dimension by Category
+| Category | Primary tab | Notes |
+|---|---|---|
+| Movies | Genre | No location dimension |
+| Series | Genre | No location dimension |
+| Books | Genre | No location dimension |
+| Recipes | Type / Origin | No location dimension |
+| Food | Cuisine | Region is prominent filter |
+| Bars | Type | Region is prominent filter |
+| Hotels | Destination | Dynamic from data, not fixed taxonomy |
+| Theater | City | Dynamic from data |
+| Events | City | Dynamic from data |
+
+### Sub-Categories per Category
+
+**Movies:** Δράμα · Κωμωδία · Θρίλερ · Δράση · Sci-Fi · Ρομαντική · Animation · Ντοκιμαντέρ · Horror · Βιογραφική
+
+**Series:** Δράμα · Κωμωδία · Crime · Sci-Fi · Θρίλερ · Ρομαντική · Ντοκιμαντέρ · Mini-series · Animation
+
+**Books:** Μυθιστόρημα · Θρίλερ · Sci-Fi · Ιστορία · Αυτοβιογραφία · Ψυχολογία · Φιλοσοφία · Self-help · Ποίηση · Business · Παιδικά
+
+**Recipes:** Κυρίως Πιάτο · Ορεκτικά · Επιδόρπια · Breakfast · Ψητά · Σαλάτες · Σούπες · Γλυκά · Ψωμί & Ζύμες
+
+**Food:** Ελληνική · Ιταλική · Ασιατική · Burger · Sushi · Fine Dining · Brunch · Vegan · Seafood · Street Food · Middle Eastern
+
+**Bars:** Cocktail Bar · Wine Bar · Jazz Bar · Rooftop · Beach Bar · Coffee · Speakeasy · Pub · All-Day · Sports Bar
+
+**Hotels:** Dynamic destinations (top cities from data: Αθήνα · Κρήτη · Θεσσαλονίκη · Σαντορίνη · Μύκονος · Ρόδος)
+
+**Theater:** Dynamic cities (from data)
+
+**Events:** Dynamic cities (from data)
+
+### Filter Row Layout
+```
+[⊞ Filters · N]  [Quick Filter 1 ▾]  [Quick Filter 2 ▾]  [📍 Κοντά μου] ← food/bars only
+```
+
+Quick filters per category:
+- Movies/Series: Platform, Εποχή
+- Books: Γλώσσα, Σελίδες
+- Food: Περιοχή, Τιμή
+- Bars: Περιοχή, Τιμή
+- Hotels: Τιμή/νύχτα, Αστέρια
+- Events/Theater: Ημερομηνία, Τιμή
+- Recipes: Δυσκολία, Χρόνος
+
+Active filter chip: coral fill. Filter count badge on "⊞ Filters" when active.
+
+---
+
+## 17. PWA / Mobile Browser Considerations
+
+This is a **mobile-first web app**, not a native app. Runs in mobile browsers (iOS Safari, Chrome Android). Must feel native.
+
+### Critical implementation rules
+- All overlays use `transform: translateY` (GPU-accelerated), never `top/bottom` position changes
+- When overlay is open: `document.body.style.overflow = 'hidden'` to prevent scroll behind
+- Fixed bottom CTA in suggestion flow uses `visualViewport` API to handle iOS keyboard push-up
+- Touch feedback: `active:` states are primary, `hover:` states are secondary
+- `overscroll-behavior: contain` on overlay content to prevent accidental close
+- Safe area insets already handled via `env(safe-area-inset-*)` in globals.css
+- iOS Safari bottom bar: bottom nav uses `pb-safe` to account for varying toolbar height
+- No `:hover` for primary interactions — always provide `active:` equivalent
+- `will-change: transform` on slide-up overlays for smooth animation
+- `-webkit-overflow-scrolling: touch` on scroll containers
 

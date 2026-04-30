@@ -33,3 +33,18 @@ export {
 
 export { Textarea }                                            from "./Textarea";
 export type { TextareaProps }                                  from "./Textarea";
+
+export { IconButton }                                          from "./IconButton";
+export type { IconButtonProps }                                from "./IconButton";
+
+export { FilterChip, FilterChipRow }                          from "./FilterChip";
+export type { FilterChipProps }                               from "./FilterChip";
+
+export { StatCard, InlineStat }                               from "./StatCard";
+export type { StatCardProps }                                 from "./StatCard";
+
+export { FollowButton }                                       from "./FollowButton";
+export type { FollowButtonProps }                             from "./FollowButton";
+
+export { ReviewBadge }                                        from "./Badge";
+export type { ReviewBadgeType }                               from "./Badge";
