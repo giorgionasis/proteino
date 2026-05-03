@@ -30,14 +30,10 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  let user = null;
-  try {
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
-  } catch {
-    // Network timeout — pass request through without auth checks
-    return supabaseResponse;
-  }
+  // Use getSession() instead of getUser() — it reads the JWT from cookies
+  // without making a network call, which is required for Edge Runtime compatibility.
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   const { pathname } = request.nextUrl;
 
