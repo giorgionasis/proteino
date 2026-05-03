@@ -822,3 +822,151 @@ Embedding generation:   < 5000ms (background, not user-facing)
 
 *This file governs all AI implementation decisions.
 When in doubt: AI should be visible, fast, and never block the user.*
+
+---
+
+## 11. Metadata Enrichment APIs
+> ⏳ PENDING — Not yet implemented. Build during Priority 7 (AI Service + Real Data).
+
+After AI matches and locks an item (LOCKED state), fetch rich metadata
+during the SYNCING phase — user sees "Εμπλουτίζουμε τα στοιχεία..."
+
+### API Map
+
+| Category | API | Free? | Key Data |
+|---|---|---|---|
+| Movies | TMDB (themoviedb.org) | ✅ Free | Poster, director, cast, trailer, year, runtime |
+| Series | TMDB | ✅ Free | Poster, seasons, cast, network, status |
+| Books | Google Books API | ✅ Free | Cover, author, publisher, pages, ISBN |
+| Food | Google Places API | 💰 Free tier | Photos, hours, phone, address, price level |
+| Bars/Cafes | Google Places API | 💰 Free tier | Photos, hours, phone, address |
+| Hotels | Google Places API | 💰 Free tier | Photos, stars, amenities, address |
+| Theater | Ticketmaster API | ✅ Free tier | Poster, dates, venue, prices |
+| Events | Ticketmaster API | ✅ Free tier | Poster, dates, venue, prices |
+| Recipes | None | — | User-generated, no enrichment |
+
+### Implementation
+```typescript
+// lib/enrichment/index.ts
+export const enrichItem = async (category: Category, match: AIMatch) => {
+  switch(category) {
+    case 'movie':   return enrichFromTMDB(match, 'movie')
+    case 'series':  return enrichFromTMDB(match, 'tv')
+    case 'book':    return enrichFromGoogleBooks(match)
+    case 'food':    
+    case 'bar':     
+    case 'hotel':   return enrichFromGooglePlaces(match)
+    case 'theater': 
+    case 'event':   return enrichFromTicketmaster(match)
+    case 'recipe':  return {}
+    default:        return {}
+  }
+}
+
+// NEVER block submission on enrichment failure
+export const safeEnrich = async (category: Category, match: AIMatch) => {
+  try {
+    return await enrichItem(category, match)
+  } catch (error) {
+    console.error('Enrichment failed — continuing without metadata:', error)
+    return {}
+  }
+}
+```
+
+### TMDB (Movies + Series)
+```typescript
+// lib/enrichment/tmdb.ts
+const enrichFromTMDB = async (match: AIMatch, type: 'movie' | 'tv') => {
+  const { results } = await fetch(
+    `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(match.title)}&api_key=${process.env.TMDB_API_KEY}`
+  ).then(r => r.json())
+  
+  const item = results[0]
+  const [details, credits] = await Promise.all([
+    fetch(`https://api.themoviedb.org/3/${type}/${item.id}?api_key=${process.env.TMDB_API_KEY}`).then(r => r.json()),
+    fetch(`https://api.themoviedb.org/3/${type}/${item.id}/credits?api_key=${process.env.TMDB_API_KEY}`).then(r => r.json()),
+  ])
+
+  return {
+    externalId: String(item.id),
+    coverUrl: `https://image.tmdb.org/t/p/w500${item.poster_path}`,
+    backdropUrl: `https://image.tmdb.org/t/p/w500${item.backdrop_path}`,
+    year: new Date(item.release_date || item.first_air_date).getFullYear(),
+    runtime: details.runtime || details.episode_run_time?.[0],
+    genres: details.genres.map((g: any) => g.name),
+    director: credits.crew?.find((c: any) => c.job === 'Director')?.name,
+    cast: credits.cast?.slice(0, 5).map((c: any) => c.name),
+    description: item.overview,
+    seasons: details.number_of_seasons,
+    network: details.networks?.[0]?.name,
+  }
+}
+```
+
+### Google Books
+```typescript
+// lib/enrichment/googleBooks.ts
+const enrichFromGoogleBooks = async (match: AIMatch) => {
+  const { items } = await fetch(
+    `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(match.title)}&key=${process.env.GOOGLE_BOOKS_API_KEY}`
+  ).then(r => r.json())
+  
+  const book = items[0].volumeInfo
+  return {
+    coverUrl: book.imageLinks?.thumbnail?.replace('http:', 'https:'),
+    author: book.authors?.[0],
+    publisher: book.publisher,
+    pageCount: book.pageCount,
+    isbn: book.industryIdentifiers?.find((i: any) => i.type === 'ISBN_13')?.identifier,
+    description: book.description,
+    publishedDate: book.publishedDate,
+  }
+}
+```
+
+### Google Places (Food, Bars, Hotels)
+```typescript
+// lib/enrichment/googlePlaces.ts
+const enrichFromGooglePlaces = async (match: AIMatch) => {
+  const { candidates } = await fetch(
+    `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(match.title)}&inputtype=textquery&fields=place_id&key=${process.env.GOOGLE_PLACES_API_KEY}`
+  ).then(r => r.json())
+  
+  const { result } = await fetch(
+    `https://maps.googleapis.com/maps/api/place/details/json?place_id=${candidates[0].place_id}&fields=name,rating,photos,formatted_address,formatted_phone_number,opening_hours,website,price_level&key=${process.env.GOOGLE_PLACES_API_KEY}`
+  ).then(r => r.json())
+
+  return {
+    externalId: candidates[0].place_id,
+    coverUrl: result.photos?.[0]
+      ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${result.photos[0].photo_reference}&key=${process.env.GOOGLE_PLACES_API_KEY}`
+      : null,
+    address: result.formatted_address,
+    phone: result.formatted_phone_number,
+    website: result.website,
+    openingHours: result.opening_hours?.weekday_text,
+    priceLevel: result.price_level,
+    googleRating: result.rating,
+  }
+}
+```
+
+### UX Messages During Syncing
+```typescript
+const SYNCING_MESSAGES = [
+  "Εμπλουτίζουμε τα στοιχεία...",
+  "Βρίσκουμε φωτογραφίες...",
+  "Φορτώνουμε πληροφορίες...",
+  "Σχεδόν έτοιμο...",
+]
+```
+
+### Env Vars (add to .env.local when implementing)
+```bash
+TMDB_API_KEY=...              # themoviedb.org — free
+GOOGLE_BOOKS_API_KEY=...      # console.cloud.google.com — free tier
+GOOGLE_PLACES_API_KEY=...     # console.cloud.google.com — $200/month free credit
+TICKETMASTER_API_KEY=...      # developer.ticketmaster.com — free tier
+```
+

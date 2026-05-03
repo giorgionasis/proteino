@@ -42,8 +42,7 @@ export function FullScreenOverlay({
       aria-modal={open}
       aria-hidden={!open}
       className={cn(
-        // Cover everything — header, content, bottom nav
-        "fixed inset-0 z-50",
+        "fixed inset-y-0 left-0 right-0 max-w-[390px] mx-auto z-50",
         "bg-white",
         // Slide-up animation driven by open state
         "transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",

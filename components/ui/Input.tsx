@@ -8,17 +8,19 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   label?:          string;
   labelClassName?: string;
   error?:          string;
+  success?:        string;
   hint?:           string;
   leftIcon?:       React.ReactNode;
   rightIcon?:      React.ReactNode;
   variant?:        "default" | "search";
+  loading?:        boolean;
 }
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
   (
     {
-      label, labelClassName, error, hint,
-      leftIcon, rightIcon, className,
+      label, labelClassName, error, success, hint,
+      leftIcon, rightIcon, loading = false, className,
       type, id: idProp, disabled,
       variant = "default",
       ...props
@@ -34,10 +36,16 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
     const hasRight   = rightIcon || isPassword;
     const isSearch   = variant === "search";
 
+    const hasError   = !!error;
+    const hasSuccess = !!success && !hasError;
+
     return (
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2">
         {label && (
-          <label htmlFor={id} className={cn("text-xs font-semibold text-zinc-500 uppercase tracking-[0.5px]", labelClassName)}>
+          <label
+            htmlFor={id}
+            className={cn("text-base font-bold text-zinc-800", labelClassName)}
+          >
             {label}
           </label>
         )}
@@ -46,10 +54,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           {leftIcon && (
             <span
               aria-hidden
-              className={cn(
-                "absolute flex items-center justify-center pointer-events-none text-zinc-400",
-                isSearch ? "left-4" : "left-3.5",
-              )}
+              className="absolute left-4 flex items-center justify-center pointer-events-none text-zinc-400"
             >
               {leftIcon}
             </span>
@@ -61,61 +66,81 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             type={inputType}
             disabled={disabled}
             className={cn(
-              "w-full text-sm text-zinc-800 outline-none transition-all",
-              "placeholder:text-zinc-400",
+              "w-full font-semibold text-zinc-800 outline-none transition-all",
+              "placeholder:text-zinc-500 placeholder:font-semibold placeholder:text-base",
 
               // Default (auth) variant
               !isSearch && [
-                "h-11 bg-white rounded-input",
-                "border border-zinc-200",
-                "focus:border-coral-600 focus:border-[1.5px]",
-                leftIcon ? "pl-10" : "pl-4",
-                hasRight ? "pr-10" : "pr-4",
+                "h-14 bg-white rounded-sm",
+                "border border-zinc-400",
+                "focus:border-2 focus:border-zinc-800",
+                "text-lg",   // 18px for typed value
+                leftIcon  ? "pl-10" : "pl-4",
+                hasRight  ? "pr-10" : "pr-4",
               ],
 
-              // Search variant — iOS pill style
+              // Search variant
               isSearch && [
-                "h-11 bg-ios-gray rounded-search",
-                "border-0",
+                "h-11 bg-ios-gray rounded-search border-0 text-base",
                 leftIcon ? "pl-10" : "pl-4",
                 hasRight ? "pr-10" : "pr-4",
               ],
 
-              error     && "border-danger focus:border-danger",
-              disabled  && "opacity-50 cursor-not-allowed",
+              // Error state
+              hasError && !isSearch && [
+                "!border-2 !border-[#FE402B] !bg-[#FFF2F1]",
+                "focus:!border-[#FE402B]",
+              ],
 
+              // Success state
+              hasSuccess && !isSearch && [
+                "!border-2 !border-[#019371] !bg-white",
+                "focus:!border-[#019371]",
+              ],
+
+              disabled && "opacity-50 cursor-not-allowed",
               className,
             )}
             {...props}
           />
 
-          {hasRight && (
-            <span className="absolute right-3.5 flex items-center justify-center">
-              {isPassword ? (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="text-zinc-400 hover:text-zinc-600 transition-colors"
-                >
-                  {showPassword
-                    ? <EyeOff size={16} strokeWidth={1.5} />
-                    : <Eye    size={16} strokeWidth={1.5} />
-                  }
-                </button>
-              ) : (
-                <span aria-hidden className="text-zinc-400 pointer-events-none">{rightIcon}</span>
-              )}
-            </span>
-          )}
+          {/* Right side: spinner | eye | custom icon */}
+          <span className="absolute right-3 flex items-center justify-center">
+            {loading ? (
+              <span className="w-5 h-5 rounded-full border-2 border-zinc-300 border-t-zinc-800 animate-spin-slow" aria-hidden />
+            ) : isPassword ? (
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword((v) => !v)}
+                className="text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                {showPassword
+                  ? <EyeOff size={20} strokeWidth={1.5} />
+                  : <Eye    size={20} strokeWidth={1.5} />
+                }
+              </button>
+            ) : hasSuccess && !hasRight ? (
+              <CheckCircleIcon />
+            ) : rightIcon ? (
+              <span aria-hidden className="text-zinc-400 pointer-events-none">{rightIcon}</span>
+            ) : null}
+          </span>
         </div>
 
-        {error && (
-          <p role="alert" className="text-xs text-danger leading-tight">{error}</p>
+        {hasError && (
+          <p role="alert" className="text-sm font-semibold leading-tight" style={{ color: "#FE402B" }}>
+            {error}
+          </p>
         )}
-        {hint && !error && (
-          <p className="text-xs text-zinc-400 leading-tight">{hint}</p>
+        {hasSuccess && (
+          <p className="text-sm font-semibold leading-tight" style={{ color: "#019371" }}>
+            {success}
+          </p>
+        )}
+        {hint && !hasError && !hasSuccess && (
+          <p className="text-sm text-zinc-400 leading-tight">{hint}</p>
         )}
       </div>
     );
@@ -124,3 +149,12 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
 
 Input.displayName = "Input";
 export { Input };
+
+function CheckCircleIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+      <circle cx="10" cy="10" r="9" stroke="#019371" strokeWidth="1.5" />
+      <path d="M6 10l3 3 5-6" stroke="#019371" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

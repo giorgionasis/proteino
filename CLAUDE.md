@@ -646,3 +646,217 @@ This is a **mobile-first web app**, not a native app. Runs in mobile browsers (i
 - `will-change: transform` on slide-up overlays for smooth animation
 - `-webkit-overflow-scrolling: touch` on scroll containers
 
+
+---
+
+## 16. Metadata Enrichment
+> ⏳ PENDING — Not yet implemented. Will be built during Priority 7 (AI Service).
+
+During the SYNCING phase of the submission flow, after AI locks an item,
+fetch rich metadata from external APIs. See AI.md Section 11 for full code.
+
+### APIs per category
+- Movies/Series → TMDB (free, themoviedb.org)
+- Books → Google Books API (free)
+- Food/Bars/Cafes/Hotels → Google Places API (free tier)
+- Theater/Events → Ticketmaster API (free tier)
+- Recipes → No enrichment (user-generated)
+
+### Key principle
+Enrichment NEVER blocks submission. If API fails → publish anyway with user data only.
+
+### Env vars needed (add when implementing)
+TMDB_API_KEY, GOOGLE_BOOKS_API_KEY, GOOGLE_PLACES_API_KEY, TICKETMASTER_API_KEY
+
+---
+
+## 17. Navigation & UI Structure
+> ✅ IMPLEMENTED — Documents decisions already built. Do not rebuild.
+
+- Header registered: Logo (left) + Notification bell (right)
+- Header guest: Logo only
+- Bottom nav: HOME / SEARCH / YOU (3 items)
+- SEARCH = button → openSearch() — NOT a route link
+- FAB: coral gradient, fixed bottom-right, opens submission flow, hides when overlay open
+
+### Category Page Filters (✅ built as FilterRow + SubCategoryTabs)
+- Level 1: Genre chips horizontal scroll
+- Level 2: ⚙ Φίλτρα button → slide-up panel with advanced filters
+
+### Subcategories → Attributes (✅ decided + built)
+No subcategory navigation. Genres/types are attributes/tags in item metadata jsonb.
+
+### Category Access Points (✅ built)
+1. Home screen "Εξερεύνησε" grid
+2. Search screen empty state
+
+---
+
+## 18. Profile Page Structure
+> ✅ IMPLEMENTED — Documents decisions already built. Do not rebuild.
+> Profile, Settings groups, Leaderboard, GuestYouPage all exist in codebase.
+
+### Own Profile structure (built)
+1. Avatar + Name + Followers/Following
+2. Badge
+3. Stats + **Leaderboard button** below stats
+4. Activity card
+5. Level progress bar
+6. Settings groups at bottom (scrollable):
+   - "ΛΟΓΑΡΙΑΣΜΟΣ": Επεξεργασία Προφίλ, Σύνδεση & Ασφάλεια
+   - "ΠΡΟΤΙΜΗΣΕΙΣ": Ειδοποιήσεις, Προσωποποιημένη Εμπειρία
+   - "ΥΠΟΣΤΗΡΙΞΗ": Κέντρο Βοήθειας, Επικοινωνία
+   - Standalone: Αποσύνδεση (red)
+
+### Support Footer
+- Section at bottom of Home page ✅ (SupportSection built)
+- Also accessible inside Settings menu ✅
+
+### Personalized Experience
+- Reuses onboarding InterestsSelector component with different header/footer ✅
+
+---
+
+## 19. Dynamic Home Sections (CMS)
+> ⏳ PENDING — Currently hardcoded. Will be built during Priority 6 (Real Data Layer).
+
+Home feed sections should come from database, not hardcoded in code.
+
+```sql
+CREATE TABLE home_sections (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  title text NOT NULL,
+  category text,
+  filter_query jsonb,
+  display_order int NOT NULL,
+  is_active boolean DEFAULT true,
+  valid_from timestamptz,
+  valid_until timestamptz,
+  target_audience text DEFAULT 'all', -- 'all' | 'registered' | 'guest'
+  created_at timestamptz DEFAULT now()
+);
+```
+
+Future: Admin panel to manage sections + AI suggestions.
+
+---
+
+## 20. MySQL → Supabase Migration Plan
+> ⏳ PENDING — Will be done after Auth is complete (Priority 6).
+
+### Source
+MySQL DB with: users, items/objects (categories + subcategories), suggestions, comments, ratings.
+
+### Mapping
+- categories → constants/categories.ts (static, no migration needed)
+- subcategories → item.metadata.tags[] jsonb (transform during migration)
+- items/objects → items + category extension tables
+- suggestions → suggestions table
+- comments → comments table
+- ratings → ratings table
+- users → public.users (passwords cannot migrate — users will reset via email)
+
+### Order
+1. Auth setup first (Supabase Auth users must exist before data)
+2. Custom Node.js migration script: MySQL read → transform → Supabase insert
+3. Connect home feed to real data
+
+
+---
+
+## 21. Image Schema & Storage
+> ⏳ PENDING — Implement during submission flow + migration.
+
+### Two images per item
+Every item stores two images for different display contexts:
+
+```sql
+-- Add to items table
+poster_url   text,  -- Portrait (2:3)  — lists, carousels, category grids
+backdrop_url text,  -- Landscape (16:9) — detail page hero, featured cards
+```
+
+### Orientation per category
+```
+Portrait (2:3)   → Movies, Series, Books
+                   (posters, book covers — natural format)
+
+Landscape (16:9) → Food, Bars/Cafes, Hotels, Events, Theater, Recipes
+                   (venue photos, food shots — natural format)
+```
+
+### Sizes generated on upload (via Sharp)
+```
+thumbnail → 400x600px portrait  / 640x360px landscape  (lists, grids)
+card      → 800x1200px portrait / 1280x720px landscape (category pages)
+hero      → 800x1200px portrait / 1280x720px landscape (detail page)
+og        → 1200x630px landscape always                (social sharing)
+```
+
+One file uploaded → Sharp auto-generates all sizes.
+
+### Storage
+Supabase Storage with built-in CDN — sufficient up to millions of requests.
+Migrate to Cloudflare R2 or AWS S3 + CloudFront only if needed at scale.
+
+### Auto-fetch during submission (SYNCING phase)
+```typescript
+// poster_url + backdrop_url fetched automatically from:
+// Movies/Series → TMDB (poster_path + backdrop_path)
+// Books         → Google Books (thumbnail)
+// Food/Bars     → Google Places (photos[0] for both)
+// Events/Theater → Ticketmaster (images)
+```
+
+### Admin can override
+Admin panel can replace auto-fetched images with manual upload at any time.
+See admin panel spec (TBD).
+
+---
+
+## 22. Duplicate Submission Handling
+> ⏳ PENDING — Implement during submission flow (after Auth + real data).
+
+When AI matches an item during submission, check if it already exists in the platform.
+
+### Scenario A — Item exists, suggested by others (or same user forgot)
+```
+"Το [item] έχει ήδη προταθεί!"
+→ [Βαθμολόγησέ το ★]  [Ακολούθησε τον @[user]]  [Προτείνε κάτι άλλο]
+```
+
+Extra check — if the current user is the original suggester:
+```
+"Το έχεις ήδη προτείνει εσύ! 😄"
+→ [Δες την πρότασή σου]  [Προτείνε κάτι άλλο]
+```
+
+### Scenario B — Item does not exist in platform
+→ Continue submission flow normally
+
+### Implementation
+```typescript
+// In useSubmission hook, after AI match is confirmed (LOCKED state):
+const checkDuplicate = async (itemId: string, userId: string) => {
+  const { data } = await supabase
+    .from('suggestions')
+    .select('id, user_id, users(handle)')
+    .eq('item_id', itemId)
+    .limit(1)
+    .single()
+
+  if (!data) return { isDuplicate: false }
+
+  return {
+    isDuplicate: true,
+    isOwnSuggestion: data.user_id === userId,
+    originalSuggester: data.users,
+  }
+}
+```
+
+### UX Rules
+- Check happens immediately after LOCKED state — before SYNCING starts
+- Never a dead end — always show 2-3 alternative actions
+- "Ακολούθησε" CTA only shows if user doesn't already follow the suggester
+

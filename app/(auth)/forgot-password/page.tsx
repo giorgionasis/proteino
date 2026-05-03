@@ -1,34 +1,32 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
+import { AuthHeader } from "@/components/auth/AuthHeader";
 
 export const metadata: Metadata = { title: "Επαναφορά κωδικού — Proteino" };
 
 export default function ForgotPasswordPage() {
   return (
-    <div>
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-5 pt-6 pb-4">
-        <span className="text-[18px] font-medium text-gray-900 tracking-tight">Proteino</span>
-        <Link
-          href="/login"
-          aria-label="Πίσω"
-          className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 transition-colors"
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M1 1L13 13M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </Link>
-      </div>
+    <div className="bg-white min-h-screen">
+      <AuthHeader closeHref="/login" closeLabel="Πίσω" />
 
-      {/* Heading */}
-      <div className="px-5 mb-6">
-        <h1 className="text-[26px] font-medium text-gray-900 leading-tight">Επαναφορά κωδικού</h1>
-        <p className="text-sm text-gray-500 mt-1">Εισάγαγε το email σου για να λάβεις οδηγίες.</p>
+      {/* Title section */}
+      <div
+        className="flex flex-col gap-3"
+        style={{
+          background: "linear-gradient(180deg, #FAFAFA 0%, #FFFFFF 100%)",
+          padding: "32px 24px 40px",
+        }}
+      >
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: "#18181B", lineHeight: "130%" }}>
+          Ξέχασες τον κωδικό σου;
+        </h1>
+        <p style={{ fontSize: 16, fontWeight: 400, color: "#18181B", lineHeight: "120%" }}>
+          Δεν υπάρχει πρόβλημα. Θα σου στείλουμε οδηγίες επαναφοράς.
+        </p>
       </div>
 
       {/* Form */}
-      <div className="px-5 pb-10">
+      <div className="px-6 pb-12">
         <ForgotPasswordForm />
       </div>
     </div>

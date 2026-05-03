@@ -28,6 +28,12 @@ yarn-error.log*
 # local env files
 .env*.local
 
+# claude local settings (contains API tokens)
+.claude/settings.local.json
+
+# supabase temp
+supabase/.temp/
+
 # vercel
 .vercel
 

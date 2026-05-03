@@ -31,7 +31,7 @@ export interface Database {
           last_suggestion_at: string | null;
           last_review_at: string | null;
         };
-        Insert: Omit<Database["public"]["Tables"]["users"]["Row"], "id" | "created_at">;
+        Insert: Omit<Database["public"]["Tables"]["users"]["Row"], "created_at">;
         Update: Partial<Database["public"]["Tables"]["users"]["Row"]>;
       };
       items: {
@@ -42,6 +42,9 @@ export interface Database {
           slug: string;
           description_seo: string | null;
           cover_url: string | null;
+          poster_url: string | null;
+          backdrop_url: string | null;
+          metadata: Json | null;
           avg_rating: number;
           rating_count: number;
           suggestion_count: number;
@@ -52,6 +55,164 @@ export interface Database {
         };
         Insert: Omit<Database["public"]["Tables"]["items"]["Row"], "id" | "created_at" | "modified_at">;
         Update: Partial<Database["public"]["Tables"]["items"]["Row"]>;
+      };
+      item_movies: {
+        Row: {
+          item_id: string;
+          director: string | null;
+          duration_min: number | null;
+          release_date: string | null;
+          end_date: string | null;
+          country: string | null;
+          language: string | null;
+          channel: string | null;
+          trailer_url: string | null;
+          status_message: string | null;
+          plot: string | null;
+          actors: Json;
+          awards: Json;
+        };
+        Insert: Database["public"]["Tables"]["item_movies"]["Row"];
+        Update: Partial<Database["public"]["Tables"]["item_movies"]["Row"]>;
+      };
+      item_series: {
+        Row: {
+          item_id: string;
+          director: string | null;
+          seasons: number | null;
+          release_date: string | null;
+          end_date: string | null;
+          country: string | null;
+          language: string | null;
+          channel: string | null;
+          trailer_url: string | null;
+          status_message: string | null;
+          plot: string | null;
+          actors: Json;
+        };
+        Insert: Database["public"]["Tables"]["item_series"]["Row"];
+        Update: Partial<Database["public"]["Tables"]["item_series"]["Row"]>;
+      };
+      item_books: {
+        Row: {
+          item_id: string;
+          writer: string | null;
+          publication: string | null;
+          language: string | null;
+          pages: number | null;
+          publication_year: number | null;
+          plot: string | null;
+          is_trilogy: boolean;
+          trilogy_name: string | null;
+        };
+        Insert: Database["public"]["Tables"]["item_books"]["Row"];
+        Update: Partial<Database["public"]["Tables"]["item_books"]["Row"]>;
+      };
+      item_food: {
+        Row: {
+          item_id: string;
+          cuisine: string | null;
+          type: string | null;
+          address: string | null;
+          telephone: string | null;
+          lat: number | null;
+          lng: number | null;
+          delivery_links: Json;
+          external_ratings: Json;
+          information: Json;
+          plot: string | null;
+        };
+        Insert: Database["public"]["Tables"]["item_food"]["Row"];
+        Update: Partial<Database["public"]["Tables"]["item_food"]["Row"]>;
+      };
+      item_recipes: {
+        Row: {
+          item_id: string;
+          yields: number | null;
+          calories: number | null;
+          origin: string | null;
+          level: string | null;
+          channel: string | null;
+          duration: Json;
+          nutrition: Json;
+          ingredients: Json;
+          steps: Json;
+          tips: string | null;
+        };
+        Insert: Database["public"]["Tables"]["item_recipes"]["Row"];
+        Update: Partial<Database["public"]["Tables"]["item_recipes"]["Row"]>;
+      };
+      item_bars: {
+        Row: {
+          item_id: string;
+          type: string | null;
+          address: string | null;
+          telephone: string | null;
+          lat: number | null;
+          lng: number | null;
+          external_ratings: Json;
+          information: Json;
+          plot: string | null;
+        };
+        Insert: Database["public"]["Tables"]["item_bars"]["Row"];
+        Update: Partial<Database["public"]["Tables"]["item_bars"]["Row"]>;
+      };
+      item_hotels: {
+        Row: {
+          item_id: string;
+          type: string | null;
+          address: string | null;
+          telephone: string | null;
+          lat: number | null;
+          lng: number | null;
+          price_range: string | null;
+          facilities: Json;
+          information: Json;
+          external_ratings: Json;
+          plot: string | null;
+        };
+        Insert: Database["public"]["Tables"]["item_hotels"]["Row"];
+        Update: Partial<Database["public"]["Tables"]["item_hotels"]["Row"]>;
+      };
+      item_theater: {
+        Row: {
+          item_id: string;
+          name_place: string | null;
+          address: string | null;
+          lat: number | null;
+          lng: number | null;
+          type: string | null;
+          year: number | null;
+          writer: string | null;
+          director: string | null;
+          availability: string | null;
+          ticket_url: string | null;
+          price: string | null;
+          actors: Json;
+          dates: Json;
+          plot: string | null;
+        };
+        Insert: Database["public"]["Tables"]["item_theater"]["Row"];
+        Update: Partial<Database["public"]["Tables"]["item_theater"]["Row"]>;
+      };
+      item_events: {
+        Row: {
+          item_id: string;
+          name_place: string | null;
+          address: string | null;
+          lat: number | null;
+          lng: number | null;
+          event_type: string | null;
+          availability: string | null;
+          status: string | null;
+          ticket_url: string | null;
+          price: string | null;
+          performers: Json;
+          dates: Json;
+          description: string | null;
+        };
+        Insert: Database["public"]["Tables"]["item_events"]["Row"];
+        Update: Partial<Database["public"]["Tables"]["item_events"]["Row"]>;
       };
       suggestions: {
         Row: {

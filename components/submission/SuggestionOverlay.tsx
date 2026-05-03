@@ -3,23 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Camera, Link2, List, Mic, X } from "lucide-react";
 import { OverlayHeader } from "@/components/layout/Header";
+import { useSubmission } from "@/hooks/useSubmission";
 import { cn } from "@/lib/utils/cn";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type SuggestionState =
-  | "idle"
-  | "typing"
-  | "locked"
-  | "syncing"
-  | "preview"
-  | "published";
-
-interface MatchResult {
-  title:        string;
-  category:     string;
-  displayLabel: string;
-}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -29,12 +14,6 @@ const ANALYZING_MESSAGES = [
   "Matching against community database...",
   "Calculating quality score...",
 ];
-
-const MOCK_MATCH: MatchResult = {
-  title:        "Dune: Part Two",
-  category:     "MOVIE",
-  displayLabel: "DUNE: PART TWO (MOVIE)",
-};
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -83,11 +62,11 @@ function InputModes() {
 function IntelligencePanel({
   progress,
   message,
-  match,
+  matchLabel,
 }: {
-  progress: number;
-  message:  string;
-  match?:   MatchResult | null;
+  progress:   number;
+  message:    string;
+  matchLabel: string | null;
 }) {
   return (
     <div className="bg-zinc-900 rounded-card p-4 space-y-3">
@@ -98,21 +77,18 @@ function IntelligencePanel({
         <span className="text-xs text-zinc-500 tabular-nums">{progress}%</span>
       </div>
       <p className="text-sm font-medium text-white leading-snug">{message}</p>
-      {match && (
+      {matchLabel && (
         <div className="flex items-center gap-2 bg-zinc-800 rounded-xs px-3 py-2">
           <span className="w-2 h-2 rounded-full bg-success shrink-0" />
           <span className="text-[10px] font-bold text-white tracking-widest">
-            MATCH: {match.displayLabel}
+            MATCH: {matchLabel}
           </span>
         </div>
       )}
       <div className="h-[3px] bg-zinc-700 rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-[width] duration-500 ease-out"
-          style={{
-            width: `${progress}%`,
-            background: "linear-gradient(to right, #FE6F5E, #FF9980)",
-          }}
+          style={{ width: `${progress}%`, background: "linear-gradient(to right, #FE6F5E, #FF9980)" }}
         />
       </div>
     </div>
@@ -123,12 +99,7 @@ function IntelligencePanel({
 
 function SyncingScreen() {
   const [step, setStep] = useState(0);
-
-  const steps = [
-    "Category identified",
-    "Match confirmed",
-    "Enriching metadata...",
-  ];
+  const steps = ["Category identified", "Match confirmed", "Enriching metadata..."];
 
   useEffect(() => {
     const t1 = setTimeout(() => setStep(1), 800);
@@ -138,17 +109,9 @@ function SyncingScreen() {
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-10 px-8">
-      {/* Spinning coral ring */}
       <svg className="w-20 h-20 animate-spin-slow" viewBox="0 0 80 80" fill="none">
         <circle cx="40" cy="40" r="36" stroke="#27272a" strokeWidth="3" />
-        <circle
-          cx="40" cy="40" r="36"
-          stroke="url(#sg)"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeDasharray="226"
-          strokeDashoffset="170"
-        />
+        <circle cx="40" cy="40" r="36" stroke="url(#sg)" strokeWidth="3" strokeLinecap="round" strokeDasharray="226" strokeDashoffset="170" />
         <defs>
           <linearGradient id="sg" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#FE6F5E" />
@@ -156,27 +119,14 @@ function SyncingScreen() {
           </linearGradient>
         </defs>
       </svg>
-
-      {/* Step checklist */}
       <div className="w-full space-y-3">
         {steps.map((label, i) => {
           const done    = i < step;
           const current = i === step;
           return (
-            <div
-              key={label}
-              className={cn(
-                "flex items-center gap-3 transition-opacity duration-500",
-                i > step && "opacity-25",
-              )}
-            >
-              <span
-                className={cn(
-                  "w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-colors duration-300",
-                  done    ? "bg-success"    :
-                  current ? "bg-coral-600"  : "bg-zinc-700",
-                )}
-              >
+            <div key={label} className={cn("flex items-center gap-3 transition-opacity duration-500", i > step && "opacity-25")}>
+              <span className={cn("w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-colors duration-300",
+                done ? "bg-success" : current ? "bg-coral-600" : "bg-zinc-700")}>
                 {done ? (
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M20 6L9 17l-5-5" />
@@ -197,14 +147,14 @@ function SyncingScreen() {
 // ── Preview screen ────────────────────────────────────────────────────────────
 
 function PreviewScreen({
-  query,
-  match,
+  text,
+  title,
   onShare,
   onEdit,
   onClose,
 }: {
-  query:   string;
-  match:   MatchResult;
+  text:    string;
+  title:   string;
   onShare: () => void;
   onEdit:  () => void;
   onClose: () => void;
@@ -212,61 +162,41 @@ function PreviewScreen({
   return (
     <div className="flex flex-col h-full min-h-screen bg-white">
       <div className="flex items-center justify-end h-14 px-5 border-b border-zinc-200">
-        <button
-          onClick={onClose}
-          aria-label="Κλείσιμο"
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors"
-        >
+        <button onClick={onClose} aria-label="Κλείσιμο"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors">
           <X size={16} strokeWidth={2.5} className="text-zinc-700" />
         </button>
       </div>
-
       <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-6 space-y-6">
         <div>
           <h2 className="text-xl font-bold text-zinc-800">Preview Recommendation</h2>
-          <p className="text-sm text-zinc-500 mt-1 leading-relaxed">
-            This is how your suggestion will appear to the community.
-          </p>
+          <p className="text-sm text-zinc-500 mt-1 leading-relaxed">This is how your suggestion will appear to the community.</p>
         </div>
-
-        {/* Preview card */}
         <div className="rounded-2xl border border-zinc-200 overflow-hidden shadow-card">
-          {/* Cover */}
           <div className="relative h-44 bg-zinc-100">
             <span className="absolute bottom-3 left-3 bg-coral-600 text-white text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-xs">
               Enriched Match
             </span>
           </div>
-          {/* Content */}
           <div className="p-4 space-y-4 bg-white">
-            <h3 className="text-xl font-bold text-zinc-800">{match.title}</h3>
+            <h3 className="text-xl font-bold text-zinc-800">{title}</h3>
             <div className="flex gap-3 items-start">
               <div className="w-9 h-9 rounded-full bg-zinc-100 shrink-0" />
               <div className="flex-1">
-                <p className="text-[10px] font-bold text-zinc-400 tracking-widest uppercase mb-1">
-                  Your Reflection
-                </p>
+                <p className="text-[10px] font-bold text-zinc-400 tracking-widest uppercase mb-1">Your Reflection</p>
                 <p className="text-sm text-zinc-600 italic leading-relaxed">
-                  &ldquo;{query.length > 80 ? query.slice(0, 80) + "…" : query}&rdquo;
+                  &ldquo;{text.length > 80 ? text.slice(0, 80) + "…" : text}&rdquo;
                 </p>
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Actions */}
       <div className="px-5 pb-8 pt-4 border-t border-zinc-100 space-y-3">
-        <button
-          onClick={onShare}
-          className="w-full h-13 rounded-card bg-zinc-900 text-white text-sm font-bold tracking-widest uppercase active:bg-zinc-800 transition-colors"
-        >
+        <button onClick={onShare} className="w-full h-13 rounded-card bg-zinc-900 text-white text-sm font-bold tracking-widest uppercase active:bg-zinc-800 transition-colors">
           Share
         </button>
-        <button
-          onClick={onEdit}
-          className="w-full h-11 text-sm font-semibold text-zinc-400 tracking-widest uppercase active:text-zinc-600 transition-colors"
-        >
+        <button onClick={onEdit} className="w-full h-11 text-sm font-semibold text-zinc-400 tracking-widest uppercase active:text-zinc-600 transition-colors">
           Edit
         </button>
       </div>
@@ -277,64 +207,44 @@ function PreviewScreen({
 // ── Published screen (dark celebration) ───────────────────────────────────────
 
 function PublishedScreen({
-  match,
+  title,
   onDismiss,
   onShareLink,
 }: {
-  match:       MatchResult;
+  title:       string;
   onDismiss:   () => void;
   onShareLink: () => void;
 }) {
   return (
     <div className="flex flex-col h-full min-h-screen bg-zinc-950">
       <div className="flex items-center justify-end h-14 px-5">
-        <button
-          onClick={onDismiss}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-800 active:bg-zinc-700 transition-colors"
-        >
+        <button onClick={onDismiss} className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-800 active:bg-zinc-700 transition-colors">
           <X size={16} strokeWidth={2.5} className="text-zinc-400" />
         </button>
       </div>
-
       <div className="flex-1 flex flex-col items-center justify-center px-8 gap-8">
-        {/* Checkmark circle */}
         <div
           className="w-24 h-24 rounded-full flex items-center justify-center animate-scale-in shadow-[0_0_60px_rgba(254,111,94,0.4)]"
           style={{ background: "linear-gradient(135deg, #FE6F5E, #FF9980)" }}
         >
-          <svg
-            width="36" height="36"
-            viewBox="0 0 24 24" fill="none"
-            stroke="white" strokeWidth="2.5"
-            strokeLinecap="round" strokeLinejoin="round"
-          >
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 6L9 17l-5-5" />
           </svg>
         </div>
-
         <div className="text-center space-y-3">
-          <h1 className="text-4xl font-black text-white italic tracking-tight">
-            PUBLISHED
-          </h1>
+          <h1 className="text-4xl font-black text-white italic tracking-tight">PUBLISHED</h1>
           <p className="text-sm text-zinc-400 leading-relaxed">
             Your recommendation for{" "}
-            <span className="font-bold text-white">{match.title}</span>
+            <span className="font-bold text-white">{title}</span>
             {" "}is now live in the ecosystem.
           </p>
         </div>
       </div>
-
       <div className="px-5 pb-10 pt-4 flex gap-3">
-        <button
-          onClick={onDismiss}
-          className="flex-1 h-13 rounded-card bg-zinc-800 text-white text-sm font-bold tracking-widest uppercase active:bg-zinc-700 transition-colors"
-        >
+        <button onClick={onDismiss} className="flex-1 h-13 rounded-card bg-zinc-800 text-white text-sm font-bold tracking-widest uppercase active:bg-zinc-700 transition-colors">
           Dismiss
         </button>
-        <button
-          onClick={onShareLink}
-          className="flex-1 h-13 rounded-card bg-white text-zinc-900 text-sm font-bold tracking-widest uppercase active:bg-zinc-100 transition-colors"
-        >
+        <button onClick={onShareLink} className="flex-1 h-13 rounded-card bg-white text-zinc-900 text-sm font-bold tracking-widest uppercase active:bg-zinc-100 transition-colors">
           Share Link
         </button>
       </div>
@@ -349,17 +259,13 @@ interface SuggestionOverlayProps {
 }
 
 export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
-  const [state,    setState]    = useState<SuggestionState>("idle");
-  const [query,    setQuery]    = useState("");
+  const { state: hookState, text, analysis, setText, verify, publish, reset } = useSubmission();
   const [progress, setProgress] = useState(0);
   const [msgIndex, setMsgIndex] = useState(0);
-  const [match,    setMatch]    = useState<MatchResult | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Auto-focus when overlay opens
   useEffect(() => {
     const t = setTimeout(() => textareaRef.current?.focus(), 350);
     return () => clearTimeout(t);
@@ -371,6 +277,33 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
 
   useEffect(() => () => stopTicker(), [stopTicker]);
 
+  // Drive animation ticker from hook state transitions
+  useEffect(() => {
+    if (hookState === "empty") {
+      stopTicker();
+      setProgress(0);
+      setMsgIndex(0);
+      return;
+    }
+    if (hookState === "typing") {
+      stopTicker();
+      let p = 0;
+      let m = 0;
+      tickerRef.current = setInterval(() => {
+        p += Math.random() * 18 + 6;
+        m  = (m + 1) % ANALYZING_MESSAGES.length;
+        if (p >= 90) { p = 90; stopTicker(); }
+        setProgress(Math.round(p));
+        setMsgIndex(m);
+      }, 400);
+      return;
+    }
+    if (hookState === "match_found") {
+      stopTicker();
+      setProgress(100);
+    }
+  }, [hookState, stopTicker]);
+
   const resizeTextarea = () => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -378,67 +311,26 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
     ta.style.height = `${ta.scrollHeight}px`;
   };
 
-  // Simulate AI analysis: progress 0→100%, lock at 100%
-  const runAnalysis = useCallback((q: string) => {
-    stopTicker();
-    let p = 0;
-    let m = 0;
-
-    setState("typing");
-    setProgress(0);
-    setMsgIndex(0);
-    setMatch(null);
-
-    tickerRef.current = setInterval(() => {
-      p += Math.random() * 18 + 6;
-      m  = (m + 1) % ANALYZING_MESSAGES.length;
-
-      if (p >= 100) {
-        p = 100;
-        stopTicker();
-        setProgress(100);
-        setMatch(MOCK_MATCH);
-        setState("locked");
-        return;
-      }
-
-      setProgress(Math.round(p));
-      setMsgIndex(m);
-    }, 400);
-  }, [stopTicker]);
-
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const q = e.target.value;
-    setQuery(q);
+    setText(e.target.value);
     setTimeout(resizeTextarea, 0);
-
-    if (!q.trim()) {
-      stopTicker();
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      setState("idle");
-      setProgress(0);
-      setMatch(null);
-      return;
-    }
-
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => runAnalysis(q), 600);
   };
 
-  const handleVerify = () => {
-    if (state !== "locked") return;
-    setState("syncing");
-    setTimeout(() => setState("preview"), 2600);
-  };
+  const handleVerify    = () => verify();
+  const handleShare     = () => publish();
+  const handleEdit      = () => { reset(); };
+  const handleDismiss   = () => { reset(); onClose(); };
+  const handleShareLink = () => { reset(); onClose(); };
 
-  const handleShare     = () => setState("published");
-  const handleEdit      = () => { setState("idle"); setMatch(null); setProgress(0); };
-  const handleDismiss   = () => onClose();
-  const handleShareLink = () => onClose();
+  // Derive match display from analysis
+  const matchTitle = analysis?.matched && analysis.title ? analysis.title : null;
+  const matchLabel = matchTitle && analysis?.category
+    ? `${matchTitle.toUpperCase()} (${analysis.category.toUpperCase()})`
+    : null;
 
   // ── Full-screen takeover states ────────────────────────────────────────────
 
-  if (state === "syncing") {
+  if (hookState === "syncing") {
     return (
       <div className="flex flex-col h-full min-h-screen bg-zinc-950">
         <SyncingScreen />
@@ -446,11 +338,11 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
     );
   }
 
-  if (state === "preview") {
+  if (hookState === "preview") {
     return (
       <PreviewScreen
-        query={query}
-        match={MOCK_MATCH}
+        text={text}
+        title={matchTitle ?? "Your Recommendation"}
         onShare={handleShare}
         onEdit={handleEdit}
         onClose={onClose}
@@ -458,24 +350,24 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
     );
   }
 
-  if (state === "published") {
+  if (hookState === "published") {
     return (
       <PublishedScreen
-        match={MOCK_MATCH}
+        title={matchTitle ?? "Your Recommendation"}
         onDismiss={handleDismiss}
         onShareLink={handleShareLink}
       />
     );
   }
 
-  // ── Input phase: idle / typing / locked ───────────────────────────────────
+  // ── Input phase: empty / typing / match_found ─────────────────────────────
 
-  const isLocked   = state === "locked";
-  const canVerify  = isLocked && match !== null;
+  const isLocked  = hookState === "match_found";
+  const canVerify = isLocked && matchTitle !== null;
 
   const panelMessage =
-    state === "idle"   ? "I'm listening. Tell me what you experienced." :
-    state === "locked" ? "Description quality is excellent. Metadata found." :
+    hookState === "empty"       ? "I'm listening. Tell me what you experienced." :
+    hookState === "match_found" ? "Description quality is excellent. Metadata found." :
     ANALYZING_MESSAGES[msgIndex];
 
   return (
@@ -486,28 +378,20 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
           <span className="inline-flex items-center px-3 py-1 rounded-full border border-coral-600 text-coral-600 text-xs font-bold tracking-widest uppercase">
             Locked
           </span>
-          <button
-            onClick={onClose}
-            aria-label="Κλείσιμο"
-            className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors"
-          >
+          <button onClick={onClose} aria-label="Κλείσιμο"
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors">
             <X size={16} strokeWidth={2.5} className="text-zinc-700" />
           </button>
         </div>
       ) : (
-        <OverlayHeader
-          label="Listening Live"
-          icon={<WaveformIcon />}
-          onClose={onClose}
-        />
+        <OverlayHeader label="Listening Live" icon={<WaveformIcon />} onClose={onClose} />
       )}
 
       {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 space-y-4">
-        {/* Query textarea */}
         <textarea
           ref={textareaRef}
-          value={query}
+          value={text}
           onChange={handleChange}
           disabled={isLocked}
           placeholder="Describe, scan, or paste..."
@@ -522,34 +406,25 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
           )}
         />
 
-        {/* Input modes — idle state only */}
-        {state === "idle" && <InputModes />}
+        {hookState === "empty" && <InputModes />}
 
-        {/* Intelligence panel — always visible in input phase */}
         <IntelligencePanel
           progress={progress}
           message={panelMessage}
-          match={match}
+          matchLabel={matchLabel}
         />
       </div>
 
-      {/* VERIFY button — sticky at bottom */}
+      {/* VERIFY button */}
       <div className="px-5 pb-8 pt-4 border-t border-zinc-100">
         <button
           onClick={handleVerify}
           disabled={!canVerify}
           className={cn(
-            "w-full h-13 rounded-card",
-            "text-sm font-bold tracking-widest uppercase",
-            "transition-all duration-300",
-            canVerify
-              ? "text-white active:opacity-90"
-              : "bg-zinc-100 text-zinc-400 pointer-events-none",
+            "w-full h-13 rounded-card text-sm font-bold tracking-widest uppercase transition-all duration-300",
+            canVerify ? "text-white active:opacity-90" : "bg-zinc-100 text-zinc-400 pointer-events-none",
           )}
-          style={canVerify
-            ? { background: "linear-gradient(to right, #FE6F5E, #FF9980)" }
-            : {}
-          }
+          style={canVerify ? { background: "linear-gradient(to right, #FE6F5E, #FF9980)" } : {}}
         >
           Verify with AI ›
         </button>

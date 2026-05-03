@@ -21,11 +21,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="el">
-      <body className="bg-[#F2F2F7]">
-        <div className="max-w-[390px] mx-auto min-h-screen bg-white overflow-x-hidden">
-          {children}
-        </div>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

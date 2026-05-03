@@ -82,6 +82,7 @@ const config: Config = {
         9:  "36px",   // sm button
         11: "44px",   // md button / inputs
         13: "52px",   // lg button
+        14: "56px",   // auth inputs / auth CTA button
       },
 
       // ── Border radius ───────────────────────────────────────

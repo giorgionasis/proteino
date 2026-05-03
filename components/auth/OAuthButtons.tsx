@@ -4,10 +4,9 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Spinner } from "@/components/ui/Spinner";
 
-// ── Brand icons ────────────────────────────────────────────────
 function GoogleIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden>
       <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
       <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
       <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
@@ -18,13 +17,12 @@ function GoogleIcon() {
 
 function FacebookIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden fill="#1877F2">
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden fill="#1877F2">
       <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
     </svg>
   );
 }
 
-// ── Component ──────────────────────────────────────────────────
 interface OAuthButtonsProps {
   mode: "login" | "register";
 }
@@ -33,24 +31,44 @@ export function OAuthButtons({ mode }: OAuthButtonsProps) {
   const [loading, setLoading] = useState<"google" | "facebook" | null>(null);
 
   async function handleOAuth(provider: "google" | "facebook") {
-    if (loading) return;
-    setLoading(provider);
+    console.log("[OAuth] button clicked, provider:", provider);
+    console.log("[OAuth] loading guard:", loading);
+    console.log("[OAuth] NEXT_PUBLIC_SUPABASE_URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
 
+    if (loading) return;
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
+
+    setLoading(provider);
     try {
       const supabase = createClient();
-      await supabase.auth.signInWithOAuth({
+      console.log("[OAuth] calling signInWithOAuth...");
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo:          `${window.location.origin}/auth/callback`,
+          skipBrowserRedirect: true,
         },
       });
-      // Browser will navigate away — keep loading spinner up
-    } catch {
+
+      console.log("[OAuth] signInWithOAuth result — data:", data, "error:", error);
+      console.log("[OAuth] data.url:", data?.url);
+
+      if (error || !data.url) {
+        console.log("[OAuth] bailing — error or no URL");
+        setLoading(null);
+        return;
+      }
+
+      console.log("[OAuth] redirecting to:", data.url);
+      window.location.href = data.url;
+    } catch (err) {
+      console.log("[OAuth] caught exception:", err);
       setLoading(null);
     }
   }
 
-  const verb = mode === "login" ? "Συνδέσου" : "Εγγράψου";
+  const verb = mode === "login" ? "Σύνδεση" : "Εγγραφή";
   const isDisabled = !!loading;
 
   return (
@@ -73,13 +91,8 @@ export function OAuthButtons({ mode }: OAuthButtonsProps) {
   );
 }
 
-// ── Single OAuth button ────────────────────────────────────────
 function OAuthButton({
-  onClick,
-  disabled,
-  loading,
-  icon,
-  label,
+  onClick, disabled, loading, icon, label,
 }: {
   onClick:  () => void;
   disabled: boolean;
@@ -92,10 +105,15 @@ function OAuthButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="w-full h-11 flex items-center justify-center gap-3 rounded-input bg-white border-[0.5px] border-gray-300 text-sm text-gray-800 font-medium transition-all hover:bg-gray-50 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+      className="w-full flex items-center justify-center gap-3 bg-white active:bg-zinc-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      style={{
+        height: 50,
+        borderRadius: 50,
+        border: "2px solid #27272A",
+      }}
     >
       {loading ? <Spinner size="sm" variant="gray" /> : icon}
-      {label}
+      <span style={{ fontSize: 18, fontWeight: 600, color: "#27272A" }}>{label}</span>
     </button>
   );
 }

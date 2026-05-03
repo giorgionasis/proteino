@@ -3,23 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Search } from "lucide-react";
 import { OverlayHeader } from "@/components/layout/Header";
+import { useSearch } from "@/hooks/useSearch";
+import type { Item } from "@/types";
 import { cn } from "@/lib/utils/cn";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type SearchState = "empty" | "typing" | "results" | "no_match";
-
-interface Pill {
-  type: "VIBE" | "TYPE" | "LOC";
-  value: string;
-}
-
-interface Result {
-  id: string;
-  title: string;
-  location: string;
-  type: string;
-}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -39,31 +25,9 @@ const AI_MESSAGES = [
   "Searching through recommendations...",
 ];
 
-const MOCK_RESULTS: Result[] = [
-  { id: "1", title: "Theory Bar",  location: "CHALANDRI",     type: "ALL-DAY BAR" },
-  { id: "2", title: "Jazz Point",  location: "ATHENS CENTER", type: "JAZZ CLUB"   },
-];
-
-// ── Pill extraction ───────────────────────────────────────────────────────────
-
-const VIBE_RE = /\b(jazz|cozy|romantic|latin|minimal|modern|classic|electronic|live\s*music|rooftop|underground|lounge|quiet|busy|vibrant|chill)\b/i;
-const TYPE_RE  = /\b(bars?|restaurant|cafe|coffee|taverna|movies?|books?|series|hotel|event)\b/i;
-const LOC_RE   = /\b(chalandri|athens|glyfada|kifisia|kolonaki|koukaki|exarcheia|monastiraki|piraeus|thessaloniki|marousi|psychiko|voula|vouliagmeni)\b/i;
-
-function extractPills(q: string): Pill[] {
-  const pills: Pill[] = [];
-  const v = q.match(VIBE_RE);
-  const t = q.match(TYPE_RE);
-  const l = q.match(LOC_RE);
-  if (v) pills.push({ type: "VIBE", value: v[0].toUpperCase() });
-  if (t) pills.push({ type: "TYPE", value: t[0].toUpperCase() });
-  if (l) pills.push({ type: "LOC",  value: l[0].toUpperCase() });
-  return pills;
-}
-
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function SearchPill({ pill }: { pill: Pill }) {
+function SearchPill({ pill }: { pill: { type: "VIBE" | "TYPE" | "LOC"; value: string } }) {
   const labelClass = {
     VIBE: "text-coral-400",
     TYPE: "text-warning",
@@ -82,13 +46,7 @@ function SearchPill({ pill }: { pill: Pill }) {
   );
 }
 
-function IntelligencePanel({
-  progress,
-  message,
-}: {
-  progress: number;
-  message: string;
-}) {
+function IntelligencePanel({ progress, message }: { progress: number; message: string }) {
   return (
     <div className="bg-zinc-900 rounded-card p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -101,10 +59,7 @@ function IntelligencePanel({
       <div className="h-[3px] bg-zinc-700 rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-[width] duration-500 ease-out"
-          style={{
-            width: `${progress}%`,
-            background: "linear-gradient(to right, #FE6F5E, #FF9980)",
-          }}
+          style={{ width: `${progress}%`, background: "linear-gradient(to right, #FE6F5E, #FF9980)" }}
         />
       </div>
     </div>
@@ -132,20 +87,24 @@ function QuickJumps({ onSelect }: { onSelect: (q: string) => void }) {
   );
 }
 
-function ResultCard({ result }: { result: Result }) {
+function ResultCard({ item }: { item: Item }) {
   return (
     <div className="flex items-center gap-3 p-3 bg-white rounded-card border border-zinc-200 shadow-card active:bg-zinc-50 transition-colors cursor-pointer">
       <div className="w-16 h-16 rounded-sm bg-zinc-100 shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-base font-bold text-zinc-800 truncate">{result.title}</p>
+        <p className="text-base font-bold text-zinc-800 truncate">{item.title}</p>
         <div className="flex items-center gap-1.5 mt-0.5">
           <span className="text-[10px] font-bold text-zinc-400 tracking-wider uppercase">
-            {result.location}
+            {item.category}
           </span>
-          <span className="text-zinc-300 leading-none">·</span>
-          <span className="text-[10px] font-bold text-zinc-400 tracking-wider uppercase">
-            {result.type}
-          </span>
+          {item.avg_rating > 0 && (
+            <>
+              <span className="text-zinc-300 leading-none">·</span>
+              <span className="text-[10px] font-bold text-zinc-400 tracking-wider uppercase">
+                ★ {item.avg_rating.toFixed(1)}
+              </span>
+            </>
+          )}
         </div>
       </div>
       <svg
@@ -167,32 +126,53 @@ interface SearchOverlayProps {
 }
 
 export function SearchOverlay({ onClose }: SearchOverlayProps) {
-  const [query,    setQuery]    = useState("");
-  const [pills,    setPills]    = useState<Pill[]>([]);
-  const [state,    setState]    = useState<SearchState>("empty");
+  const { state, query, pills, results, setQuery: hookSetQuery } = useSearch();
   const [progress, setProgress] = useState(0);
   const [msgIndex, setMsgIndex] = useState(0);
-  const [results,  setResults]  = useState<Result[]>([]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Auto-focus when overlay opens
   useEffect(() => {
     const t = setTimeout(() => textareaRef.current?.focus(), 350);
     return () => clearTimeout(t);
   }, []);
 
   const stopTicker = useCallback(() => {
-    if (tickerRef.current) {
-      clearInterval(tickerRef.current);
-      tickerRef.current = null;
-    }
+    if (tickerRef.current) { clearInterval(tickerRef.current); tickerRef.current = null; }
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => () => stopTicker(), [stopTicker]);
+
+  // Drive animation ticker from hook state transitions
+  useEffect(() => {
+    if (state === "empty") {
+      stopTicker();
+      setProgress(0);
+      setMsgIndex(0);
+      return;
+    }
+    if (state === "typing") {
+      stopTicker();
+      let p = 0;
+      let m = 0;
+      tickerRef.current = setInterval(() => {
+        p += Math.random() * 14 + 4;
+        m  = (m + 1) % AI_MESSAGES.length;
+        if (p >= 85) { p = 85; stopTicker(); }
+        setProgress(Math.round(p));
+        setMsgIndex(m);
+      }, 350);
+      return;
+    }
+    if (state === "analyzing") {
+      return; // ticker already running from "typing"
+    }
+    if (state === "results" || state === "no_match") {
+      stopTicker();
+      setProgress(100);
+    }
+  }, [state, stopTicker]);
 
   const resizeTextarea = () => {
     const ta = textareaRef.current;
@@ -201,75 +181,14 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     ta.style.height = `${ta.scrollHeight}px`;
   };
 
-  // Simulate the AI analysis: progress 0→100%, results appear at ~40%
-  const runAnalysis = useCallback(
-    (q: string, extracted: Pill[]) => {
-      stopTicker();
-
-      const hasVibe = extracted.some((p) => p.type === "VIBE");
-      const hasLoc  = extracted.some((p) => p.type === "LOC");
-      const resultState: SearchState = hasVibe && hasLoc ? "no_match" : "results";
-
-      let p = 0;
-      let m = 0;
-      let resultsFired = false;
-
-      setState("typing");
-      setProgress(0);
-      setMsgIndex(0);
-      setResults([]);
-
-      tickerRef.current = setInterval(() => {
-        p += Math.random() * 16 + 6;
-        m  = (m + 1) % AI_MESSAGES.length;
-
-        // Cards appear in parallel at ~40%
-        if (p >= 40 && !resultsFired) {
-          resultsFired = true;
-          setResults(MOCK_RESULTS);
-          setState(resultState);
-        }
-
-        if (p >= 100) {
-          p = 100;
-          stopTicker();
-        }
-
-        setProgress(Math.round(p));
-        setMsgIndex(m);
-      }, 350);
-    },
-    [stopTicker],
-  );
-
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const q = e.target.value;
-    setQuery(q);
+    hookSetQuery(e.target.value);
     setTimeout(resizeTextarea, 0);
-
-    if (!q.trim()) {
-      stopTicker();
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      setState("empty");
-      setPills([]);
-      setResults([]);
-      setProgress(0);
-      return;
-    }
-
-    const extracted = extractPills(q);
-    setPills(extracted);
-
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => runAnalysis(q, extracted), 700);
   };
 
   const handleQuickJump = (q: string) => {
-    setQuery(q);
-    const extracted = extractPills(q);
-    setPills(extracted);
+    hookSetQuery(q);
     setTimeout(resizeTextarea, 0);
-    runAnalysis(q, extracted);
   };
 
   const showPanel   = state !== "empty";
@@ -280,9 +199,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     if (isNoMatch) {
       const vibe = pills.find((p) => p.type === "VIBE")?.value;
       const loc  = pills.find((p) => p.type === "LOC")?.value;
-      return vibe && loc
-        ? `No direct matches for '${vibe}' in ${loc}.`
-        : "No direct matches found.";
+      return vibe && loc ? `No direct matches for '${vibe}' in ${loc}.` : "No direct matches found.";
     }
     return AI_MESSAGES[msgIndex];
   })();
@@ -296,7 +213,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
       />
 
       <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 space-y-4">
-        {/* ── Query textarea ── */}
+        {/* Query textarea */}
         <textarea
           ref={textareaRef}
           value={query}
@@ -312,7 +229,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
           )}
         />
 
-        {/* ── Extracted pills ── */}
+        {/* Extracted pills */}
         {pills.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {pills.map((p) => (
@@ -321,21 +238,17 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
           </div>
         )}
 
-        {/* ── Intelligence panel ── */}
-        {showPanel && (
-          <IntelligencePanel progress={progress} message={panelMessage} />
-        )}
+        {/* Intelligence panel */}
+        {showPanel && <IntelligencePanel progress={progress} message={panelMessage} />}
 
-        {/* ── Results (appear in parallel before panel finishes) ── */}
+        {/* Results */}
         {showResults && (
           <div className="space-y-2.5">
             {isNoMatch && (
-              <p className="text-xs font-medium text-zinc-400 px-1">
-                Showing best alternatives
-              </p>
+              <p className="text-xs font-medium text-zinc-400 px-1">Showing best alternatives</p>
             )}
-            {results.map((r) => (
-              <ResultCard key={r.id} result={r} />
+            {results.map((item) => (
+              <ResultCard key={item.id} item={item} />
             ))}
             {isNoMatch && (
               <button className="w-full py-4 rounded-card border border-dashed border-zinc-300 text-sm font-semibold text-coral-600 active:bg-coral-50 transition-colors mt-1">
@@ -345,7 +258,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
           </div>
         )}
 
-        {/* ── Quick jumps (empty state) ── */}
+        {/* Quick jumps (empty state) */}
         {state === "empty" && <QuickJumps onSelect={handleQuickJump} />}
       </div>
     </div>

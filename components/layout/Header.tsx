@@ -19,8 +19,8 @@ export function Header({
     <header
       className={cn(
         "sticky top-0 z-30 bg-white",
-        "h-14 px-5 flex items-center justify-between",
-        "border-b border-zinc-200",
+        "h-16 px-5 flex items-center justify-between",
+        "shadow-[0px_6px_20px_-10px_rgba(0,0,0,0.15)]",
         className,
       )}
     >
@@ -32,8 +32,8 @@ export function Header({
         <span className="w-[5px] h-[5px] rounded-full bg-coral-600 mb-[3px]" />
       </Link>
 
-      {/* Notifications — registered users only */}
-      {isRegistered && (
+      {/* Right slot: notifications (registered) or sign-in (guest) */}
+      {isRegistered ? (
         <Link
           href="/notifications"
           aria-label="Ειδοποιήσεις"
@@ -58,6 +58,18 @@ export function Header({
               {notificationCount > 9 ? "9+" : notificationCount}
             </span>
           )}
+        </Link>
+      ) : (
+        <Link
+          href="/login"
+          className={cn(
+            "h-11 px-4 flex items-center justify-center",
+            "border-[1.5px] border-zinc-700 rounded-sm",
+            "text-base font-semibold text-zinc-800",
+            "transition-colors active:bg-zinc-50",
+          )}
+        >
+          Σύνδεση
         </Link>
       )}
     </header>

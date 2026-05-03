@@ -1,9 +1,9 @@
-export function AuthDivider({ label = "ή συνέχισε με" }: { label?: string }) {
+export function AuthDivider() {
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex-1 h-px bg-gray-200" />
-      <span className="text-xs text-gray-400 shrink-0">{label}</span>
-      <div className="flex-1 h-px bg-gray-200" />
+    <div className="flex items-center justify-center gap-4 py-1">
+      <div className="h-px bg-zinc-200" style={{ width: 160 }} />
+      <span className="text-base font-semibold text-zinc-600 shrink-0">ή</span>
+      <div className="h-px bg-zinc-200" style={{ width: 160 }} />
     </div>
   );
 }

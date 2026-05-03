@@ -29,7 +29,7 @@ export class MockAIService implements AIService {
     };
   }
 
-  async analyzeSearch(query: string): Promise<SearchAnalysis> {
+  async analyzeSearchQuery(query: string): Promise<SearchAnalysis> {
     await new Promise((r) => setTimeout(r, 400));
 
     return {
@@ -40,6 +40,10 @@ export class MockAIService implements AIService {
       categories: ["movies", "series"],
       query,
     };
+  }
+
+  async scoreDescriptionQuality(_text: string): Promise<number> {
+    return 0.85;
   }
 
   async generateEmbedding(_text: string): Promise<number[]> {

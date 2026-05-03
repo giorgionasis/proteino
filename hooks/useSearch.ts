@@ -47,7 +47,7 @@ export function useSearch(): UseSearchReturn {
 
       try {
         const { getAIService } = await import("@/lib/ai");
-        const a = await getAIService().analyzeSearch(value);
+        const a = await getAIService().analyzeSearchQuery(value);
         if (controller.signal.aborted) return;
 
         setAnalysis(a);

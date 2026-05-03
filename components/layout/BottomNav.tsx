@@ -6,20 +6,20 @@ import { Home, Search, User } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useOverlay } from "@/hooks/useOverlay";
 
-export function BottomNav() {
+export function BottomNav({ avatarUrl }: { avatarUrl?: string | null }) {
   const pathname = usePathname();
   const { openSearch } = useOverlay();
 
   const isHome   = pathname === "/";
   const isSearch = false; // search is an overlay, never a route
-  const isYou    = pathname.startsWith("/you") || pathname.startsWith("/profile/me");
+  const isYou    = pathname.startsWith("/you") || pathname.startsWith("/profile/");
 
   return (
     <nav
       className={cn(
         "fixed bottom-0 left-0 right-0 z-40",
         "bg-white border-t border-zinc-200",
-        "max-w-lg mx-auto",
+        "max-w-[390px] mx-auto",
         // Safe area padding for iOS Safari toolbar
         "pb-safe",
       )}
@@ -55,7 +55,21 @@ export function BottomNav() {
         <NavItem
           href="/you"
           label="YOU"
-          icon={<User size={22} strokeWidth={isYou ? 2.5 : 1.5} />}
+          icon={avatarUrl ? (
+            <div
+              className="rounded-full overflow-hidden shrink-0"
+              style={{
+                width: 24, height: 24,
+                outline: isYou ? "2px solid #FE6F5E" : "1.5px solid #a1a1aa",
+                outlineOffset: 1,
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+            </div>
+          ) : (
+            <User size={22} strokeWidth={isYou ? 2.5 : 1.5} />
+          )}
           active={isYou}
         />
       </div>

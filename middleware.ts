@@ -2,6 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  // Skip Supabase auth when keys are not configured (local development without DB)
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -25,14 +30,19 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // Network timeout — pass request through without auth checks
+    return supabaseResponse;
+  }
 
   const { pathname } = request.nextUrl;
 
-  // Protect admin routes
-  if (pathname.startsWith("/admin") && !user) {
+  // Protect admin routes (bypass in dev for UI development)
+  if (pathname.startsWith("/admin") && !user && process.env.NODE_ENV !== "development") {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

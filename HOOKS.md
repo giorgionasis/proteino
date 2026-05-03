@@ -291,3 +291,34 @@ Track which messages perform best:
 ---
 
 *This file is a living document. Add new hook ideas here before implementing.*
+
+---
+
+## 8. Duplicate Submission Hook
+
+When user tries to submit something already on the platform,
+turn the "dead end" into an engagement opportunity.
+
+### If item exists — suggested by others
+```
+"Το [item] έχει ήδη προταθεί!"
+
+[★ Βαθμολόγησέ το]        → opens rating modal
+[+ Ακολούθησε @[user]]    → follow the original suggester
+[✏️ Προτείνε κάτι άλλο]   → resets submission flow
+```
+
+### If item exists — suggested by the same user
+```
+"Το έχεις ήδη προτείνει εσύ! 😄"
+
+[Δες την πρότασή σου →]   → navigates to their suggestion
+[✏️ Προτείνε κάτι άλλο]   → resets submission flow
+```
+
+### Hook value
+- Converts failed submission into rating action
+- Converts failed submission into follow action
+- Never leaves user with nothing to do
+- "Ακολούθησε" only shows if user doesn't already follow the suggester
+
