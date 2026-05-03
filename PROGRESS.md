@@ -1,16 +1,18 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-06 (session 8)
+Last updated: 2026-05-03 (session 9)
 
 ---
 
 ## 1. COMPLETED
 
-### Auth Flow ✅ (session 1)
+### Auth Flow ✅ (session 1-3)
 - Supabase Auth with Google OAuth, email/password, session persistence
 - `/login`, `/register`, `/forgot-password` — all with `react-hook-form` + `zod`
+- `/reset-password`, `/verify-code` — password reset flow
 - Middleware route protection, auth callback handler
 - Real-time password validation (8 chars, uppercase, number)
+- Auth screens redesigned to match Figma: AuthHeader, AuthTrustBadge, OAuthButtons
 
 ### Design System ✅ (session 2, Figma-verified)
 - `tailwind.config.ts` — coral `#FE6F5E`, full zinc scale, ios-gray, all radii/weights/shadows
@@ -40,10 +42,26 @@ Last updated: 2026-05-06 (session 8)
 - BookDetail rebuilt to match Figma: no chips, proper metadata grid, author section, suggester card above info
 - Slug handling: category prefix strip for links, prefix reconstruction for lookups
 
-### Profile Pages ✅ (session 6-7)
+### Profile System ✅ (sessions 6-8)
 - Own profile (`UserProfile`): real stats, follower/following counts, avgQualityScore, topSuggestion
 - Other user profile (`UserProfileViewer`): real data, dynamic badge (MEMBER/GOLD/EXPERT), topSuggestion section
 - Level-based badge derivation, conditional sections (hide when no data)
+- `FollowersPopupCentered` — followers/following popup
+- `GuestYouPage` — value-proposition for unauthenticated users on YOU tab
+- Profile sub-pages: `/profile/[handle]/bookmarks`, `/profile/[handle]/reviews`, `/profile/[handle]/suggestions`, `/profile/[handle]/suggestions/[category]`
+- Settings pages: `/profile/[handle]/settings/edit`, `/settings/security`, `/settings/notifications`, `/settings/personalization`
+
+### Leaderboard ✅ (session 7)
+- `/leaderboard` page with `LeaderboardPage` component
+- Period filters, category filters, ranking display
+
+### Notifications ✅ (session 7)
+- `/notifications` page with `NotificationsPage` component
+- Social + smart notification types, read/unread state
+
+### Support ✅ (session 7)
+- `/support` page with `SupportPage` component
+- Help center and contact
 
 ### Codebase Audit + 6 Critical Fixes ✅ (session 5)
 - Created missing detail components (SeriesDetail, BookDetail, BarsDetail)
@@ -70,11 +88,36 @@ Last updated: 2026-05-06 (session 8)
 - `types/database.ts` updated with all extension table type definitions
 
 ### Extension Table Data Fixes ✅ (session 8)
-- Food: resolved K2 option IDs to names — `type` (230 rows: "3"→"all day bar restaurant", "17"→"εστιατόριο") and `cuisine` (229 rows: "12"→"ελληνική - δημιουργική", "11"→"ελληνική")
-- Recipes: resolved `level` IDs to names (122 rows: "3"→"εύκολη", "4"→"μέτρια") and fixed `duration` prep/cook from option IDs to actual minute midpoints
-- Theater: cleared `address` field that contained category type ("κωμωδία") instead of real address (40 rows → null, no real address data in K2 dump)
-- BookDetail: publisher name (`item_books.publication`) now renders as clickable link using `metadata.publisher_url`
+- Food: resolved K2 option IDs to names — `type` (230 rows) and `cuisine` (229 rows)
+- Recipes: resolved `level` IDs to names (122 rows) and fixed `duration` prep/cook from option IDs to actual minute midpoints
+- Theater: cleared `address` field that contained category type instead of real address (40 rows → null)
+- BookDetail: publisher name now renders as clickable link using `metadata.publisher_url`
 - Scripts: `scripts/fix-extension-tables.ts` (re-runnable), `scripts/check-extension-tables.ts` (diagnostic)
+
+### Admin Panel ✅ (session 9)
+- Full admin shell: sidebar navigation, layout, desktop-first
+- Overview dashboard: stats cards, quick actions
+- Categories: list table, drill-down, create/edit forms
+- Suggestions: list table + full editor with category-specific ExtraFields for all 9 categories
+  - Movies: country autocomplete (datalist), actor avatars, awards by type (Oscar/BAFTA/Golden Globe/Cannes), attributes, plot
+  - Series: country autocomplete, streaming platforms, attributes, actors, awards
+  - Books: author info card with photo, buy links, plot
+  - Food: address+map, region/area, delivery links (efood/Wolt/Box), attributes
+  - Bars: address+map, type radio, attributes
+  - Hotels: address+map, type visual radio, amenities (3 columns), availability links
+  - Recipes: ingredients table (drag-reorder), steps, tips, duration (prep+cooking hours/minutes), nutrition
+  - Theater/Events: single/tour toggle, dates table, ticket/buy links, ads section
+- Media section: category-aware tabs & modes (`getMediaConfig()`)
+- Subcategory dropdown: dynamically populated per category from SUBCATEGORIES constant
+- Trailer tab: YouTube + Vimeo URL inputs (not image)
+- Extra Fields management: table per category with create/edit forms
+- Collections: list with drag reorder + live mobile preview + create flow (Card/Carousel)
+- Activities: table + new activity form + new category/type form
+- Movies Tonight: table with inline edit/remove + new movie form (channel dropdown, date/time pickers)
+- Filters: explorer (filter by attributes → see suggestion counts, Card/Carousel recommendation) + frontend filter config (quick filter chips vs bottom sheet toggles per attribute)
+- Reviews: moderation table with actions
+- Users: management table with role, status
+- See `ADMIN.md` for full specification
 
 ---
 
@@ -118,14 +161,16 @@ Fix remaining 8 detail components to:
 - Level progress on profile
 - Leaderboard with real rankings
 
-### Priority 6 — Notifications
-- Notifications page
-- Bell icon functionality
-- Social + smart notification types
+### Priority 6 — Notifications (Real)
+- Wire notifications page to Supabase real-time
+- Bell icon badge count
+- Push notifications (when native app ready)
 
-### Priority 7 — Admin Panel (`/admin`)
-- Route protection (role = 'admin')
-- Item/suggestion/user management
+### Priority 7 — Admin Real Data
+- Connect admin panel to Supabase (currently mock/state data)
+- CRUD operations for all entities
+- Settings page implementation
+- Database schema updates for: awards (type+category+year), recipe duration (prep/cook hours/minutes), actor avatars, filter_configs table
 
 ---
 
@@ -172,12 +217,19 @@ app/(main)/page.tsx                         ← Home (guest + registered, real d
 app/(main)/[category]/page.tsx              ← Category listing (real data)
 app/(main)/[category]/[id]/page.tsx         ← Detail page router + data fetch
 app/(main)/profile/[handle]/page.tsx        ← Profile (real data)
+app/(main)/leaderboard/page.tsx             ← Leaderboard
+app/(main)/notifications/page.tsx           ← Notifications
+app/(main)/you/page.tsx                     ← Guest YOU page
 components/detail/*.tsx                     ← 9 detail components
 components/category/CategoryPageShell.tsx   ← Category page client shell
 components/home/guest/SuggestionFeed.tsx    ← Guest feed with category tabs
+components/admin/*.tsx                      ← 16 admin components
+app/admin/layout.tsx                        ← Admin layout with sidebar
 lib/supabase/server.ts                     ← Server-side Supabase client
 scripts/migrate-mysql.ts                   ← MySQL→Supabase migration script
+middleware.ts                              ← Edge-compatible auth middleware
 CLAUDE.md                                  ← Full architectural spec
+ADMIN.md                                   ← Admin panel specification
 AI.md                                      ← AI service implementation spec
 HOOKS.md                                   ← Engagement + gamification spec
 ```
@@ -194,3 +246,4 @@ npx tsc --noEmit    # TypeScript check (should be 0 errors)
 Supabase keys configured in `.env.local` (connected to live project).
 Figma MCP server configured — use `get_figma_data(fileKey, nodeId)` for designs.
 Figma file key: `TFMtJVp6GKBftmBbvBixVN`
+Deployed on Vercel — auto-deploys from `main` branch.
