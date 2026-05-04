@@ -1,18 +1,27 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+/**
+ * Edge-runtime middleware. Anything that throws here surfaces to Vercel as
+ * MIDDLEWARE_INVOCATION_FAILED → 500 on every request. The whole body is
+ * wrapped in try/catch so a malformed cookie / network blip / missing env
+ * never takes the site down — worst case the user is treated as a guest
+ * for that request.
+ */
 export async function middleware(request: NextRequest) {
-  // Skip Supabase auth when keys are not configured (local development without DB)
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const { pathname } = request.nextUrl;
+
+  // Skip Supabase auth when keys are not configured.
+  if (!url || !key) {
     return NextResponse.next({ request });
   }
 
-  let supabaseResponse = NextResponse.next({ request });
+  try {
+    let supabaseResponse = NextResponse.next({ request });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+    const supabase = createServerClient(url, key, {
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -27,27 +36,36 @@ export async function middleware(request: NextRequest) {
           );
         },
       },
+    });
+
+    // getSession() reads the JWT from cookies without a network call —
+    // required for Edge runtime. Still wrap in try because a cookie
+    // with a malformed JWT can throw during parse.
+    let user = null;
+    try {
+      const { data } = await supabase.auth.getSession();
+      user = data?.session?.user ?? null;
+    } catch (err) {
+      console.error("[middleware] getSession failed:", err);
     }
-  );
 
-  // Use getSession() instead of getUser() — it reads the JWT from cookies
-  // without making a network call, which is required for Edge Runtime compatibility.
-  const { data: { session } } = await supabase.auth.getSession();
-  const user = session?.user ?? null;
+    // Protect admin routes
+    if (pathname.startsWith("/admin") && !user && process.env.NODE_ENV !== "development") {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
 
-  const { pathname } = request.nextUrl;
+    // Redirect authenticated users away from auth pages
+    if (user && (pathname === "/login" || pathname === "/register")) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
 
-  // Protect admin routes (bypass in dev for UI development)
-  if (pathname.startsWith("/admin") && !user && process.env.NODE_ENV !== "development") {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return supabaseResponse;
+  } catch (err) {
+    // Last-resort: never 500 the site from middleware. Log + pass through
+    // as guest. The page-level auth checks (admin layout, etc.) still run.
+    console.error("[middleware] crashed, passing through:", err);
+    return NextResponse.next({ request });
   }
-
-  // Redirect authenticated users away from auth pages
-  if (user && (pathname === "/login" || pathname === "/register")) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
-
-  return supabaseResponse;
 }
 
 export const config = {
