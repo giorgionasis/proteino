@@ -1,5 +1,5 @@
-import { ActivityForm } from "@/components/admin/ActivityForm";
+import { ActivityEditor } from "@/components/admin/ActivityEditor";
 
 export default function NewActivityPage() {
-  return <ActivityForm />;
+  return <ActivityEditor />;
 }

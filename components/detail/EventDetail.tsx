@@ -7,6 +7,7 @@ import { Bookmark, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { InnerHeader } from "@/components/layout/Header";
+import { useBookmark } from "@/hooks/useBookmark";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -50,7 +51,7 @@ function formatDates(dates: unknown): string {
 
 export function EventDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
-  const [bookmarked, setBookmarked] = useState(false);
+  const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "events", data.isBookmarked);
   const [descExpanded, setDescExpanded] = useState(false);
   const [userRating, setUserRating] = useState(0);
 
@@ -103,7 +104,7 @@ export function EventDetail({ data }: { data: ItemDetailData }) {
         onBack={() => router.back()}
         rightSlot={
           <>
-            <button onClick={() => setBookmarked(v => !v)} className={cn("w-9 h-9 flex items-center justify-center rounded-full transition-colors", bookmarked ? "bg-zinc-800" : "bg-zinc-100 active:bg-zinc-200")}>
+            <button onClick={toggleBookmark} className={cn("w-9 h-9 flex items-center justify-center rounded-full transition-colors", bookmarked ? "bg-zinc-800" : "bg-zinc-100 active:bg-zinc-200")}>
               <Bookmark size={16} className={bookmarked ? "text-white fill-white" : "text-zinc-700"} />
             </button>
             <button className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors">

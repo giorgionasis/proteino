@@ -1,8 +1,14 @@
 "use client";
 
-import { useState, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
+import { useState, useCallback, useRef, useImperativeHandle, forwardRef, useEffect } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CATEGORIES } from "@/constants/categories";
+import { ImageUploader } from "./ImageUploader";
+import { ImageGallery, type GalleryImage } from "./ImageGallery";
+import { MapPicker } from "./MapPicker";
+import { OpenAsUserButton } from "./OpenAsUserButton";
+import { useUnsavedGuard } from "@/hooks/useUnsavedGuard";
 
 interface ExtFieldsHandle {
   getData(): Record<string, any>;
@@ -28,6 +34,7 @@ interface ItemProps {
   coverUrl: string | null;
   posterUrl: string | null;
   backdropUrl: string | null;
+  images?: GalleryImage[];
   avgRating: number;
   ratingCount: number;
   suggestionCount: number;
@@ -78,6 +85,16 @@ function getMediaConfig(category: string): { tabs: string[]; mode: "single" | "g
   }
 }
 
+// Categories where the "main" image is portrait-shaped (movies/series/books)
+const PORTRAIT_CATEGORIES = new Set(["movies", "series", "books"]);
+
+// Parse trailer URL platform
+function parseTrailer(url: string | null | undefined): { youtube: string; vimeo: string } {
+  if (!url) return { youtube: "", vimeo: "" };
+  if (url.includes("vimeo")) return { youtube: "", vimeo: url };
+  return { youtube: url, vimeo: "" };
+}
+
 export function SuggestionEditor({ suggestion, item, extData, subcategories, regions, extraOptions }: Props) {
   const [title, setTitle] = useState(item.title);
   const [slug, setSlug] = useState(item.slug);
@@ -91,11 +108,105 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
   const extFieldsRef = useRef<ExtFieldsHandle>(null);
 
+  // Media state — initialize from props
+  const [posterUrl, setPosterUrl] = useState(item.posterUrl ?? "");
+  const [backdropUrl, setBackdropUrl] = useState(item.backdropUrl ?? "");
+  const [galleryImages, setGalleryImages] = useState<GalleryImage[]>(
+    Array.isArray(item.images) ? item.images : []
+  );
+  const initialTrailer = parseTrailer(extData?.trailer_url);
+  const [trailerYoutube, setTrailerYoutube] = useState(initialTrailer.youtube);
+  const [trailerVimeo, setTrailerVimeo] = useState(initialTrailer.vimeo);
+
+  // Queue navigation — admin coming from the list with ?queue=unpublished
+  // gets prev/next buttons + position counter so they can plow through the
+  // moderation queue without going back.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const queueFilter = searchParams?.get("queue") ?? null;   // "unpublished" | "all" | null
+  const inQueue = queueFilter === "unpublished" || queueFilter === "all";
+  const [queue, setQueue] = useState<{ prev: string | null; next: string | null; position: number | null; total: number } | null>(null);
+
+  useEffect(() => {
+    if (!inQueue) { setQueue(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/suggestions/queue?cursor=${suggestion.id}&filter=${queueFilter}`, { cache: "no-store" });
+        const d = await res.json();
+        if (!cancelled) setQueue({
+          prev: d.prev_id ?? null,
+          next: d.next_id ?? null,
+          position: d.position ?? null,
+          total: d.total ?? 0,
+        });
+      } catch { /* offline */ }
+    })();
+    return () => { cancelled = true; };
+  }, [suggestion.id, queueFilter, inQueue, isPublished]);
+
+  // Snapshot initial values so we can compute dirty flag.
+  // ExtraFields data is opaque — we accept some false-positives there
+  // (admin focusing a field but not changing it shouldn't trigger, but a
+  // simple ref comparison can't detect that without deeper instrumentation).
+  const initialSnapshot = useRef({
+    title: item.title,
+    slug: item.slug,
+    category: item.category,
+    subcategoryId: item.subcategoryId ?? "",
+    descriptionSeo: item.descriptionSeo ?? "",
+    reflection: suggestion.reflection ?? "",
+    isPublished: suggestion.isPublished,
+    posterUrl: item.posterUrl ?? "",
+    backdropUrl: item.backdropUrl ?? "",
+    galleryImages: JSON.stringify(Array.isArray(item.images) ? item.images : []),
+    trailerYoutube: parseTrailer(extData?.trailer_url).youtube,
+    trailerVimeo: parseTrailer(extData?.trailer_url).vimeo,
+  });
+
+  const dirty =
+    title !== initialSnapshot.current.title ||
+    slug !== initialSnapshot.current.slug ||
+    category !== initialSnapshot.current.category ||
+    subcategoryId !== initialSnapshot.current.subcategoryId ||
+    descriptionSeo !== initialSnapshot.current.descriptionSeo ||
+    reflection !== initialSnapshot.current.reflection ||
+    isPublished !== initialSnapshot.current.isPublished ||
+    posterUrl !== initialSnapshot.current.posterUrl ||
+    backdropUrl !== initialSnapshot.current.backdropUrl ||
+    JSON.stringify(galleryImages) !== initialSnapshot.current.galleryImages ||
+    trailerYoutube !== initialSnapshot.current.trailerYoutube ||
+    trailerVimeo !== initialSnapshot.current.trailerVimeo;
+
+  const { confirmIfDirty } = useUnsavedGuard(dirty);
+
+  const goTo = useCallback((id: string | null) => {
+    if (!id) return;
+    if (!confirmIfDirty()) return;
+    router.push(`/admin/suggestions/${id}?queue=${queueFilter ?? "unpublished"}`);
+  }, [router, queueFilter, confirmIfDirty]);
+
   const save = useCallback(async () => {
     setSaving(true);
     setSaveStatus("idle");
 
     const extPayload = extFieldsRef.current?.getData() ?? {};
+
+    // Trailer URL — first non-empty wins. Saved into the extension table only
+    // when the category supports it (movies/series).
+    if (category === "movies" || category === "series") {
+      const trailer = trailerYoutube.trim() || trailerVimeo.trim();
+      extPayload.trailer_url = trailer || null;
+    }
+
+    // cover_url is the legacy "main" field. Mirror it from the orientation
+    // appropriate to this category so existing reads keep working.
+    // For gallery categories (food/bars/hotels), the first gallery image wins.
+    const isPortrait = PORTRAIT_CATEGORIES.has(category);
+    const galleryFirst = galleryImages[0]?.url ?? "";
+    const cover = isPortrait
+      ? (posterUrl.trim() || backdropUrl.trim() || galleryFirst)
+      : (galleryFirst || backdropUrl.trim() || posterUrl.trim());
 
     const res = await fetch("/api/admin/suggestions", {
       method: "PUT",
@@ -110,6 +221,10 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
           category,
           subcategory_id: subcategoryId || null,
           description_seo: descriptionSeo || null,
+          poster_url: posterUrl.trim() || null,
+          backdrop_url: backdropUrl.trim() || null,
+          cover_url: cover || null,
+          images: galleryImages,
         },
         suggestionData: {
           is_published: isPublished,
@@ -122,30 +237,139 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
 
     setSaving(false);
     setSaveStatus(res.ok ? "saved" : "error");
-    if (res.ok) setTimeout(() => setSaveStatus("idle"), 3000);
-  }, [title, slug, category, subcategoryId, descriptionSeo, isPublished, reflection, item.id, suggestion.id, suggestion.publishedAt]);
+    if (res.ok) {
+      // Reset the snapshot so dirty=false again
+      initialSnapshot.current = {
+        title, slug, category,
+        subcategoryId,
+        descriptionSeo, reflection,
+        isPublished,
+        posterUrl, backdropUrl,
+        galleryImages: JSON.stringify(galleryImages),
+        trailerYoutube, trailerVimeo,
+      };
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    }
+    return res.ok;
+  }, [title, slug, category, subcategoryId, descriptionSeo, isPublished, reflection, item.id, suggestion.id, suggestion.publishedAt, posterUrl, backdropUrl, galleryImages, trailerYoutube, trailerVimeo]);
+
+  const saveAndNext = useCallback(async () => {
+    const ok = await save();
+    if (ok && queue?.next) goTo(queue.next);
+  }, [save, queue, goTo]);
+
+  // Keyboard shortcuts for queue navigation. Active only in queue mode and
+  // only when the user isn't typing in a text field.
+  useEffect(() => {
+    if (!inQueue) return;
+    function isTyping(): boolean {
+      const t = document.activeElement;
+      if (!t) return false;
+      const tag = t.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t as HTMLElement).isContentEditable;
+    }
+    function onKey(e: KeyboardEvent) {
+      const isMod = e.metaKey || e.ctrlKey;
+      // Cmd/Ctrl+Enter — Save & next, even from input
+      if (isMod && e.key === "Enter") {
+        e.preventDefault();
+        saveAndNext();
+        return;
+      }
+      if (isTyping()) return;
+      if (e.key === "ArrowLeft" && queue?.prev) {
+        e.preventDefault();
+        goTo(queue.prev);
+      } else if (e.key === "ArrowRight" && queue?.next) {
+        e.preventDefault();
+        goTo(queue.next);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [inQueue, queue, goTo, saveAndNext]);
 
   const mediaConfig = getMediaConfig(category);
 
   return (
     <div>
-      {/* Breadcrumb + Save */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2 text-sm">
-          <Link href="/admin/suggestions" className="text-emerald-600 hover:underline font-medium">Suggestions</Link>
-          <span className="text-zinc-400">/</span>
-          <span className="text-zinc-600">Επεξεργασία Πρότασης</span>
+      {/* Breadcrumb + Queue nav + Save */}
+      <div className="flex items-center justify-between mb-6 gap-4">
+        <div className="flex items-center gap-2 text-sm min-w-0">
+          <Link
+            href={inQueue ? `/admin/suggestions?queue=${queueFilter}` : "/admin/suggestions"}
+            className="text-emerald-600 hover:underline font-medium shrink-0"
+          >
+            Suggestions
+          </Link>
+          <span className="text-zinc-400 shrink-0">/</span>
+          <span className="text-zinc-600 truncate">{title || "Επεξεργασία Πρότασης"}</span>
         </div>
-        <div className="flex items-center gap-3">
-          {saveStatus === "saved" && <span className="text-sm text-emerald-600 font-medium">Saved!</span>}
+
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Queue position + prev/next */}
+          {inQueue && queue && (
+            <div className="flex items-center gap-1 mr-2">
+              <button
+                onClick={() => goTo(queue.prev)}
+                disabled={!queue.prev}
+                className="w-8 h-8 flex items-center justify-center rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Previous in queue"
+                title="Previous (←)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+              </button>
+              {queue.position !== null && (
+                <span className="text-xs text-zinc-500 px-2 tabular-nums whitespace-nowrap">
+                  {queue.position} / {queue.total}
+                </span>
+              )}
+              <button
+                onClick={() => goTo(queue.next)}
+                disabled={!queue.next}
+                className="w-8 h-8 flex items-center justify-center rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Skip to next"
+                title="Skip (→)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+              </button>
+            </div>
+          )}
+
+          {/* Open as user — verifies the published version */}
+          {item.slug && (() => {
+            const cleanSlug = item.slug.includes("/") ? item.slug.split("/").slice(1).join("/") : item.slug;
+            return <OpenAsUserButton href={`/${category}/${cleanSlug}`} />;
+          })()}
+
+          {saveStatus === "saved" && <span className="text-sm text-emerald-600 font-medium">✓ Saved</span>}
           {saveStatus === "error" && <span className="text-sm text-red-500 font-medium">Error saving</span>}
+          {saveStatus === "idle" && dirty && (
+            <span className="text-xs text-amber-600 font-medium inline-flex items-center gap-1" title="Έχεις μη αποθηκευμένες αλλαγές">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+              Unsaved
+            </span>
+          )}
+
           <button
             onClick={save}
-            disabled={saving}
-            className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+            disabled={saving || !dirty}
+            className="px-5 py-2 text-sm font-medium text-zinc-700 bg-white border border-zinc-200 rounded-lg hover:bg-zinc-50 disabled:opacity-50"
           >
-            {saving ? "Saving..." : "Save"}
+            {saving ? "Saving…" : "Save"}
           </button>
+
+          {inQueue && queue?.next && (
+            <button
+              onClick={saveAndNext}
+              disabled={saving}
+              className="px-5 py-2 text-sm font-medium text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 disabled:opacity-50 inline-flex items-center gap-1.5"
+              title="Save & jump to next (⌘↵)"
+            >
+              {saving ? "Saving…" : "Save & next"}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
+          )}
         </div>
       </div>
 
@@ -256,9 +480,19 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
       <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide">Media</h2>
-          {mediaConfig.mode === "gallery" && (
-            <span className="text-xs text-zinc-400">Drag & drop to reorder — first item is the default</span>
-          )}
+          <div className="flex items-center gap-3">
+            {mediaConfig.mode === "gallery" && (
+              <span className="text-xs text-zinc-400">First image is the default</span>
+            )}
+            <EnrichButton
+              category={category}
+              title={title}
+              onApply={(c) => {
+                if (c.poster_url) setPosterUrl(c.poster_url);
+                if (c.backdrop_url) setBackdropUrl(c.backdrop_url);
+              }}
+            />
+          </div>
         </div>
         <div className="flex gap-1 mb-6">
           {mediaConfig.tabs.map((tab, i) => (
@@ -270,52 +504,69 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
           mediaConfig.tabs[mediaTab] === "Trailer" ? (
             <div className="border border-zinc-200 rounded-xl p-6 bg-zinc-50/50">
               <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Trailer URL</label>
-              <div className="space-y-3">
+              <div className="space-y-3 max-w-2xl">
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-bold text-red-600 w-20 shrink-0">YouTube</span>
-                  <input type="text" placeholder="https://www.youtube.com/watch?v=..." className="flex-1 px-3 py-2.5 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+                  <input
+                    type="url"
+                    value={trailerYoutube}
+                    onChange={(e) => setTrailerYoutube(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    className="flex-1 px-3 py-2.5 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400"
+                  />
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-bold text-zinc-600 w-20 shrink-0">Vimeo</span>
-                  <input type="text" placeholder="https://vimeo.com/..." className="flex-1 px-3 py-2.5 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+                  <input
+                    type="url"
+                    value={trailerVimeo}
+                    onChange={(e) => setTrailerVimeo(e.target.value)}
+                    placeholder="https://vimeo.com/..."
+                    className="flex-1 px-3 py-2.5 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400"
+                  />
                 </div>
               </div>
+              <p className="text-xs text-zinc-500 mt-3">
+                Συμπλήρωσε ένα από τα δύο. Στις σελίδες ταινίας/σειράς εμφανίζεται κουμπί "Trailer".
+              </p>
             </div>
           ) : (
-          <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-zinc-200 rounded-xl bg-zinc-50/50">
-            <div className="w-[200px] h-[280px] bg-zinc-200 rounded-lg flex items-center justify-center mb-4">
-              <ImagePlaceholderIcon />
+            <div className="max-w-md">
+              {mediaConfig.tabs[mediaTab] === "Portrait" ? (
+                <ImageUploader
+                  prefix="items-poster"
+                  value={posterUrl}
+                  onChange={setPosterUrl}
+                  aspectRatio="auto"
+                  allowUrlPaste
+                  className=""
+                />
+              ) : mediaConfig.tabs[mediaTab] === "Landscape" ? (
+                <ImageUploader
+                  prefix="items-backdrop"
+                  value={backdropUrl}
+                  onChange={setBackdropUrl}
+                  aspectRatio="16/9"
+                  allowUrlPaste
+                  className=""
+                />
+              ) : (
+                <div className="text-sm text-zinc-500 italic">Άγνωστος τύπος tab.</div>
+              )}
+              <p className="text-xs text-zinc-400 mt-3">
+                {mediaConfig.tabs[mediaTab] === "Portrait"
+                  ? "Πορτραίτο 2:3 (poster). Χρησιμοποιείται σε λίστες & detail page."
+                  : "Landscape 16:9 (backdrop). Χρησιμοποιείται σε hero & social sharing."}
+              </p>
             </div>
-            <div className="flex gap-3">
-              <button className="flex items-center gap-2 px-4 py-2 text-sm text-zinc-600 border border-zinc-200 rounded-lg hover:bg-zinc-50">
-                <PenIcon /> Change
-              </button>
-              <button className="flex items-center gap-2 px-4 py-2 text-sm text-red-500 border border-zinc-200 rounded-lg hover:bg-red-50">
-                <TrashIcon /> Delete
-              </button>
-            </div>
-            <p className="text-xs text-zinc-400 mt-3">image-{mediaConfig.tabs[mediaTab]?.toLowerCase()}.jpg</p>
-          </div>
           )
         ) : (
-          <div className="flex gap-4 overflow-x-auto pb-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="shrink-0">
-                <div className="w-[160px] h-[120px] bg-zinc-200 rounded-lg mb-2 flex items-center justify-center">
-                  <ImagePlaceholderIcon />
-                </div>
-                <div className="flex gap-1.5">
-                  <button className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-emerald-600 border border-zinc-200 rounded-md hover:bg-emerald-50">
-                    <PenIcon size={10} /> Change
-                  </button>
-                  <button className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-500 border border-zinc-200 rounded-md hover:bg-red-50">
-                    <TrashIcon size={10} /> Delete
-                  </button>
-                </div>
-                <p className="text-[10px] text-zinc-400 mt-1">{mediaConfig.tabs[mediaTab]?.toLowerCase()}-{i + 1}.jpg</p>
-              </div>
-            ))}
-          </div>
+          <ImageGallery
+            prefix={`items-${category}`}
+            tabs={mediaConfig.tabs}
+            images={galleryImages}
+            onChange={setGalleryImages}
+          />
         )}
       </div>
 
@@ -814,7 +1065,14 @@ function FoodExtraFields({ data, regions, extraOptions }, ref) {
     <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
       <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-6">ExtraFields</h2>
 
-      <AddressMapSection />
+      <AddressMapSection
+        address={address}
+        setAddress={setAddress}
+        lat={lat}
+        setLat={setLat}
+        lng={lng}
+        setLng={setLng}
+      />
 
       {/* Region / Area */}
       <RegionSelect regionId={regionId} setRegionId={setRegionId} parentRegions={parentRegions} childRegions={childRegions} />
@@ -897,7 +1155,14 @@ function BarsExtraFields({ data, regions, extraOptions }, ref) {
     <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
       <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-6">ExtraFields</h2>
 
-      <AddressMapSection />
+      <AddressMapSection
+        address={address}
+        setAddress={setAddress}
+        lat={lat}
+        setLat={setLat}
+        lng={lng}
+        setLng={setLng}
+      />
 
       {/* Region / Area */}
       <RegionSelect regionId={regionId} setRegionId={setRegionId} parentRegions={parentRegions} childRegions={childRegions} />
@@ -985,7 +1250,14 @@ function HotelExtraFields({ data, regions, extraOptions }, ref) {
     <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
       <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-6">ExtraFields</h2>
 
-      <AddressMapSection />
+      <AddressMapSection
+        address={address}
+        setAddress={setAddress}
+        lat={lat}
+        setLat={setLat}
+        lng={lng}
+        setLng={setLng}
+      />
 
       {/* Region / Area */}
       <RegionSelect regionId={regionId} setRegionId={setRegionId} parentRegions={parentRegions} childRegions={childRegions} />
@@ -1341,7 +1613,15 @@ function TheaterExtraFields({ data, regions, extraOptions }, ref) {
         </div>
 
         {/* Map */}
-        <AddressMapSection showPlace showActions />
+        <AddressMapSection
+          showPlace
+          address={address}
+          setAddress={setAddress}
+          lat={lat}
+          setLat={setLat}
+          lng={lng}
+          setLng={setLng}
+        />
 
         {/* Actors */}
         <SelectGrid label="Actors" placeholder="Επιλογή Ηθοποιού" count={8} />
@@ -1493,7 +1773,22 @@ function RegionSelect({ regionId, setRegionId, parentRegions, childRegions }: {
   );
 }
 
-function AddressMapSection({ showPlace, showActions }: { showPlace?: boolean; showActions?: boolean }) {
+interface AddressMapSectionProps {
+  showPlace?: boolean;
+  showActions?: boolean;
+  address?: string;
+  setAddress?: (v: string) => void;
+  lat?: string;
+  setLat?: (v: string) => void;
+  lng?: string;
+  setLng?: (v: string) => void;
+}
+
+function AddressMapSection({ showPlace, showActions, address = "", setAddress, lat = "", setLat, lng = "", setLng }: AddressMapSectionProps) {
+  const wired = !!(setAddress && setLat && setLng);
+  const numLat = lat ? parseFloat(lat) : null;
+  const numLng = lng ? parseFloat(lng) : null;
+
   return (
     <div className="mb-6">
       {showPlace && (
@@ -1506,27 +1801,51 @@ function AddressMapSection({ showPlace, showActions }: { showPlace?: boolean; sh
       <div className="flex items-end gap-3 mb-4">
         <div className="flex-1">
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Address</label>
-          <input type="text" placeholder="Enter address" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+          <input
+            type="text"
+            value={address}
+            onChange={(e) => setAddress?.(e.target.value)}
+            placeholder="Enter address"
+            className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400"
+          />
         </div>
         <div className="w-[120px]">
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Latitude</label>
-          <input type="text" placeholder="Lat" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+          <input
+            type="text"
+            value={lat}
+            onChange={(e) => setLat?.(e.target.value)}
+            placeholder="Lat"
+            className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm font-mono focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400"
+          />
         </div>
-        <span className="pb-3 text-xs text-zinc-400 font-medium">OR</span>
         <div className="w-[120px]">
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Longitude</label>
-          <input type="text" placeholder="Lng" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+          <input
+            type="text"
+            value={lng}
+            onChange={(e) => setLng?.(e.target.value)}
+            placeholder="Lng"
+            className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm font-mono focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400"
+          />
         </div>
-        <span className="pb-3 text-xs text-zinc-400 font-medium">OR</span>
-        <button className="flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-600 border border-zinc-200 rounded-lg hover:bg-zinc-50 whitespace-nowrap shrink-0">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="3" /></svg>
-          Drag & Drop on the map
-        </button>
       </div>
 
-      <div className="w-full h-[300px] bg-zinc-100 rounded-lg flex items-center justify-center text-zinc-400 text-sm">
-        Map placeholder — connect Leaflet/Google Maps
-      </div>
+      {wired ? (
+        <MapPicker
+          lat={numLat}
+          lng={numLng}
+          onChange={(la, ln) => {
+            setLat?.(la.toFixed(6));
+            setLng?.(ln.toFixed(6));
+          }}
+          height="280px"
+        />
+      ) : (
+        <div className="w-full h-[300px] bg-zinc-100 rounded-lg flex items-center justify-center text-zinc-400 text-sm">
+          (αυτή η ενότητα δεν είναι ακόμη wired)
+        </div>
+      )}
 
       {showActions && (
         <div className="flex gap-3 mt-4">
@@ -1604,4 +1923,115 @@ function TrashIcon({ size = 14 }: { size?: number }) {
 
 function ImagePlaceholderIcon() {
   return <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-zinc-400"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>;
+}
+
+/* ── Enrich button + modal (TMDB / Google Books / Places) ── */
+
+interface EnrichCandidate {
+  title: string;
+  subtitle: string;
+  poster_url: string | null;
+  backdrop_url: string | null;
+  description: string;
+  source: string;
+  source_id: string;
+}
+
+function EnrichButton({ category, title, onApply }: {
+  category: string;
+  title: string;
+  onApply: (c: EnrichCandidate) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [candidates, setCandidates] = useState<EnrichCandidate[]>([]);
+  const [reason, setReason] = useState<string | null>(null);
+
+  async function fetchCandidates() {
+    setLoading(true);
+    setReason(null);
+    setCandidates([]);
+    try {
+      const res = await fetch("/api/admin/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category, title }),
+      });
+      const data = await res.json();
+      if (Array.isArray(data.candidates)) setCandidates(data.candidates);
+      if (data.reason) setReason(data.reason);
+    } catch (e: any) {
+      setReason(e.message ?? "Network error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openModal() {
+    if (!title.trim()) return;
+    setOpen(true);
+    fetchCandidates();
+  }
+
+  return (
+    <>
+      <button
+        onClick={openModal}
+        disabled={!title.trim()}
+        className="text-xs text-coral-600 hover:underline disabled:opacity-40"
+        title={!title.trim() ? "Συμπλήρωσε τίτλο πρώτα" : "Auto-fetch εικόνων από εξωτερική πηγή"}
+      >
+        ✨ Auto-fetch cover
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6" onClick={() => setOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-zinc-800">Auto-fetch εικόνων</h3>
+              <button onClick={() => setOpen(false)} className="text-zinc-400 hover:text-zinc-700 text-xl leading-none">×</button>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-zinc-600 mb-4">
+                Αναζήτηση για: <strong>{title}</strong> ({category})
+              </p>
+
+              {loading && <p className="text-sm text-zinc-500">Φορτώνει...</p>}
+
+              {!loading && candidates.length === 0 && (
+                <div className="text-sm text-zinc-500 py-6 text-center">
+                  {reason ? <>⚠ {reason}</> : "Δεν βρέθηκαν αποτελέσματα."}
+                  {reason?.includes("not configured") && (
+                    <p className="text-xs text-zinc-400 mt-2">
+                      Πρόσθεσε API key στο .env και κάνε restart.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                {candidates.map((c, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { onApply(c); setOpen(false); }}
+                    className="text-left border border-zinc-200 rounded-lg p-2 hover:border-coral-400 hover:shadow-sm transition-all"
+                  >
+                    <div className="aspect-[2/3] bg-zinc-100 rounded mb-2 overflow-hidden">
+                      {c.poster_url
+                        ? <img src={c.poster_url} alt="" className="w-full h-full object-cover" />
+                        : c.backdrop_url
+                          ? <img src={c.backdrop_url} alt="" className="w-full h-full object-cover" />
+                          : <div className="w-full h-full" />}
+                    </div>
+                    <p className="text-xs font-semibold text-zinc-800 line-clamp-1">{c.title}</p>
+                    {c.subtitle && <p className="text-[10px] text-zinc-500 line-clamp-1 mt-0.5">{c.subtitle}</p>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }

@@ -10,6 +10,8 @@ import { TheaterDetail } from "@/components/detail/TheaterDetail";
 import { EventDetail }   from "@/components/detail/EventDetail";
 import { RecipeDetail }  from "@/components/detail/RecipeDetail";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchNearbyActivities, type NearbyActivity } from "@/lib/activities";
+import { safeImageUrl } from "@/lib/image-url";
 import type { CategorySlug } from "@/types";
 
 interface Props {
@@ -27,6 +29,10 @@ export type ItemDetailData = {
     user: { id: string; display_name: string; handle: string; avatar_url: string | null; level: number };
   }>;
   related: Array<Record<string, any>>;
+  /** Populated only for hotels (proximity-based, sorted by distance asc). */
+  nearbyActivities?: NearbyActivity[];
+  /** True if the current user has bookmarked this item. False for guests. */
+  isBookmarked: boolean;
 };
 
 const EXT_TABLE: Record<string, string> = {
@@ -77,15 +83,50 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     .order("avg_rating", { ascending: false })
     .limit(7)) as { data: any[] | null };
 
+  // Hotels only: proximity-based nearby activities (admin-curated)
+  let nearbyActivities: NearbyActivity[] | undefined;
+  if (category === "hotels" && typeof ext.lat === "number" && typeof ext.lng === "number") {
+    nearbyActivities = await fetchNearbyActivities(sb, ext.lat, ext.lng, 50, 12);
+  }
+
+  // Initial bookmark state for the current user
+  let isBookmarked = false;
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (user) {
+      const { data: bm } = await sb
+        .from("bookmarks")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("item_id", item.id)
+        .maybeSingle();
+      isBookmarked = !!bm;
+    }
+  } catch { /* not logged in or network error */ }
+
+  // Normalize image URLs at the data-layer boundary so every detail
+  // component is automatically safe — legacy K2 paths (e.g.
+  // "k2-legacy/movies/.../poster.jpg") get a leading slash, missing/invalid
+  // URLs become null and trigger the placeholder branch downstream.
+  const normalizedItem = {
+    ...item,
+    [extTable]: undefined,
+    cover_url: safeImageUrl(item.cover_url),
+    poster_url: safeImageUrl(item.poster_url),
+    backdrop_url: safeImageUrl(item.backdrop_url),
+  };
+
   return {
-    item: { ...item, [extTable]: undefined },
+    item: normalizedItem,
     extension: ext,
     suggestions,
     related: (relData ?? []).map((r: any) => {
       const rExt = Array.isArray(r[extTable]) ? r[extTable]?.[0] : r[extTable];
       const cleanSlug = r.slug?.includes("/") ? r.slug.split("/").pop() : r.slug;
-      return { ...r, slug: cleanSlug, ext: rExt, [extTable]: undefined };
+      return { ...r, slug: cleanSlug, ext: rExt, [extTable]: undefined, cover_url: safeImageUrl(r.cover_url) };
     }),
+    nearbyActivities,
+    isBookmarked,
   };
 }
 

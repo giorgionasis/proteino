@@ -9,6 +9,8 @@ import { InnerHeader } from "@/components/layout/Header";
 import { CarouselPortrait, type PortraitItem } from "@/components/recommendation/CarouselPortrait";
 import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
+import { useBookmark } from "@/hooks/useBookmark";
+import { safeImageUrl } from "@/lib/image-url";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -75,10 +77,11 @@ const BADGE_STYLE: Record<Review["user"]["badge"], string> = {
 
 export function MovieDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
-  const [bookmarked,   setBookmarked]   = useState(false);
+  const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "movies", data.isBookmarked);
   const [watched,      setWatched]      = useState<"seen" | "want" | null>(null);
   const [userRating,   setUserRating]   = useState(0);
   const [plotExpanded, setPlotExpanded] = useState(false);
+  const [openAwardType, setOpenAwardType] = useState<string | null>(null);
   const { item, extension: ext, suggestions, related } = data;
 
   const title = item.title ?? "-";
@@ -87,25 +90,67 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
   const duration = ext.duration_min ? `${ext.duration_min}'` : "-";
   const country = ext.country ?? "-";
   const language = ext.language ?? "-";
-  const directorName = ext.director ?? "-";
   const avgRating = item.avg_rating ?? 0;
   const ratingCount = item.rating_count ?? 0;
   const plot = ext.plot ?? "";
-  const coverUrl = item.cover_url;
+  const coverUrl = safeImageUrl(item.cover_url);
   const trailerUrl = ext.trailer_url;
 
-  const actors: { name: string; placeholder_color: string }[] = Array.isArray(ext.actors)
-    ? ext.actors.map((a: unknown, i: number) => ({
-        name: getActorName(a).toUpperCase().replace(" ", "\n"),
-        placeholder_color: ["#5a4a3a","#3a4a5a","#4a3a3a","#5a3a4a","#3a5a4a","#4a4a3a"][i % 6],
-      }))
+  // Actor cards — use real avatar URLs when admin has saved them
+  const actors: { name: string; avatar: string | null; placeholder_color: string }[] = Array.isArray(ext.actors)
+    ? ext.actors.map((a: unknown, i: number) => {
+        const obj = (a && typeof a === "object") ? (a as any) : null;
+        return {
+          name: getActorName(a).toUpperCase().split(" ").join("\n"),
+          avatar: obj?.avatar ?? obj?.avatar_url ?? null,
+          placeholder_color: ["#5a4a3a","#3a4a5a","#4a3a3a","#5a3a4a","#3a5a4a","#4a4a3a"][i % 6],
+        };
+      })
     : [];
 
-  const awards: { count: number } = (() => {
-    if (Array.isArray(ext.awards)) return { count: ext.awards.length };
-    if (ext.awards && typeof ext.awards === "object" && "count" in ext.awards) return { count: Number(ext.awards.count) || 0 };
-    return { count: 0 };
+  // Director — admin form saves `directors[]` (array). Older data has flat `director` string.
+  // Each entry can be a string or `{name, avatar}`.
+  const directorEntries: { name: string; avatar: string | null }[] = (() => {
+    const src = (Array.isArray(ext.directors) && ext.directors.length > 0)
+      ? ext.directors
+      : ext.director
+        ? [ext.director]
+        : [];
+    return src
+      .map((d: any) => {
+        if (typeof d === "string") return { name: d, avatar: null };
+        if (d && typeof d === "object") return { name: d.name ?? "", avatar: d.avatar ?? d.avatar_url ?? null };
+        return { name: "", avatar: null };
+      })
+      .filter((d: { name: string }) => d.name);
   })();
+  const directorName = directorEntries[0]?.name ?? "-";
+
+  // Awards — group by type (Oscar / BAFTA / Golden Globe / Cannes / Venice).
+  // Admin saves [{type, category, year}]. We bucket by type for accordion rendering.
+  type Award = { type: string; category: string; year?: number | string };
+  const awardsByType: Record<string, Award[]> = {};
+  if (Array.isArray(ext.awards)) {
+    for (const a of ext.awards) {
+      if (!a || typeof a !== "object") continue;
+      const award = a as any;
+      const type = String(award.type ?? "Άλλο").trim();
+      if (!type) continue;
+      if (!awardsByType[type]) awardsByType[type] = [];
+      awardsByType[type].push({
+        type,
+        category: String(award.category ?? "").trim(),
+        year: award.year,
+      });
+    }
+  }
+  // Sort award types by count desc — most-decorated first
+  const awardTypes = Object.keys(awardsByType).sort(
+    (a, b) => awardsByType[b].length - awardsByType[a].length
+  );
+  const totalAwards = awardTypes.reduce((sum, t) => sum + awardsByType[t].length, 0);
+  // Default-expanded type = first in the sorted list when none chosen yet
+  const expandedType = openAwardType ?? awardTypes[0] ?? null;
 
   const externalRatings = ext.external_ratings ?? item.metadata?.external_ratings;
   const imdb = externalRatings?.imdb ?? "-";
@@ -158,7 +203,7 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
         onBack={() => router.back()}
         rightSlot={
           <>
-            <button onClick={() => setBookmarked(v => !v)} className={cn("w-9 h-9 flex items-center justify-center rounded-full transition-colors", bookmarked ? "bg-zinc-800" : "bg-zinc-100 active:bg-zinc-200")} aria-label="Αποθήκευση">
+            <button onClick={toggleBookmark} className={cn("w-9 h-9 flex items-center justify-center rounded-full transition-colors", bookmarked ? "bg-zinc-800" : "bg-zinc-100 active:bg-zinc-200")} aria-label="Αποθήκευση">
               <Bookmark size={16} className={bookmarked ? "text-white fill-white" : "text-zinc-700"} />
             </button>
             <button className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors" aria-label="Κοινοποίηση">
@@ -204,11 +249,15 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
 
         <div className="w-px h-[34px] bg-zinc-200" />
 
-        {/* Col 2: award */}
-        {awards.count > 0 ? (
+        {/* Col 2: award (count of Oscars or any awards), or suggestion count fallback */}
+        {totalAwards > 0 ? (
           <div className="flex items-center gap-1.5">
             <OscarIcon />
-            <span className="text-[16px] font-bold text-zinc-800 text-center leading-tight whitespace-pre-line">{"Βραβείο\nΌσκαρ"}</span>
+            <span className="text-[16px] font-bold text-zinc-800 text-center leading-tight whitespace-pre-line">
+              {(awardsByType["Oscar"]?.length ?? 0) > 0
+                ? `${awardsByType["Oscar"].length}\nΌσκαρ`
+                : `${totalAwards}\nΒραβεία`}
+            </span>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-1">
@@ -298,26 +347,47 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
           <InfoCell label="ΓΛΩΣΣΑ" value={language} />
         </div>
 
-        {/* Director */}
-        <InfoDivider />
-        <div className="pl-6 py-5 space-y-5">
-          <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΣΚΗΝΟΘΕΣΙΑ</p>
-          <div className="flex items-center gap-5">
-            <div className="w-[50px] h-[50px] rounded-full shrink-0" style={{ backgroundColor: "#3a3a4a" }} />
-            <p className="text-[18px] font-bold text-zinc-900">{directorName}</p>
-          </div>
-        </div>
+        {/* Director(s) */}
+        {directorEntries.length > 0 && (
+          <>
+            <InfoDivider />
+            <div className="pl-6 py-5 space-y-5">
+              <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΣΚΗΝΟΘΕΣΙΑ</p>
+              <div className="flex flex-col gap-4">
+                {directorEntries.map((d, i) => (
+                  <div key={`${d.name}-${i}`} className="flex items-center gap-5">
+                    <div className="w-[50px] h-[50px] rounded-full shrink-0 bg-zinc-300 overflow-hidden">
+                      {d.avatar ? (
+                        <img src={d.avatar} alt={d.name} className="w-full h-full object-cover" />
+                      ) : null}
+                    </div>
+                    <p className="text-[18px] font-bold text-zinc-900 leading-tight whitespace-pre-line">
+                      {d.name.split(" ").join("\n")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
 
-        {/* Actors */}
+        {/* Actors — uses real avatar URL if admin saved one */}
         {actors.length > 0 && (
           <>
             <InfoDivider />
             <div className="py-5 space-y-5">
               <p className="pl-6 text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΠΡΩΤΑΓΩΝΙΣΤΕΣ</p>
               <div className="flex gap-4 overflow-x-auto no-scrollbar pl-6 pb-1">
-                {actors.map(actor => (
-                  <div key={actor.name} className="flex-none flex flex-col items-center gap-4 w-[68px]">
-                    <div className="w-[50px] h-[50px] rounded-full shrink-0" style={{ backgroundColor: actor.placeholder_color }} />
+                {actors.map((actor, i) => (
+                  <div key={`${actor.name}-${i}`} className="flex-none flex flex-col items-center gap-4 w-[68px]">
+                    <div
+                      className="w-[50px] h-[50px] rounded-full shrink-0 overflow-hidden"
+                      style={{ backgroundColor: actor.avatar ? "transparent" : actor.placeholder_color }}
+                    >
+                      {actor.avatar && (
+                        <img src={actor.avatar} alt={actor.name.replace(/\n/g, " ")} className="w-full h-full object-cover" />
+                      )}
+                    </div>
                     <p className="text-[12px] font-bold text-zinc-900 text-center uppercase leading-tight whitespace-pre-line">{actor.name}</p>
                   </div>
                 ))}
@@ -327,15 +397,49 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
           </>
         )}
 
-        {/* Awards */}
-        {awards.count > 0 && (
+        {/* Awards — accordion grouped by type (Oscar / BAFTA / Golden Globe / Cannes / Venice) */}
+        {totalAwards > 0 && (
           <>
             <InfoDivider />
-            <div className="pl-6 py-5 space-y-5">
+            <div className="pl-6 pr-6 py-5 space-y-5">
               <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΒΡΑΒΕΙΑ</p>
-              <div className="flex items-center gap-3">
-                <OscarIcon size={28} />
-                <p className="text-[18px] font-bold text-zinc-900">{awards.count} Βραβεία Academy Awards</p>
+
+              <div className="bg-white rounded-lg flex flex-col gap-2">
+                {awardTypes.map((type) => {
+                  const items = awardsByType[type];
+                  const open = expandedType === type;
+                  return (
+                    <div key={type} className="flex flex-col gap-3">
+                      {/* Header row */}
+                      <button
+                        onClick={() => setOpenAwardType(open ? null : type)}
+                        className="flex items-center gap-2 px-2 active:opacity-70 transition-opacity"
+                        aria-expanded={open}
+                      >
+                        <span className="text-[18px] font-bold text-zinc-800 uppercase tracking-wide">
+                          {awardTypeLabel(type)}
+                        </span>
+                        <ChevronIcon open={open} />
+                        <span className="ml-1 text-[12px] font-medium text-zinc-400">({items.length})</span>
+                      </button>
+
+                      {/* Expanded: horizontal scroll of award cards */}
+                      {open && (
+                        <div className="flex gap-4 overflow-x-auto no-scrollbar -mx-6 px-6 pb-1">
+                          {items.map((aw, i) => (
+                            <div key={`${type}-${i}`} className="flex-none flex flex-col items-center gap-3 w-[110px]">
+                              <AwardBadge category={aw.category} />
+                              <p className="text-[13px] font-semibold text-zinc-800 text-center leading-tight whitespace-pre-line">
+                                {greekCategoryLabel(aw.category)}
+                              </p>
+                            </div>
+                          ))}
+                          <div className="flex-none w-2 shrink-0" />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </>
@@ -659,6 +763,136 @@ function ThumbDownIcon() {
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-600" aria-hidden>
       <path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z" />
       <path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" />
+    </svg>
+  );
+}
+
+/* ── Award accordion helpers ─────────────────────────────────── */
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+      className={`text-zinc-700 transition-transform ${open ? "rotate-180" : ""}`}
+      aria-hidden
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+// Display label for an award type (DB stores English keys, screen shows mixed casing)
+function awardTypeLabel(type: string): string {
+  const t = type.toLowerCase();
+  if (t === "oscar" || t === "oscars" || t === "academy award" || t === "academy awards") return "ΟΣΚΑΡ";
+  if (t === "bafta" || t === "baftas") return "BAFTA";
+  if (t === "golden globe" || t === "golden globes") return "Χρυσές Σφαίρες";
+  if (t === "cannes") return "Cannes";
+  if (t === "venice") return "Venice";
+  if (t === "berlin") return "Berlin";
+  return type;
+}
+
+// English category → Greek translation shown below the badge.
+// Falls back to the English category if no mapping exists.
+const GREEK_CATEGORY: Record<string, string> = {
+  "best picture":              "Καλύτερης\nΤαινίας",
+  "best film":                 "Καλύτερης\nΤαινίας",
+  "best motion picture":       "Καλύτερης\nΤαινίας",
+  "best director":             "Σκηνοθεσίας",
+  "best actor":                "Α'\nΑνδρικού",
+  "best leading actor":        "Α'\nΑνδρικού",
+  "best actress":              "Α'\nΓυναικείου",
+  "best leading actress":      "Α'\nΓυναικείου",
+  "best supporting actor":     "Β'\nΑνδρικού",
+  "best supporting actress":   "Β'\nΓυναικείου",
+  "best screenplay":           "Σεναρίου",
+  "best original screenplay":  "Πρωτότυπου\nΣεναρίου",
+  "best adapted screenplay":   "Διασκευασμένου\nΣεναρίου",
+  "best cinematography":       "Φωτογραφίας",
+  "best score":                "Μουσικής",
+  "best original score":       "Πρωτότυπης\nΜουσικής",
+  "best song":                 "Τραγουδιού",
+  "best original song":        "Πρωτότυπου\nΤραγουδιού",
+  "best editing":              "Μοντάζ",
+  "best visual effects":       "Ειδικών\nΕφέ",
+  "best animated feature":     "Animation",
+  "best foreign language film":"Ξενόγλωσσης\nΤαινίας",
+  "best documentary":          "Ντοκιμαντέρ",
+  "palme d'or":                "Χρυσός\nΦοίνικας",
+  "grand prix":                "Grand Prix",
+  "jury prize":                "Βραβείο\nΕπιτροπής",
+};
+
+function greekCategoryLabel(category: string): string {
+  const k = category.trim().toLowerCase();
+  return GREEK_CATEGORY[k] ?? category;
+}
+
+// English category → 2-line label inside the laurel badge
+function badgeLines(category: string): [string, string] {
+  const k = category.trim().toUpperCase();
+  // Already 2 words? Split. Otherwise fit on one line.
+  const parts = k.split(/\s+/);
+  if (parts.length >= 2) {
+    // Drop "BEST" prefix if present and split remainder by halves
+    const rest = parts[0] === "BEST" ? parts.slice(1) : parts;
+    if (rest.length === 1) return ["BEST", rest[0]];
+    if (rest.length === 2) return [`BEST ${rest[0]}`.trim(), rest[1]];
+    const mid = Math.ceil(rest.length / 2);
+    return [rest.slice(0, mid).join(" "), rest.slice(mid).join(" ")];
+  }
+  return [k, ""];
+}
+
+/**
+ * Laurel-wreath award badge — gold + star + 2-line English category text.
+ * Generic (renders any category) so we don't need per-category image assets.
+ */
+function AwardBadge({ category }: { category: string }) {
+  const [line1, line2] = badgeLines(category);
+  const gold = "#F8B500";
+  const goldDark = "#C58E00";
+  return (
+    <svg width="92" height="72" viewBox="0 0 92 72" fill="none" aria-hidden>
+      {/* Left laurel */}
+      <g stroke={gold} strokeWidth="2" strokeLinecap="round" fill="none">
+        <path d="M14 14 C 4 22, 4 50, 18 60" />
+        {/* Leaves left */}
+        <path d="M11 22 q -4 -1 -7 -4" />
+        <path d="M9 30 q -5 -1 -8 -4" />
+        <path d="M9 38 q -5 0 -8 -3" />
+        <path d="M11 46 q -4 1 -7 -2" />
+        <path d="M14 53 q -3 2 -6 0" />
+      </g>
+      {/* Right laurel */}
+      <g stroke={gold} strokeWidth="2" strokeLinecap="round" fill="none">
+        <path d="M78 14 C 88 22, 88 50, 74 60" />
+        <path d="M81 22 q 4 -1 7 -4" />
+        <path d="M83 30 q 5 -1 8 -4" />
+        <path d="M83 38 q 5 0 8 -3" />
+        <path d="M81 46 q 4 1 7 -2" />
+        <path d="M78 53 q 3 2 6 0" />
+      </g>
+      {/* 2-line category text */}
+      <text x="46" y={line2 ? "30" : "36"} textAnchor="middle" fontFamily="Open Sans, system-ui, sans-serif" fontWeight="700" fontSize="9" fill="#27272A">
+        {line1}
+      </text>
+      {line2 && (
+        <text x="46" y="42" textAnchor="middle" fontFamily="Open Sans, system-ui, sans-serif" fontWeight="700" fontSize="9" fill="#27272A">
+          {line2}
+        </text>
+      )}
+      {/* Star — gold filled, anchored at bottom */}
+      <g transform="translate(36, 50)">
+        <polygon
+          points="10,0 12.4,7.4 20,7.4 13.8,11.8 16.2,19.2 10,14.8 3.8,19.2 6.2,11.8 0,7.4 7.6,7.4"
+          fill={gold}
+          stroke={goldDark}
+          strokeWidth="0.6"
+        />
+      </g>
     </svg>
   );
 }

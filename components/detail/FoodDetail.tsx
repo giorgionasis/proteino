@@ -7,6 +7,8 @@ import { Bookmark, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { InnerHeader } from "@/components/layout/Header";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
+import { ItemGalleryViewer, type GalleryImage } from "@/components/detail/ItemGalleryViewer";
+import { useBookmark } from "@/hooks/useBookmark";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -37,8 +39,7 @@ function formatDate(iso: string): string {
 
 export function FoodDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
-  const [bookmarked, setBookmarked] = useState(false);
-  const [photoTab, setPhotoTab] = useState(0);
+  const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "food", data.isBookmarked);
   const [userRating, setUserRating] = useState(0);
   const [plotExpanded, setPlotExpanded] = useState(false);
 
@@ -81,8 +82,6 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
     userData: s.user,
   }));
 
-  const PHOTO_TABS = ["Εξωτερικά", "Εσωτερικά", "Πιάτα"] as const;
-
   return (
     <div className="pb-8">
 
@@ -91,7 +90,7 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
         onBack={() => router.back()}
         rightSlot={
           <>
-            <button onClick={() => setBookmarked(v => !v)} className={cn("w-9 h-9 flex items-center justify-center rounded-full transition-colors", bookmarked ? "bg-zinc-800" : "bg-zinc-100 active:bg-zinc-200")} aria-label="Αποθήκευση">
+            <button onClick={toggleBookmark} className={cn("w-9 h-9 flex items-center justify-center rounded-full transition-colors", bookmarked ? "bg-zinc-800" : "bg-zinc-100 active:bg-zinc-200")} aria-label="Αποθήκευση">
               <Bookmark size={16} className={bookmarked ? "text-white fill-white" : "text-zinc-700"} />
             </button>
             <button className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors" aria-label="Κοινοποίηση">
@@ -114,23 +113,15 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
         <RatingLine rating={avgRating} count={ratingCount} />
       </div>
 
-      {/* Photo tabs */}
-      <div className="px-6 mt-6 space-y-4">
-        <div className="flex gap-2">
-          {PHOTO_TABS.map((tab, i) => (
-            <button key={tab} onClick={() => setPhotoTab(i)}
-              className="px-4 py-2 rounded-full text-sm font-semibold transition-colors"
-              style={i === photoTab ? { backgroundColor: "#3F3F46", color: "#FAFAFA" } : { backgroundColor: "#F2F2F7", border: "1px solid #D4D4D8", color: "#27272A" }}>
-              {tab}
-            </button>
-          ))}
+      {/* Photo gallery */}
+      {Array.isArray((item as any).images) && (item as any).images.length > 0 && (
+        <div className="mt-6">
+          <ItemGalleryViewer
+            images={(item as any).images as GalleryImage[]}
+            tabs={["Εξωτερικά", "Εσωτερικά", "Πιάτα"]}
+          />
         </div>
-        <div className="flex gap-3 overflow-x-auto no-scrollbar">
-          {[1,2,3].map(i => (
-            <div key={i} className="flex-none w-[200px] h-[133px] rounded-[12px] overflow-hidden bg-zinc-200" />
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* Featured suggestion */}
       {featured && (

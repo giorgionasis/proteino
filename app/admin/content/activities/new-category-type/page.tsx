@@ -1,5 +1,6 @@
-import { ActivityCategoryTypeForm } from "@/components/admin/ActivityCategoryTypeForm";
+import { redirect } from "next/navigation";
 
+// Replaced by /admin/content/activities/taxonomy (full CRUD).
 export default function NewCategoryTypePage() {
-  return <ActivityCategoryTypeForm />;
+  redirect("/admin/content/activities/taxonomy");
 }

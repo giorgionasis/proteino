@@ -71,6 +71,7 @@ export interface Database {
           cover_url: string | null;
           poster_url: string | null;
           backdrop_url: string | null;
+          images: Json;
           metadata: Json | null;
           avg_rating: number;
           rating_count: number;
@@ -326,6 +327,142 @@ export interface Database {
         };
         Insert: Omit<Database["public"]["Tables"]["follows"]["Row"], "id" | "created_at">;
         Update: Partial<Database["public"]["Tables"]["follows"]["Row"]>;
+      };
+      app_settings: {
+        Row: {
+          key: string;
+          value: Json;
+          description: string | null;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: Omit<Database["public"]["Tables"]["app_settings"]["Row"], "updated_at">;
+        Update: Partial<Database["public"]["Tables"]["app_settings"]["Row"]>;
+      };
+      category_filters: {
+        Row: {
+          id: string;
+          category: string;
+          filter_id: string;
+          label: string;
+          widget: string;
+          placeholder: string | null;
+          options: Json;
+          is_quick: boolean;
+          display_order: number;
+          is_published: boolean;
+          created_at: string;
+          modified_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["category_filters"]["Row"], "id" | "created_at" | "modified_at">;
+        Update: Partial<Database["public"]["Tables"]["category_filters"]["Row"]>;
+      };
+      category_filter_settings: {
+        Row: {
+          category: string;
+          has_nearby: boolean;
+          sort_options: Json;
+          modified_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["category_filter_settings"]["Row"], "modified_at">;
+        Update: Partial<Database["public"]["Tables"]["category_filter_settings"]["Row"]>;
+      };
+      movies_tonight: {
+        Row: {
+          id: string;
+          item_id: string;
+          channel: string;
+          air_date: string;       // YYYY-MM-DD
+          air_time: string;       // HH:MM:SS
+          is_published: boolean;
+          created_at: string;
+          modified_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["movies_tonight"]["Row"], "id" | "created_at" | "modified_at">;
+        Update: Partial<Database["public"]["Tables"]["movies_tonight"]["Row"]>;
+      };
+      activity_categories: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string;
+          icon: string | null;
+          display_order: number;
+          is_published: boolean;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["activity_categories"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["activity_categories"]["Row"]>;
+      };
+      activity_types: {
+        Row: {
+          id: string;
+          category_id: string;
+          name: string;
+          slug: string;
+          icon: string | null;
+          image_url: string | null;
+          display_order: number;
+          is_published: boolean;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["activity_types"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["activity_types"]["Row"]>;
+      };
+      activities: {
+        Row: {
+          id: string;
+          type_id: string;
+          name: string;
+          description: string | null;
+          address: string | null;
+          lat: number | null;
+          lng: number | null;
+          website_url: string | null;
+          facebook_url: string | null;
+          instagram_url: string | null;
+          phone: string | null;
+          image_url: string | null;
+          is_published: boolean;
+          created_at: string;
+          modified_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["activities"]["Row"], "id" | "created_at" | "modified_at">;
+        Update: Partial<Database["public"]["Tables"]["activities"]["Row"]>;
+      };
+      collections: {
+        Row: {
+          id: string;
+          type: "card" | "carousel";
+          title: string;
+          title_specific: string | null;
+          alias: string;
+          image_url: string | null;
+          source_category: string | null;
+          tags: Json;
+          filters: Json;
+          item_limit: number;
+          is_published: boolean;
+          valid_from: string | null;
+          valid_until: string | null;
+          target_audience: "all" | "registered" | "guest";
+          created_at: string;
+          modified_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["collections"]["Row"], "id" | "created_at" | "modified_at">;
+        Update: Partial<Database["public"]["Tables"]["collections"]["Row"]>;
+      };
+      collection_placements: {
+        Row: {
+          id: string;
+          collection_id: string;
+          context: "home" | "category" | "suggestions";
+          category: string | null;
+          display_order: number;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["collection_placements"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["collection_placements"]["Row"]>;
       };
       notifications: {
         Row: {

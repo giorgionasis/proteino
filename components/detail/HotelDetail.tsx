@@ -7,6 +7,9 @@ import { Bookmark, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { InnerHeader } from "@/components/layout/Header";
+import { formatDistance } from "@/lib/activities";
+import { ItemGalleryViewer, type GalleryImage } from "@/components/detail/ItemGalleryViewer";
+import { useBookmark } from "@/hooks/useBookmark";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -33,12 +36,10 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString("el-GR", { month: "short", year: "2-digit" });
 }
 
-const PHOTO_TABS = ["Δωμάτια", "Κοινόχρηστος", "Μπάνιο"] as const;
 
 export function HotelDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
-  const [bookmarked, setBookmarked] = useState(false);
-  const [photoTab, setPhotoTab] = useState(0);
+  const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "hotels", data.isBookmarked);
   const [userRating, setUserRating] = useState(0);
 
   const { item, extension: ext, suggestions } = data;
@@ -95,8 +96,8 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
     userData: s.user,
   }));
 
-  // Nearby activities from item metadata or empty
-  const nearby: { name: string; type: string; dist: string }[] = (item.metadata?.nearby_activities as any) ?? [];
+  // Nearby activities — admin-curated, proximity-matched server-side.
+  const nearby = data.nearbyActivities ?? [];
 
   return (
     <div className="pb-8">
@@ -106,7 +107,7 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
         onBack={() => router.back()}
         rightSlot={
           <>
-            <button onClick={() => setBookmarked(v => !v)} className={cn("w-9 h-9 flex items-center justify-center rounded-full transition-colors", bookmarked ? "bg-zinc-800" : "bg-zinc-100 active:bg-zinc-200")}>
+            <button onClick={toggleBookmark} className={cn("w-9 h-9 flex items-center justify-center rounded-full transition-colors", bookmarked ? "bg-zinc-800" : "bg-zinc-100 active:bg-zinc-200")} aria-label={bookmarked ? "Αφαίρεση από αγαπημένα" : "Προσθήκη στα αγαπημένα"}>
               <Bookmark size={16} className={bookmarked ? "text-white fill-white" : "text-zinc-700"} />
             </button>
             <button className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors">
@@ -129,20 +130,15 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
         <RatingLine rating={avgRating} count={ratingCount} />
       </div>
 
-      {/* Photo tabs */}
-      <div className="px-6 mt-6 space-y-4">
-        <div className="flex gap-2">
-          {PHOTO_TABS.map((tab, i) => (
-            <button key={tab} onClick={() => setPhotoTab(i)} className="px-4 py-2 rounded-full text-sm font-semibold transition-colors"
-              style={i === photoTab ? { backgroundColor: "#3F3F46", color: "#FAFAFA" } : { backgroundColor: "#F2F2F7", border: "1px solid #D4D4D8", color: "#27272A" }}>
-              {tab}
-            </button>
-          ))}
+      {/* Gallery */}
+      {Array.isArray((item as any).images) && (item as any).images.length > 0 && (
+        <div className="mt-6">
+          <ItemGalleryViewer
+            images={(item as any).images as GalleryImage[]}
+            tabs={["Δωμάτια", "Κοινόχρηστοι", "Εξωτερικά"]}
+          />
         </div>
-        <div className="flex gap-3 overflow-x-auto no-scrollbar">
-          {[1,2,3].map(i => <div key={i} className="flex-none w-[200px] h-[133px] rounded-[12px] bg-zinc-200" />)}
-        </div>
-      </div>
+      )}
 
       {/* Featured suggestion */}
       {featured && (
@@ -208,14 +204,33 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
           <p className="pl-6 text-[20px] font-semibold text-zinc-800">Κοντινές Δραστηριότητες</p>
           <div className="flex gap-4 overflow-x-auto no-scrollbar pl-6 pr-6">
             {nearby.map(act => (
-              <div key={act.name} className="flex-none w-[200px] h-[133px] rounded-[12px] overflow-hidden relative bg-zinc-700">
+              <a
+                key={act.id}
+                href={act.website_url || (act.lat && act.lng ? `https://www.google.com/maps?q=${act.lat},${act.lng}` : undefined)}
+                target={act.website_url ? "_blank" : undefined}
+                rel={act.website_url ? "noopener noreferrer" : undefined}
+                className="flex-none w-[200px] h-[133px] rounded-[12px] overflow-hidden relative bg-zinc-700 active:opacity-90 transition-opacity"
+              >
+                {act.image_url && (
+                  <img
+                    src={act.image_url}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                )}
                 <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0) 18%, rgba(0,0,0,0.8) 100%)" }} />
-                <div className="absolute bottom-0 left-0 p-4 space-y-1">
-                  <p className="text-[18px] font-bold text-white leading-tight">{act.type}</p>
-                  <p className="text-[14px] font-semibold text-zinc-200">{act.name}</p>
-                  <p className="text-[14px] font-semibold text-zinc-200">{act.dist}</p>
+                <div className="absolute bottom-0 left-0 right-0 p-4 space-y-0.5">
+                  <p className="text-[14px] font-semibold text-zinc-100 leading-tight uppercase tracking-wide">
+                    {act.type_icon ? `${act.type_icon} ` : ""}{act.type_name}
+                  </p>
+                  <p className="text-[16px] font-bold text-white leading-tight line-clamp-1">
+                    {act.name}
+                  </p>
+                  <p className="text-[12px] font-semibold text-zinc-200">
+                    {formatDistance(act.distance_km)}
+                  </p>
                 </div>
-              </div>
+              </a>
             ))}
           </div>
         </div>

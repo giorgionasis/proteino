@@ -12,7 +12,7 @@ import { CategoryHeroStats } from "./CategoryHeroStats";
 import { CategoryTopUsers, type ContributorUser, type TopUser } from "./CategoryTopUsers";
 import { CategorySuggestBox } from "./CategorySuggestBox";
 import { CarouselLandscape, type LandscapeItem } from "@/components/recommendation/CarouselLandscape";
-import { CATEGORY_FILTERS } from "@/constants/filters";
+import { CATEGORY_FILTERS, type CategoryFilters } from "@/constants/filters";
 import type { FilterData } from "@/app/(main)/[category]/page";
 import type { CategorySlug } from "@/types";
 import { cn } from "@/lib/utils/cn";
@@ -182,6 +182,8 @@ interface CategoryPageShellProps {
   topUser: TopUser | null;
   contributors: ContributorUser[];
   filterData: FilterData;
+  /** DB-driven filter config; falls back to constant when undefined. */
+  filterConfig?: CategoryFilters;
 }
 
 export function CategoryPageShell({
@@ -191,6 +193,7 @@ export function CategoryPageShell({
   topUser,
   contributors,
   filterData,
+  filterConfig: filterConfigProp,
 }: CategoryPageShellProps) {
   const router = useRouter();
   const [activeTab, setActiveTab]       = useState("Όλα");
@@ -202,7 +205,7 @@ export function CategoryPageShell({
   useEffect(() => { setVisibleCount(10); }, [activeTab, filterValues]);
 
   const tabs         = filterData.tabs;
-  const filterConfig = CATEGORY_FILTERS[category];
+  const filterConfig = filterConfigProp ?? CATEGORY_FILTERS[category];
   const hasMap       = HAS_MAP.includes(category);
   const hasHeroStats = HAS_HERO_STATS.includes(category);
 

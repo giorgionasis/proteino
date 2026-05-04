@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { OpenAsUserButton } from "./OpenAsUserButton";
 
 interface Comment {
   id: string;
@@ -206,6 +207,13 @@ export function ReviewEditor({ comment, author, suggestion, reports, siblings, a
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* Open the suggestion as a user — see the comment in real context */}
+          {suggestion.item.slug && (() => {
+            const cleanSlug = suggestion.item.slug.includes("/")
+              ? suggestion.item.slug.split("/").slice(1).join("/")
+              : suggestion.item.slug;
+            return <OpenAsUserButton href={`/${suggestion.item.category}/${cleanSlug}`} label="See in context" />;
+          })()}
           {isHidden ? (
             <button
               onClick={unhide}

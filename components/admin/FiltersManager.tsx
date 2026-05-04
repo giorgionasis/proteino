@@ -1,414 +1,643 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CATEGORIES } from "@/constants/categories";
 
-const CATEGORY_TABS = [
-  { label: "Ταινίες", value: "movies" },
-  { label: "Σειρές", value: "series" },
-  { label: "Βιβλία", value: "books" },
-  { label: "Φαγητό", value: "food" },
-  { label: "Καφέ/Μπαρ", value: "bars" },
-  { label: "Συνταγές", value: "recipes" },
-  { label: "Διαμονή", value: "hotels" },
-  { label: "Θέατρο", value: "theater" },
-  { label: "Εκδηλώσεις", value: "events" },
-];
+const WIDGET_LABELS: Record<string, string> = {
+  "dropdown":         "Dropdown",
+  "search-dropdown":  "Search Dropdown",
+  "segmented":        "Segmented",
+  "platform-cards":   "Platform Cards",
+  "icon-cards":       "Icon Cards",
+  "checkboxes":       "Checkboxes",
+  "price-range":      "Price Range",
+  "origin-cards":     "Origin Cards",
+};
 
-interface AttributeDef {
+const WIDGET_VALUES = Object.keys(WIDGET_LABELS);
+
+// Widgets where options array makes sense (can edit via UI)
+const WIDGETS_WITH_OPTIONS = new Set(["segmented", "platform-cards", "icon-cards", "checkboxes"]);
+
+interface FilterRow {
   id: string;
-  name: string;
-  type: "dropdown" | "checkbox" | "range";
-  values: string[];
+  category: string;
+  filter_id: string;
+  label: string;
+  widget: string;
+  placeholder: string | null;
+  options: { id: string; label: string }[];
+  is_quick: boolean;
+  display_order: number;
+  is_published: boolean;
 }
 
-interface FilterConfig {
-  attributeId: string;
-  isQuickFilter: boolean;
-  isBottomSheet: boolean;
-  order: number;
+interface SettingsRow {
+  category: string;
+  has_nearby: boolean;
+  sort_options: string[];
 }
 
-const ATTRIBUTES_BY_CATEGORY: Record<string, AttributeDef[]> = {
-  movies: [
-    { id: "genre", name: "Είδος", type: "dropdown", values: ["Δράμα", "Κωμωδία", "Θρίλερ", "Δράση", "Sci-Fi", "Ρομαντική", "Animation", "Ντοκιμαντέρ", "Horror", "Βιογραφική"] },
-    { id: "country", name: "Χώρα", type: "dropdown", values: ["ΗΠΑ", "Ελλάδα", "Γαλλία", "Ηνωμένο Βασίλειο", "Γερμανία", "Ιταλία", "Ισπανία", "Ιαπωνία", "Κορέα (Νότια)"] },
-    { id: "year", name: "Εποχή", type: "range", values: ["2020-2024", "2010-2019", "2000-2009", "1990-1999", "1980-1989", "Πριν το 1980"] },
-    { id: "platform", name: "Πλατφόρμα", type: "dropdown", values: ["Netflix", "Disney+", "HBO Max", "Apple TV+", "Amazon Prime", "Viaplay"] },
-    { id: "duration", name: "Διάρκεια", type: "range", values: ["<90'", "90-120'", "120-150'", ">150'"] },
-    { id: "awards", name: "Βραβεία", type: "dropdown", values: ["Oscar", "BAFTA", "Golden Globe", "Cannes", "Venice"] },
-    { id: "attr_trueEvents", name: "Αληθινά γεγονότα", type: "checkbox", values: ["Ναι"] },
-    { id: "attr_classic", name: "Classic", type: "checkbox", values: ["Ναι"] },
-    { id: "attr_basedOnBook", name: "Βασισμένη σε βιβλίο", type: "checkbox", values: ["Ναι"] },
-    { id: "attr_bw", name: "Ασπρόμαυρη", type: "checkbox", values: ["Ναι"] },
-  ],
-  series: [
-    { id: "genre", name: "Είδος", type: "dropdown", values: ["Δράμα", "Κωμωδία", "Crime", "Sci-Fi", "Θρίλερ", "Ρομαντική", "Ντοκιμαντέρ", "Mini-series", "Animation"] },
-    { id: "country", name: "Χώρα", type: "dropdown", values: ["ΗΠΑ", "Ελλάδα", "Ηνωμένο Βασίλειο", "Κορέα (Νότια)", "Ιαπωνία", "Σκανδιναβία"] },
-    { id: "platform", name: "Πλατφόρμα", type: "dropdown", values: ["Netflix", "Disney+", "HBO Max", "Apple TV+", "Amazon Prime"] },
-    { id: "seasons", name: "Σεζόν", type: "range", values: ["1", "2-3", "4-6", "7+"] },
-    { id: "status", name: "Κατάσταση", type: "dropdown", values: ["Σε εξέλιξη", "Ολοκληρωμένη", "Ακυρωμένη"] },
-    { id: "attr_trueEvents", name: "Αληθινά γεγονότα", type: "checkbox", values: ["Ναι"] },
-    { id: "attr_oneSeason", name: "Μία σεζόν", type: "checkbox", values: ["Ναι"] },
-  ],
-  books: [
-    { id: "genre", name: "Είδος", type: "dropdown", values: ["Μυθιστόρημα", "Θρίλερ", "Sci-Fi", "Ιστορία", "Αυτοβιογραφία", "Ψυχολογία", "Φιλοσοφία", "Self-help", "Ποίηση", "Business", "Παιδικά"] },
-    { id: "language", name: "Γλώσσα", type: "dropdown", values: ["Ελληνικά", "Αγγλικά", "Γαλλικά", "Γερμανικά", "Ισπανικά"] },
-    { id: "pages", name: "Σελίδες", type: "range", values: ["<200", "200-400", "400-600", ">600"] },
-    { id: "year", name: "Χρονιά έκδοσης", type: "range", values: ["2020-2024", "2010-2019", "2000-2009", "Πριν το 2000"] },
-  ],
-  food: [
-    { id: "cuisine", name: "Κουζίνα", type: "dropdown", values: ["Ελληνική", "Ιταλική", "Ασιατική", "Burger", "Sushi", "Fine Dining", "Brunch", "Vegan", "Seafood", "Street Food"] },
-    { id: "region", name: "Περιοχή", type: "dropdown", values: ["Αθήνα Κέντρο", "Βόρεια Προάστια", "Νότια Προάστια", "Πειραιάς", "Θεσσαλονίκη"] },
-    { id: "price", name: "Τιμή", type: "range", values: ["€", "€€", "€€€", "€€€€"] },
-    { id: "delivery", name: "Delivery", type: "dropdown", values: ["efood", "Wolt", "Box"] },
-    { id: "attr_parking", name: "Parking", type: "checkbox", values: ["Ναι"] },
-    { id: "attr_outdoor", name: "Εξωτερικός χώρος", type: "checkbox", values: ["Ναι"] },
-    { id: "attr_kidFriendly", name: "Kid Friendly", type: "checkbox", values: ["Ναι"] },
-    { id: "attr_petFriendly", name: "Pet Friendly", type: "checkbox", values: ["Ναι"] },
-  ],
-  bars: [
-    { id: "type", name: "Τύπος", type: "dropdown", values: ["Cocktail Bar", "Wine Bar", "Jazz Bar", "Rooftop", "Beach Bar", "Coffee", "Speakeasy", "Pub", "All-Day", "Sports Bar"] },
-    { id: "region", name: "Περιοχή", type: "dropdown", values: ["Αθήνα Κέντρο", "Κολωνάκι", "Γκάζι", "Ψυρρή", "Θεσσαλονίκη"] },
-    { id: "price", name: "Τιμή", type: "range", values: ["€", "€€", "€€€"] },
-    { id: "attr_liveMusic", name: "Live Music", type: "checkbox", values: ["Ναι"] },
-    { id: "attr_outdoor", name: "Εξωτερικός χώρος", type: "checkbox", values: ["Ναι"] },
-    { id: "attr_lateNight", name: "Late Night", type: "checkbox", values: ["Ναι"] },
-  ],
-  recipes: [
-    { id: "type", name: "Τύπος", type: "dropdown", values: ["Κυρίως Πιάτο", "Ορεκτικά", "Επιδόρπια", "Breakfast", "Ψητά", "Σαλάτες", "Σούπες", "Γλυκά", "Ψωμί & Ζύμες"] },
-    { id: "level", name: "Δυσκολία", type: "dropdown", values: ["Easy", "Medium", "Hard"] },
-    { id: "duration", name: "Χρόνος", type: "range", values: ["<30'", "30-60'", "60-120'", ">120'"] },
-    { id: "nutrition", name: "Διατροφή", type: "dropdown", values: ["Vegan", "Χωρίς γάλα", "Χωρίς ζάχαρη", "Gluten Free", "Nut Free"] },
-  ],
-  hotels: [
-    { id: "destination", name: "Προορισμός", type: "dropdown", values: ["Αθήνα", "Κρήτη", "Θεσσαλονίκη", "Σαντορίνη", "Μύκονος", "Ρόδος", "Πελοπόννησος"] },
-    { id: "type", name: "Τύπος", type: "dropdown", values: ["Ξενοδοχείο", "Διαμέρισμα", "Δωμάτιο", "Camping", "Μονοκατοικία"] },
-    { id: "price", name: "Τιμή/νύχτα", type: "range", values: ["<50€", "50-100€", "100-200€", ">200€"] },
-    { id: "stars", name: "Αστέρια", type: "range", values: ["1★", "2★", "3★", "4★", "5★"] },
-    { id: "attr_pool", name: "Πισίνα", type: "checkbox", values: ["Ναι"] },
-    { id: "attr_seaview", name: "Sea View", type: "checkbox", values: ["Ναι"] },
-    { id: "attr_petFriendly", name: "Pet Friendly", type: "checkbox", values: ["Ναι"] },
-    { id: "attr_breakfast", name: "Πρωινό", type: "checkbox", values: ["Ναι"] },
-  ],
-  theater: [
-    { id: "type", name: "Τύπος", type: "dropdown", values: ["Θέατρο", "Μιούζικαλ", "Stand-up", "Μονόπρακτο", "Παιδικό"] },
-    { id: "city", name: "Πόλη", type: "dropdown", values: ["Αθήνα", "Θεσσαλονίκη", "Πάτρα", "Ηράκλειο"] },
-    { id: "price", name: "Τιμή", type: "range", values: ["<15€", "15-30€", "30-50€", ">50€"] },
-    { id: "availability", name: "Διαθεσιμότητα", type: "dropdown", values: ["Υψηλή", "Χαμηλή", "Εξαντλημένα"] },
-  ],
-  events: [
-    { id: "type", name: "Τύπος", type: "dropdown", values: ["Συναυλία", "Festival", "Έκθεση", "Stand-up", "Workshop", "Sports"] },
-    { id: "city", name: "Πόλη", type: "dropdown", values: ["Αθήνα", "Θεσσαλονίκη", "Πάτρα", "Ηράκλειο"] },
-    { id: "price", name: "Τιμή", type: "range", values: ["Δωρεάν", "<20€", "20-50€", ">50€"] },
-    { id: "date", name: "Ημερομηνία", type: "range", values: ["Σήμερα", "Αυτή την εβδομάδα", "Αυτό τον μήνα", "Επόμενος μήνας"] },
-  ],
-};
-
-const MOCK_COUNTS: Record<string, Record<string, number>> = {
-  movies: { "Δράμα": 42, "Κωμωδία": 35, "Θρίλερ": 28, "Δράση": 19, "Sci-Fi": 15, "Ρομαντική": 22, "Animation": 8, "Ντοκιμαντέρ": 12, "Horror": 11, "Βιογραφική": 7 },
-  series: { "Δράμα": 31, "Κωμωδία": 18, "Crime": 24, "Sci-Fi": 9, "Θρίλερ": 14, "Ρομαντική": 7, "Ντοκιμαντέρ": 5, "Mini-series": 11, "Animation": 4 },
-  books: { "Μυθιστόρημα": 56, "Θρίλερ": 23, "Sci-Fi": 12, "Ιστορία": 8, "Αυτοβιογραφία": 6, "Ψυχολογία": 14, "Φιλοσοφία": 5, "Self-help": 19, "Ποίηση": 3, "Business": 7, "Παιδικά": 4 },
-};
-
-const INITIAL_CONFIGS: Record<string, FilterConfig[]> = {
-  movies: [
-    { attributeId: "genre", isQuickFilter: true, isBottomSheet: true, order: 1 },
-    { attributeId: "platform", isQuickFilter: true, isBottomSheet: true, order: 2 },
-    { attributeId: "year", isQuickFilter: false, isBottomSheet: true, order: 3 },
-    { attributeId: "country", isQuickFilter: false, isBottomSheet: true, order: 4 },
-  ],
-  series: [
-    { attributeId: "genre", isQuickFilter: true, isBottomSheet: true, order: 1 },
-    { attributeId: "platform", isQuickFilter: true, isBottomSheet: true, order: 2 },
-    { attributeId: "status", isQuickFilter: false, isBottomSheet: true, order: 3 },
-  ],
-  books: [
-    { attributeId: "genre", isQuickFilter: true, isBottomSheet: true, order: 1 },
-    { attributeId: "language", isQuickFilter: true, isBottomSheet: true, order: 2 },
-    { attributeId: "pages", isQuickFilter: false, isBottomSheet: true, order: 3 },
-  ],
-  food: [
-    { attributeId: "cuisine", isQuickFilter: true, isBottomSheet: true, order: 1 },
-    { attributeId: "region", isQuickFilter: true, isBottomSheet: true, order: 2 },
-    { attributeId: "price", isQuickFilter: true, isBottomSheet: true, order: 3 },
-  ],
-  bars: [
-    { attributeId: "type", isQuickFilter: true, isBottomSheet: true, order: 1 },
-    { attributeId: "region", isQuickFilter: true, isBottomSheet: true, order: 2 },
-    { attributeId: "price", isQuickFilter: false, isBottomSheet: true, order: 3 },
-  ],
-  recipes: [
-    { attributeId: "type", isQuickFilter: true, isBottomSheet: true, order: 1 },
-    { attributeId: "level", isQuickFilter: true, isBottomSheet: true, order: 2 },
-    { attributeId: "duration", isQuickFilter: false, isBottomSheet: true, order: 3 },
-  ],
-  hotels: [
-    { attributeId: "destination", isQuickFilter: true, isBottomSheet: true, order: 1 },
-    { attributeId: "type", isQuickFilter: false, isBottomSheet: true, order: 2 },
-    { attributeId: "price", isQuickFilter: true, isBottomSheet: true, order: 3 },
-    { attributeId: "stars", isQuickFilter: false, isBottomSheet: true, order: 4 },
-  ],
-  theater: [
-    { attributeId: "type", isQuickFilter: true, isBottomSheet: true, order: 1 },
-    { attributeId: "city", isQuickFilter: true, isBottomSheet: true, order: 2 },
-    { attributeId: "price", isQuickFilter: false, isBottomSheet: true, order: 3 },
-  ],
-  events: [
-    { attributeId: "type", isQuickFilter: true, isBottomSheet: true, order: 1 },
-    { attributeId: "city", isQuickFilter: true, isBottomSheet: true, order: 2 },
-    { attributeId: "date", isQuickFilter: true, isBottomSheet: true, order: 3 },
-  ],
-};
+const DEFAULT_TAB = CATEGORIES[0].slug;
 
 export function FiltersManager() {
-  const [activeCategory, setActiveCategory] = useState("movies");
-  const [configs, setConfigs] = useState(INITIAL_CONFIGS);
-  const [explorerFilters, setExplorerFilters] = useState<Record<string, string>>({});
+  const [activeCategory, setActiveCategory] = useState<string>(DEFAULT_TAB);
+  const [filters, setFilters] = useState<FilterRow[]>([]);
+  const [settings, setSettings] = useState<SettingsRow | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [editingOptionsFor, setEditingOptionsFor] = useState<FilterRow | null>(null);
 
-  const attributes = ATTRIBUTES_BY_CATEGORY[activeCategory] || [];
-  const categoryConfigs = configs[activeCategory] || [];
-
-  const toggleFilter = (attributeId: string, field: "isQuickFilter" | "isBottomSheet") => {
-    setConfigs((prev) => {
-      const existing = prev[activeCategory] || [];
-      const idx = existing.findIndex((c) => c.attributeId === attributeId);
-      if (idx >= 0) {
-        const updated = [...existing];
-        updated[idx] = { ...updated[idx], [field]: !updated[idx][field] };
-        if (!updated[idx].isQuickFilter && !updated[idx].isBottomSheet) {
-          updated.splice(idx, 1);
-        }
-        return { ...prev, [activeCategory]: updated };
-      } else {
-        return {
-          ...prev,
-          [activeCategory]: [...existing, { attributeId, [field]: true, isQuickFilter: field === "isQuickFilter", isBottomSheet: field === "isBottomSheet", order: existing.length + 1 }],
-        };
-      }
-    });
-  };
-
-  const getConfig = (attributeId: string): FilterConfig | undefined =>
-    categoryConfigs.find((c) => c.attributeId === attributeId);
-
-  const totalSuggestions = Object.values(MOCK_COUNTS[activeCategory] || {}).reduce((a, b) => a + b, 0);
-
-  const matchingCount = () => {
-    const activeFilters = Object.entries(explorerFilters).filter(([, v]) => v !== "");
-    if (activeFilters.length === 0) return totalSuggestions;
-    let count = totalSuggestions;
-    for (const [, val] of activeFilters) {
-      const specific = (MOCK_COUNTS[activeCategory] || {})[val];
-      if (specific) count = specific;
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [fRes, sRes] = await Promise.all([
+        fetch(`/api/admin/category-filters?category=${activeCategory}`),
+        fetch(`/api/admin/category-filters/settings?category=${activeCategory}`),
+      ]);
+      const fData = await fRes.json();
+      const sData = await sRes.json();
+      setFilters(Array.isArray(fData) ? fData : []);
+      setSettings(sData ?? null);
+    } catch (e: any) {
+      setError(e.message ?? String(e));
+    } finally {
+      setLoading(false);
     }
-    return count;
-  };
+  }, [activeCategory]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function move(idx: number, dir: -1 | 1) {
+    const next = idx + dir;
+    if (next < 0 || next >= filters.length) return;
+    const reordered = [...filters];
+    [reordered[idx], reordered[next]] = [reordered[next], reordered[idx]];
+    setFilters(reordered);
+
+    await fetch("/api/admin/category-filters/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category: activeCategory, ordered_ids: reordered.map((f) => f.id) }),
+    });
+  }
+
+  async function patch(row: FilterRow, body: Partial<FilterRow>) {
+    setBusyId(row.id);
+    try {
+      const res = await fetch(`/api/admin/category-filters/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        setError(d.error ?? "Αποτυχία");
+      } else {
+        await load();
+      }
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function remove(row: FilterRow) {
+    if (!confirm(`Διαγραφή φίλτρου "${row.label}";`)) return;
+    setBusyId(row.id);
+    try {
+      const res = await fetch(`/api/admin/category-filters/${row.id}`, { method: "DELETE" });
+      if (res.ok) await load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function toggleHasNearby() {
+    const next = !(settings?.has_nearby);
+    setSettings(settings ? { ...settings, has_nearby: next } : { category: activeCategory, has_nearby: next, sort_options: [] });
+    await fetch("/api/admin/category-filters/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category: activeCategory, has_nearby: next }),
+    });
+  }
+
+  const quickCount = filters.filter((f) => f.is_quick && f.is_published).length;
 
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-zinc-800">Filters</h1>
+        <p className="text-sm text-zinc-500 mt-1">
+          Φίλτρα που εμφανίζονται στις σελίδες κατηγοριών — chips στο πάνω μέρος ή μέσα στο bottom-sheet panel.
+        </p>
       </div>
 
+      {error && (
+        <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>
+      )}
+
       {/* Category tabs */}
-      <div className="flex gap-1 border-b border-zinc-200 mb-8 overflow-x-auto">
-        {CATEGORY_TABS.map((tab) => (
+      <div className="flex flex-wrap gap-1 border-b border-zinc-200 mb-6">
+        {CATEGORIES.map((c) => (
           <button
-            key={tab.value}
-            onClick={() => { setActiveCategory(tab.value); setExplorerFilters({}); }}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors relative whitespace-nowrap ${
-              activeCategory === tab.value
-                ? "text-zinc-900 font-bold after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-zinc-900"
+            key={c.slug}
+            onClick={() => setActiveCategory(c.slug)}
+            className={`px-4 py-2.5 text-sm font-medium transition-colors relative ${
+              activeCategory === c.slug
+                ? "text-zinc-900 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-zinc-900"
                 : "text-zinc-500 hover:text-zinc-700"
             }`}
           >
-            {tab.label}
+            {c.icon} {c.labelEl}
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-8">
-        {/* LEFT: Explorer */}
+      <div className="grid grid-cols-[1fr_280px] gap-6 items-start">
+        {/* List */}
         <div>
-          <div className="flex items-center gap-3 mb-4">
-            <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide">Explorer</h2>
-            <span className="px-2.5 py-0.5 bg-zinc-100 rounded-full text-xs font-bold text-zinc-600">
-              {matchingCount()} προτάσεις
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-zinc-500">
+              <strong className="text-zinc-700">{filters.length}</strong> φίλτρα ·{" "}
+              <strong className="text-zinc-700">{quickCount}</strong> ως chip
+            </p>
+            <button
+              onClick={() => setAdding(true)}
+              className="text-xs px-2.5 py-1 bg-zinc-900 text-white rounded hover:bg-zinc-800"
+            >
+              + Νέο φίλτρο
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="h-[60px] border border-zinc-200 rounded-lg bg-zinc-50 animate-pulse" />
+              ))}
+            </div>
+          ) : filters.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div className="space-y-2">
+              {filters.map((row, idx) => (
+                <FilterRowItem
+                  key={row.id}
+                  row={row}
+                  isFirst={idx === 0}
+                  isLast={idx === filters.length - 1}
+                  busy={busyId === row.id}
+                  onMoveUp={() => move(idx, -1)}
+                  onMoveDown={() => move(idx, +1)}
+                  onToggleQuick={() => patch(row, { is_quick: !row.is_quick })}
+                  onTogglePublish={() => patch(row, { is_published: !row.is_published })}
+                  onLabelChange={(label) => label !== row.label && patch(row, { label })}
+                  onRemove={() => remove(row)}
+                  onEditOptions={() => setEditingOptionsFor(row)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {adding && (
+          <NewFilterDialog
+            category={activeCategory}
+            existingIds={new Set(filters.map((f) => f.filter_id))}
+            onClose={() => setAdding(false)}
+            onCreated={async () => { setAdding(false); await load(); }}
+          />
+        )}
+
+        {editingOptionsFor && (
+          <OptionsEditor
+            row={editingOptionsFor}
+            onClose={() => setEditingOptionsFor(null)}
+            onSaved={async () => { setEditingOptionsFor(null); await load(); }}
+          />
+        )}
+
+        {/* Right rail — settings + preview */}
+        <div className="sticky top-6 self-start space-y-4">
+          <div className="border border-zinc-200 rounded-xl p-4">
+            <h3 className="text-sm font-bold text-zinc-800 mb-3">Ρυθμίσεις</h3>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!settings?.has_nearby}
+                onChange={toggleHasNearby}
+                className="w-4 h-4 rounded"
+              />
+              <span className="text-sm text-zinc-700">📍 Κουμπί "Κοντά μου"</span>
+            </label>
+            <p className="text-xs text-zinc-500 mt-1.5 pl-6">
+              Δείχνει το κουμπί proximity δίπλα στα chips.
+            </p>
+          </div>
+
+          {/* Phone preview */}
+          <PhonePreview filters={filters} hasNearby={!!settings?.has_nearby} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Row ──────────────────────────────────────────────────── */
+
+function FilterRowItem({ row, isFirst, isLast, busy, onMoveUp, onMoveDown, onToggleQuick, onTogglePublish, onLabelChange, onRemove, onEditOptions }: {
+  row: FilterRow;
+  isFirst: boolean;
+  isLast: boolean;
+  busy: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onToggleQuick: () => void;
+  onTogglePublish: () => void;
+  onLabelChange: (label: string) => void;
+  onRemove: () => void;
+  onEditOptions: () => void;
+}) {
+  const canEditOptions = WIDGETS_WITH_OPTIONS.has(row.widget);
+  return (
+    <div className={`flex items-center gap-3 p-3 border rounded-lg transition-colors ${
+      row.is_published ? "border-zinc-200 hover:border-zinc-300 bg-white" : "border-zinc-200 bg-zinc-50 opacity-70"
+    }`}>
+      {/* Reorder */}
+      <div className="flex flex-col gap-0.5">
+        <button onClick={onMoveUp} disabled={isFirst} className="w-6 h-6 flex items-center justify-center text-zinc-400 hover:text-zinc-700 disabled:opacity-20 disabled:cursor-not-allowed" aria-label="Πάνω">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="18 15 12 9 6 15" /></svg>
+        </button>
+        <button onClick={onMoveDown} disabled={isLast} className="w-6 h-6 flex items-center justify-center text-zinc-400 hover:text-zinc-700 disabled:opacity-20 disabled:cursor-not-allowed" aria-label="Κάτω">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9" /></svg>
+        </button>
+      </div>
+
+      {/* ID + label edit */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="text-[10px] font-mono uppercase text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100">
+            {row.filter_id}
+          </span>
+          <span className="text-[10px] font-bold uppercase text-zinc-400">
+            {WIDGET_LABELS[row.widget] ?? row.widget}
+          </span>
+          {canEditOptions && (
+            <button
+              onClick={onEditOptions}
+              className="text-[10px] text-coral-600 hover:underline"
+            >
+              {row.options?.length ?? 0} options · edit
+            </button>
+          )}
+          {!canEditOptions && row.options?.length > 0 && (
+            <span className="text-[10px] text-zinc-400">{row.options.length} options</span>
+          )}
+        </div>
+        <input
+          type="text"
+          defaultValue={row.label}
+          onBlur={(e) => onLabelChange(e.target.value.trim())}
+          className="w-full px-2 py-1 text-sm font-medium text-zinc-800 bg-transparent border border-transparent rounded hover:bg-zinc-50 focus:outline-none focus:bg-white focus:border-zinc-300"
+        />
+      </div>
+
+      {/* Quick toggle */}
+      <button
+        onClick={onToggleQuick}
+        disabled={busy}
+        className={`text-xs px-2.5 py-1 rounded inline-flex items-center gap-1 transition-colors ${
+          row.is_quick
+            ? "bg-coral-50 text-coral-700 border border-coral-200"
+            : "text-zinc-500 hover:bg-zinc-100 border border-transparent"
+        }`}
+      >
+        {row.is_quick ? "✓ chip" : "panel only"}
+      </button>
+
+      {/* Publish toggle */}
+      <button
+        onClick={onTogglePublish}
+        disabled={busy}
+        className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
+          row.is_published ? "text-emerald-700 hover:bg-emerald-50" : "text-zinc-400 hover:bg-zinc-100"
+        }`}
+      >
+        <span className={`w-2 h-2 rounded-full ${row.is_published ? "bg-emerald-500" : "bg-zinc-300"}`} />
+        {row.is_published ? "Ενεργό" : "Κρυφό"}
+      </button>
+
+      {/* Delete */}
+      <button onClick={onRemove} disabled={busy} className="text-xs text-red-500 hover:text-red-700 px-1.5">
+        ✕
+      </button>
+    </div>
+  );
+}
+
+/* ─── Phone preview ────────────────────────────────────────── */
+
+function PhonePreview({ filters, hasNearby }: { filters: FilterRow[]; hasNearby: boolean }) {
+  const quickFilters = filters.filter((f) => f.is_quick && f.is_published);
+  const panelFilters = filters.filter((f) => f.is_published);
+
+  return (
+    <div>
+      <p className="text-xs text-zinc-500 mb-2 px-1">Προεπισκόπηση</p>
+      <div className="border-[8px] border-zinc-800 rounded-[36px] overflow-hidden bg-white shadow-xl">
+        <div className="h-[400px] overflow-y-auto bg-white">
+          <div className="px-3 pt-3 pb-2 border-b border-zinc-100">
+            <span className="text-xs font-black text-zinc-800">
+              Proteino<span className="text-[#FE6F5E]">.</span>
             </span>
           </div>
-          <p className="text-xs text-zinc-500 mb-4">Φιλτράρισε κατά attribute για να δεις πόσες προτάσεις ταιριάζουν — βοηθάει στην απόφαση Card ή Carousel.</p>
 
-          <div className="border border-zinc-200 rounded-xl p-5 space-y-4">
-            {attributes.filter((a) => a.type === "dropdown" || a.type === "range").map((attr) => (
-              <div key={attr.id}>
-                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">{attr.name}</label>
-                <select
-                  value={explorerFilters[attr.id] || ""}
-                  onChange={(e) => setExplorerFilters((f) => ({ ...f, [attr.id]: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white focus:outline-none focus:border-zinc-400"
-                >
-                  <option value="">Όλα</option>
-                  {attr.values.map((v) => (
-                    <option key={v} value={v}>
-                      {v} {(MOCK_COUNTS[activeCategory] || {})[v] ? `(${(MOCK_COUNTS[activeCategory] || {})[v]})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ))}
-
-            {attributes.filter((a) => a.type === "checkbox").map((attr) => (
-              <label key={attr.id} className="flex items-center gap-2 text-sm text-zinc-600">
-                <input
-                  type="checkbox"
-                  checked={explorerFilters[attr.id] === "true"}
-                  onChange={(e) => setExplorerFilters((f) => ({ ...f, [attr.id]: e.target.checked ? "true" : "" }))}
-                  className="w-4 h-4 rounded border-zinc-300"
-                />
-                {attr.name}
-              </label>
-            ))}
-          </div>
-
-          {/* Result preview */}
-          <div className="mt-4 p-4 bg-zinc-50 border border-zinc-200 rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-zinc-700">Αποτελέσματα:</span>
-              <span className="text-2xl font-bold text-zinc-800">{matchingCount()}</span>
+          <div className="p-3">
+            {/* Quick filter chips */}
+            <div className="flex gap-1.5 overflow-hidden mb-3">
+              <span className="px-2 py-1 rounded-full bg-zinc-100 text-[10px] font-medium text-zinc-700 whitespace-nowrap">
+                ⊞ Filters · {panelFilters.length}
+              </span>
+              {quickFilters.map((f) => (
+                <span key={f.id} className="px-2 py-1 rounded-full bg-zinc-50 border border-zinc-200 text-[10px] font-medium text-zinc-700 whitespace-nowrap">
+                  {f.label} ▾
+                </span>
+              ))}
+              {hasNearby && (
+                <span className="px-2 py-1 rounded-full bg-emerald-50 text-[10px] font-medium text-emerald-700 whitespace-nowrap">
+                  📍 Κοντά
+                </span>
+              )}
             </div>
-            <div className="flex gap-2">
-              <div className={`px-3 py-1.5 rounded text-xs font-medium ${matchingCount() > 10 ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>
-                {matchingCount() > 10 ? "✓ Card" : "— Card (>10)"}
-              </div>
-              <div className={`px-3 py-1.5 rounded text-xs font-medium ${matchingCount() >= 4 && matchingCount() <= 10 ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>
-                {matchingCount() >= 4 && matchingCount() <= 10 ? "✓ Carousel" : "— Carousel (4-10)"}
-              </div>
+
+            <p className="text-[10px] text-zinc-400 italic mb-2">Bottom-sheet panel:</p>
+            <div className="space-y-1.5">
+              {panelFilters.length === 0 && (
+                <p className="text-[11px] text-zinc-400 italic">Καμία ρύθμιση φίλτρου.</p>
+              )}
+              {panelFilters.map((f) => (
+                <div key={f.id} className="px-2.5 py-1.5 border border-zinc-200 rounded text-[11px]">
+                  <span className="text-zinc-700 font-medium">{f.label}</span>
+                  {f.is_quick && <span className="text-[9px] text-coral-600 ml-1">●chip</span>}
+                </div>
+              ))}
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
 
-        {/* RIGHT: Frontend Filter Config */}
-        <div>
-          <div className="flex items-center gap-3 mb-4">
-            <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide">Frontend Filters</h2>
-            <span className="px-2.5 py-0.5 bg-emerald-100 rounded-full text-xs font-bold text-emerald-700">
-              {categoryConfigs.filter((c) => c.isQuickFilter).length} quick
-            </span>
-            <span className="px-2.5 py-0.5 bg-blue-100 rounded-full text-xs font-bold text-blue-700">
-              {categoryConfigs.filter((c) => c.isBottomSheet).length} bottom sheet
-            </span>
+function EmptyState() {
+  return (
+    <div className="border border-dashed border-zinc-300 rounded-xl py-10 px-6 text-center">
+      <div className="text-3xl mb-2">🔍</div>
+      <h3 className="text-sm font-semibold text-zinc-800 mb-1">Κανένα φίλτρο σε αυτή την κατηγορία</h3>
+      <p className="text-xs text-zinc-500">
+        Τα default φίλτρα φορτώνονται όταν τρέξει το <code className="px-1 bg-zinc-100 rounded">008-category-filters.sql</code>.
+      </p>
+    </div>
+  );
+}
+
+/* ── New filter dialog ──────────────────────────────────────── */
+
+function NewFilterDialog({ category, existingIds, onClose, onCreated }: {
+  category: string;
+  existingIds: Set<string>;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [filterId, setFilterId] = useState("");
+  const [label, setLabel] = useState("");
+  const [widget, setWidget] = useState("dropdown");
+  const [placeholder, setPlaceholder] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setError(null);
+    const id = filterId.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+    if (!id) { setError("filter_id required"); return; }
+    if (existingIds.has(id)) { setError("Υπάρχει ήδη φίλτρο με αυτό το id."); return; }
+    if (!label.trim()) { setError("Label required"); return; }
+
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/category-filters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category,
+          filter_id: id,
+          label: label.trim(),
+          widget,
+          placeholder: placeholder.trim() || null,
+          options: [],
+          is_quick: false,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Αποτυχία");
+      onCreated();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
+          <h3 className="text-lg font-bold text-zinc-800">Νέο φίλτρο</h3>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 text-xl leading-none">×</button>
+        </div>
+        <div className="p-6 space-y-4">
+          {error && (
+            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-zinc-700 mb-1">Filter ID (slug)</label>
+            <input
+              type="text"
+              value={filterId}
+              onChange={(e) => setFilterId(e.target.value)}
+              placeholder="genre, platform, region..."
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm font-mono focus:outline-none focus:border-zinc-400"
+            />
+            <p className="text-xs text-zinc-500 mt-1">Μοναδικό ανά κατηγορία. Πεζά + underscore.</p>
           </div>
-          <p className="text-xs text-zinc-500 mb-4">Επίλεξε ποια attributes θα βλέπει ο χρήστης ως φίλτρα. Quick = εμφανίζεται σαν chip, Bottom Sheet = μέσα στο ⊞ Φίλτρα panel.</p>
-
-          <div className="border border-zinc-200 rounded-xl overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-zinc-50 border-b border-zinc-200">
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-zinc-500 uppercase">Attribute</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-zinc-500 uppercase">Τύπος</th>
-                  <th className="px-5 py-3 text-center text-xs font-semibold text-zinc-500 uppercase">Quick Filter</th>
-                  <th className="px-5 py-3 text-center text-xs font-semibold text-zinc-500 uppercase">Bottom Sheet</th>
-                </tr>
-              </thead>
-              <tbody>
-                {attributes.map((attr) => {
-                  const config = getConfig(attr.id);
-                  return (
-                    <tr key={attr.id} className="border-b border-zinc-100 hover:bg-zinc-50/50 transition-colors">
-                      <td className="px-5 py-3">
-                        <span className="text-sm font-medium text-zinc-800">{attr.name}</span>
-                        <span className="ml-2 text-xs text-zinc-400">({attr.values.length})</span>
-                      </td>
-                      <td className="px-5 py-3">
-                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                          attr.type === "dropdown" ? "bg-blue-50 text-blue-600" :
-                          attr.type === "range" ? "bg-amber-50 text-amber-600" :
-                          "bg-zinc-100 text-zinc-600"
-                        }`}>
-                          {attr.type}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3 text-center">
-                        <button
-                          onClick={() => toggleFilter(attr.id, "isQuickFilter")}
-                          className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-colors ${
-                            config?.isQuickFilter
-                              ? "border-emerald-500 bg-emerald-500 text-white"
-                              : "border-zinc-200 text-zinc-300 hover:border-zinc-300"
-                          }`}
-                        >
-                          {config?.isQuickFilter && (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-                          )}
-                        </button>
-                      </td>
-                      <td className="px-5 py-3 text-center">
-                        <button
-                          onClick={() => toggleFilter(attr.id, "isBottomSheet")}
-                          className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-colors ${
-                            config?.isBottomSheet
-                              ? "border-blue-500 bg-blue-500 text-white"
-                              : "border-zinc-200 text-zinc-300 hover:border-zinc-300"
-                          }`}
-                        >
-                          {config?.isBottomSheet && (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-                          )}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div>
+            <label className="block text-xs font-medium text-zinc-700 mb-1">Label</label>
+            <input
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Κατηγορία"
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400"
+            />
           </div>
+          <div>
+            <label className="block text-xs font-medium text-zinc-700 mb-1">Widget</label>
+            <select
+              value={widget}
+              onChange={(e) => setWidget(e.target.value)}
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:border-zinc-400"
+            >
+              {WIDGET_VALUES.map((w) => (
+                <option key={w} value={w}>{WIDGET_LABELS[w]}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-zinc-700 mb-1">Placeholder (προαιρετικό)</label>
+            <input
+              type="text"
+              value={placeholder}
+              onChange={(e) => setPlaceholder(e.target.value)}
+              placeholder="π.χ. Διάλεξε σκηνοθέτη"
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={onClose} className="px-4 py-2 text-sm text-zinc-600 hover:text-zinc-800">Άκυρο</button>
+            <button
+              onClick={save}
+              disabled={busy}
+              className="px-5 py-2 text-sm font-medium text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 disabled:opacity-40"
+            >
+              {busy ? "..." : "Δημιουργία"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-          {/* Preview of how it looks on frontend */}
-          <div className="mt-6 border border-zinc-200 rounded-xl p-5 bg-zinc-50/50">
-            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Frontend Preview</label>
+/* ── Options editor (for segmented / cards / checkboxes) ──── */
 
-            {/* Quick filters row */}
-            <div className="mb-3">
-              <span className="text-[10px] font-semibold text-zinc-400 uppercase mb-1 block">Quick Filters (chips)</span>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="px-3 py-1.5 bg-zinc-200 rounded-full text-xs font-medium text-zinc-700 flex items-center gap-1">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /></svg>
-                  Φίλτρα
-                </span>
-                {categoryConfigs.filter((c) => c.isQuickFilter).map((c) => {
-                  const attr = attributes.find((a) => a.id === c.attributeId);
-                  if (!attr) return null;
-                  return (
-                    <span key={c.attributeId} className="px-3 py-1.5 bg-white border border-zinc-200 rounded-full text-xs font-medium text-zinc-600">
-                      {attr.name} ▾
-                    </span>
-                  );
-                })}
+function OptionsEditor({ row, onClose, onSaved }: {
+  row: FilterRow;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [options, setOptions] = useState<{ id: string; label: string }[]>(
+    Array.isArray(row.options) ? row.options : []
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function addOption() {
+    setOptions([...options, { id: "", label: "" }]);
+  }
+  function setOption(i: number, key: "id" | "label", value: string) {
+    const next = [...options];
+    next[i] = { ...next[i], [key]: value };
+    setOptions(next);
+  }
+  function removeOption(i: number) {
+    setOptions(options.filter((_, j) => j !== i));
+  }
+  function move(i: number, dir: -1 | 1) {
+    const next = i + dir;
+    if (next < 0 || next >= options.length) return;
+    const arr = [...options];
+    [arr[i], arr[next]] = [arr[next], arr[i]];
+    setOptions(arr);
+  }
+
+  async function save() {
+    setError(null);
+    const cleaned = options
+      .map((o) => ({ id: o.id.trim(), label: o.label.trim() }))
+      .filter((o) => o.id && o.label);
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/category-filters/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ options: cleaned }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error ?? "Αποτυχία");
+      }
+      onSaved();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-zinc-800">Options — {row.label}</h3>
+            <p className="text-xs text-zinc-500">{WIDGET_LABELS[row.widget]}</p>
+          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 text-xl leading-none">×</button>
+        </div>
+
+        <div className="p-6">
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>
+          )}
+
+          <div className="space-y-2 mb-4">
+            {options.length === 0 && (
+              <p className="text-sm text-zinc-500 italic">Καμία επιλογή ακόμη.</p>
+            )}
+            {options.map((opt, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className="flex flex-col gap-0.5">
+                  <button onClick={() => move(i, -1)} disabled={i === 0} className="w-5 h-5 text-xs text-zinc-400 hover:text-zinc-700 disabled:opacity-30">▲</button>
+                  <button onClick={() => move(i, +1)} disabled={i === options.length - 1} className="w-5 h-5 text-xs text-zinc-400 hover:text-zinc-700 disabled:opacity-30">▼</button>
+                </div>
+                <input
+                  type="text"
+                  value={opt.id}
+                  onChange={(e) => setOption(i, "id", e.target.value)}
+                  placeholder="id"
+                  className="w-28 px-2 py-1.5 border border-zinc-200 rounded text-sm font-mono focus:outline-none focus:border-zinc-400"
+                />
+                <input
+                  type="text"
+                  value={opt.label}
+                  onChange={(e) => setOption(i, "label", e.target.value)}
+                  placeholder="Label"
+                  className="flex-1 px-2 py-1.5 border border-zinc-200 rounded text-sm focus:outline-none focus:border-zinc-400"
+                />
+                <button onClick={() => removeOption(i)} className="text-red-500 hover:text-red-700 text-sm px-1">✕</button>
               </div>
-            </div>
-
-            {/* Bottom sheet contents */}
-            <div>
-              <span className="text-[10px] font-semibold text-zinc-400 uppercase mb-1 block">Bottom Sheet (⊞ Φίλτρα panel)</span>
-              <div className="flex flex-wrap gap-1.5">
-                {categoryConfigs.filter((c) => c.isBottomSheet).map((c) => {
-                  const attr = attributes.find((a) => a.id === c.attributeId);
-                  if (!attr) return null;
-                  return (
-                    <span key={c.attributeId} className="px-2.5 py-1 bg-white border border-zinc-200 rounded text-xs text-zinc-600">
-                      {attr.name}
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
+            ))}
           </div>
 
-          {/* Save */}
-          <div className="mt-4 flex justify-end">
-            <button className="px-6 py-2.5 bg-zinc-900 text-white text-sm font-medium rounded-lg hover:bg-zinc-800 transition-colors">
-              Save Configuration
+          <button
+            onClick={addOption}
+            className="text-xs text-zinc-700 border border-zinc-200 rounded px-3 py-1.5 hover:bg-zinc-50"
+          >
+            + Προσθήκη επιλογής
+          </button>
+
+          <div className="flex justify-end gap-2 pt-6 mt-6 border-t border-zinc-200">
+            <button onClick={onClose} className="px-4 py-2 text-sm text-zinc-600 hover:text-zinc-800">Άκυρο</button>
+            <button
+              onClick={save}
+              disabled={busy}
+              className="px-5 py-2 text-sm font-medium text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 disabled:opacity-40"
+            >
+              {busy ? "..." : "Αποθήκευση"}
             </button>
           </div>
         </div>

@@ -1,5 +1,5 @@
-import { CreateCollection } from "@/components/admin/CreateCollection";
+import { CollectionEditor } from "@/components/admin/CollectionEditor";
 
 export default function NewCollectionPage() {
-  return <CreateCollection />;
+  return <CollectionEditor />;
 }

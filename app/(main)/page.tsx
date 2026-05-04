@@ -13,7 +13,12 @@ import { SuggestionFeed, type SuggestionFeedItem } from "@/components/home/guest
 import { HowItWorks } from "@/components/home/guest/HowItWorks";
 import { RegisterPromo } from "@/components/home/guest/RegisterPromo";
 import { SupportSection } from "@/components/home/SupportSection";
+import { CollectionRenderer } from "@/components/recommendation/CollectionRenderer";
+import { MoviesTonightSection } from "@/components/home/MoviesTonightSection";
 import { createClient } from "@/lib/supabase/server";
+import { fetchHomeCollections, type HydratedCollection } from "@/lib/collections";
+import { safeImageUrl } from "@/lib/image-url";
+import { fetchTonightAirings, type TonightAiring } from "@/lib/movies-tonight";
 
 export const metadata: Metadata = { title: "Proteino" };
 
@@ -46,7 +51,7 @@ async function fetchFoodLandscape(sb: SB, limit = 5): Promise<LandscapeItem[]> {
     return {
       id: r.id,
       title: r.title,
-      cover_url: r.cover_url,
+      cover_url: safeImageUrl(r.cover_url),
       subtitle: ext?.cuisine || ext?.type || "Εστιατόριο",
       location: extractArea(ext?.address),
       avg_rating: r.avg_rating,
@@ -72,7 +77,7 @@ async function fetchMovies(sb: SB, limit = 7): Promise<PortraitItem[]> {
     return {
       id: r.id,
       title: r.title,
-      cover_url: r.cover_url,
+      cover_url: safeImageUrl(r.cover_url),
       genre: tags[0],
       year: ext?.release_date ? new Date(ext.release_date).getFullYear() : undefined,
       platform: ext?.channel || undefined,
@@ -97,7 +102,7 @@ async function fetchSeries(sb: SB, limit = 5): Promise<PortraitItem[]> {
     return {
       id: r.id,
       title: r.title,
-      cover_url: r.cover_url,
+      cover_url: safeImageUrl(r.cover_url),
       genre: tags[0],
       seasons: ext?.seasons ?? undefined,
       platform: ext?.channel || undefined,
@@ -122,7 +127,7 @@ async function fetchBooks(sb: SB, limit = 5): Promise<PortraitItem[]> {
     return {
       id: r.id,
       title: r.title,
-      cover_url: r.cover_url,
+      cover_url: safeImageUrl(r.cover_url),
       genre: tags[0],
       year: ext?.publication_year ?? undefined,
       avg_rating: r.avg_rating,
@@ -145,7 +150,7 @@ async function fetchRecipes(sb: SB, limit = 5): Promise<LandscapeItem[]> {
     return {
       id: r.id,
       title: r.title,
-      cover_url: r.cover_url,
+      cover_url: safeImageUrl(r.cover_url),
       subtitle: ext?.channel || undefined,
       avg_rating: r.avg_rating,
       rating_count: r.rating_count,
@@ -219,7 +224,7 @@ async function fetchSuggestionFeedItems(sb: SB): Promise<SuggestionFeedItem[]> {
           avg_rating: r.avg_rating,
           rating_count: r.rating_count,
           is_top_rated: r.avg_rating >= 4.5 && r.rating_count >= 5,
-          cover_url: r.cover_url,
+          cover_url: safeImageUrl(r.cover_url),
           href: `/${r.category}/${stripPrefix(r.slug)}`,
           category: r.category,
         });
@@ -253,7 +258,7 @@ export default async function HomePage() {
     } catch { /* network error — render guest view */ }
   }
 
-  const [food, movies, series, books, recipes, topUsers, chips, feedItems] =
+  const [food, movies, series, books, recipes, topUsers, chips, feedItems, collections, tonight] =
     await Promise.all([
       fetchFoodLandscape(sb),
       fetchMovies(sb),
@@ -263,6 +268,8 @@ export default async function HomePage() {
       fetchTopUsers(sb),
       fetchCategoryChips(sb),
       fetchSuggestionFeedItems(sb),
+      fetchHomeCollections(sb, isRegistered),
+      fetchTonightAirings(sb),
     ]);
 
   if (isRegistered) {
@@ -276,6 +283,8 @@ export default async function HomePage() {
         recipes={recipes}
         topUsers={topUsers}
         chips={chips}
+        collections={collections}
+        tonight={tonight}
       />
     );
   }
@@ -288,6 +297,8 @@ export default async function HomePage() {
       recipes={recipes}
       food={food}
       feedItems={feedItems}
+      collections={collections}
+      tonight={tonight}
     />
   );
 }
@@ -301,9 +312,15 @@ interface GuestProps {
   recipes: LandscapeItem[];
   food: LandscapeItem[];
   feedItems: SuggestionFeedItem[];
+  collections: HydratedCollection[];
+  tonight: TonightAiring[];
 }
 
-function GuestHome({ movies, series, books, recipes, food, feedItems }: GuestProps) {
+function GuestHome({ movies, series, books, recipes, food, feedItems, collections, tonight }: GuestProps) {
+  // When admin curates collections, those replace the default carousel block.
+  // Heroes / static elements stay regardless.
+  const hasCurated = collections.length > 0;
+
   return (
     <div className="space-y-10">
       <HeroDiscover />
@@ -312,38 +329,49 @@ function GuestHome({ movies, series, books, recipes, food, feedItems }: GuestPro
 
       <CategoryTiles />
 
+      <MoviesTonightSection airings={tonight} />
+
       <SuggestionFeed items={feedItems} />
 
-      <CarouselPortrait
-        title="Ταινίες"
-        items={movies}
-        seeAllHref="/movies"
-        showLiveIndicator
-      />
+      {hasCurated ? (
+        <>
+          {collections.map((c) => <CollectionRenderer key={c.collection.id} data={c} />)}
+          <HowItWorks />
+        </>
+      ) : (
+        <>
+          <CarouselPortrait
+            title="Ταινίες"
+            items={movies}
+            seeAllHref="/movies"
+            showLiveIndicator
+          />
 
-      <CarouselLandscape
-        title="Νέες Συνταγές"
-        items={recipes}
-        seeAllHref="/recipes"
-      />
+          <CarouselLandscape
+            title="Νέες Συνταγές"
+            items={recipes}
+            seeAllHref="/recipes"
+          />
 
-      <HowItWorks />
+          <HowItWorks />
 
-      <CarouselLandscape
-        title="Δημοφιλή Μαγαζιά"
-        items={food}
-        seeAllHref="/food"
-      />
-      <CarouselPortrait
-        title="Ολοκληρωμένες Σειρές"
-        items={series}
-        seeAllHref="/series"
-      />
-      <CarouselPortrait
-        title="Top Βιβλία"
-        items={books}
-        seeAllHref="/books"
-      />
+          <CarouselLandscape
+            title="Δημοφιλή Μαγαζιά"
+            items={food}
+            seeAllHref="/food"
+          />
+          <CarouselPortrait
+            title="Ολοκληρωμένες Σειρές"
+            items={series}
+            seeAllHref="/series"
+          />
+          <CarouselPortrait
+            title="Top Βιβλία"
+            items={books}
+            seeAllHref="/books"
+          />
+        </>
+      )}
 
       <RegisterPromo />
       <SupportSection />
@@ -363,6 +391,8 @@ interface RegisteredProps {
   recipes: LandscapeItem[];
   topUsers: SuggestedUser[];
   chips: CategoryChip[];
+  collections: HydratedCollection[];
+  tonight: TonightAiring[];
 }
 
 function RegisteredHome({
@@ -374,7 +404,11 @@ function RegisteredHome({
   recipes,
   topUsers,
   chips,
+  collections,
+  tonight,
 }: RegisteredProps) {
+  const hasCurated = collections.length > 0;
+
   return (
     <div className="space-y-10">
       <section className="px-6 pt-6">
@@ -387,46 +421,66 @@ function RegisteredHome({
         </div>
       </section>
 
-      <CarouselLandscape
-        title="Ξεχωρίσαμε για σένα"
-        items={food}
-        seeAllHref="/food"
-      />
+      <MoviesTonightSection airings={tonight} />
 
-      <AIChips chips={chips} />
+      {hasCurated ? (
+        <>
+          {/* Personalised hero stays — admin curation appears below it */}
+          <CarouselLandscape
+            title="Ξεχωρίσαμε για σένα"
+            items={food}
+            seeAllHref="/food"
+          />
+          <AIChips chips={chips} />
 
-      <CarouselPortrait
-        title="Ταινίες"
-        items={movies}
-        seeAllHref="/movies"
-        showLiveIndicator
-      />
+          {collections.map((c) => <CollectionRenderer key={c.collection.id} data={c} />)}
 
-      <CarouselLandscape
-        title="Δημοφιλή Γλυκά"
-        items={recipes}
-        seeAllHref="/recipes"
-      />
+          <SuggestedUsers users={topUsers} />
+        </>
+      ) : (
+        <>
+          <CarouselLandscape
+            title="Ξεχωρίσαμε για σένα"
+            items={food}
+            seeAllHref="/food"
+          />
 
-      <SuggestedUsers users={topUsers} />
+          <AIChips chips={chips} />
 
-      <CarouselLandscape
-        title="Δημοφιλή Μαγαζιά"
-        items={food}
-        seeAllHref="/food"
-      />
+          <CarouselPortrait
+            title="Ταινίες"
+            items={movies}
+            seeAllHref="/movies"
+            showLiveIndicator
+          />
 
-      <CarouselPortrait
-        title="Ολοκληρωμένες Σειρές"
-        items={series}
-        seeAllHref="/series"
-      />
+          <CarouselLandscape
+            title="Δημοφιλή Γλυκά"
+            items={recipes}
+            seeAllHref="/recipes"
+          />
 
-      <CarouselPortrait
-        title="Top Βιβλία"
-        items={books}
-        seeAllHref="/books"
-      />
+          <SuggestedUsers users={topUsers} />
+
+          <CarouselLandscape
+            title="Δημοφιλή Μαγαζιά"
+            items={food}
+            seeAllHref="/food"
+          />
+
+          <CarouselPortrait
+            title="Ολοκληρωμένες Σειρές"
+            items={series}
+            seeAllHref="/series"
+          />
+
+          <CarouselPortrait
+            title="Top Βιβλία"
+            items={books}
+            seeAllHref="/books"
+          />
+        </>
+      )}
 
       <ContributionCTA username={displayName} />
       <SupportSection />

@@ -6,6 +6,9 @@ import type { CategorySlug } from "@/types";
 import type { CategoryItem } from "@/components/category/CategoryCard";
 import type { TopUser, ContributorUser } from "@/components/category/CategoryTopUsers";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchCategoryFilterConfig } from "@/lib/category-filters";
+import { CATEGORY_FILTERS } from "@/constants/filters";
+import { safeImageUrl } from "@/lib/image-url";
 
 interface Props {
   params: { category: string };
@@ -96,7 +99,7 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
     subcategory: tags[0] ?? "",
     avg_rating: item.avg_rating ?? 0,
     rating_count: item.rating_count ?? 0,
-    cover_url: item.cover_url,
+    cover_url: safeImageUrl(item.cover_url),
     suggestedBy: buildSuggestedBy(item.suggestions),
     tags,
   };
@@ -238,6 +241,10 @@ export default async function CategoryPage({ params }: Props) {
   const items = (rawItems ?? []).map((item: any) => mapItem(item, category));
   const filterData = computeFilterData(items, category);
 
+  // Filter config from DB; fall back to constant if migration 008 hasn't run yet.
+  const dbFilterConfig = await fetchCategoryFilterConfig(sb, category);
+  const filterConfig = dbFilterConfig ?? CATEGORY_FILTERS[category];
+
   let topUser: TopUser | null = null;
   let contributors: ContributorUser[] = [];
 
@@ -288,6 +295,7 @@ export default async function CategoryPage({ params }: Props) {
       topUser={topUser}
       contributors={contributors}
       filterData={filterData}
+      filterConfig={filterConfig}
     />
   );
 }

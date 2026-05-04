@@ -6,6 +6,8 @@ import { Bookmark, Share2 } from "lucide-react";
 import { InnerHeader } from "@/components/layout/Header";
 import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
+import { ItemGalleryViewer, type GalleryImage } from "@/components/detail/ItemGalleryViewer";
+import { useBookmark } from "@/hooks/useBookmark";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -39,12 +41,10 @@ const BADGE_STYLE: Record<"Expert" | "Platinum" | "Gold" | "Verified", string> =
   Verified: "bg-[#1D9E75] text-white",
 };
 
-const PHOTO_TABS = ["Εξωτερικά", "Εσωτερικά", "Cocktails"] as const;
 
 export function BarsDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
-  const [bookmarked, setBookmarked] = useState(false);
-  const [photoTab, setPhotoTab]     = useState(0);
+  const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "bars", data.isBookmarked);
   const [userRating, setUserRating] = useState(0);
 
   const { item, extension: ext, suggestions } = data;
@@ -89,7 +89,7 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
         onBack={() => router.back()}
         rightSlot={
           <>
-            <button onClick={() => setBookmarked(v => !v)} className={cn("w-9 h-9 flex items-center justify-center rounded-full transition-colors", bookmarked ? "bg-zinc-800" : "bg-zinc-100 active:bg-zinc-200")} aria-label="Αποθήκευση">
+            <button onClick={toggleBookmark} className={cn("w-9 h-9 flex items-center justify-center rounded-full transition-colors", bookmarked ? "bg-zinc-800" : "bg-zinc-100 active:bg-zinc-200")} aria-label="Αποθήκευση">
               <Bookmark size={16} className={bookmarked ? "text-white fill-white" : "text-zinc-700"} />
             </button>
             <button className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors" aria-label="Κοινοποίηση">
@@ -99,21 +99,21 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
         }
       />
 
-      {/* Photos */}
-      <div className="px-6 pt-6 space-y-3">
-        <div className="flex gap-2">
-          {PHOTO_TABS.map((tab, i) => (
-            <button key={tab} onClick={() => setPhotoTab(i)}
-              className={cn("px-4 py-1.5 rounded-full text-[13px] font-semibold transition-colors",
-                photoTab === i ? "bg-zinc-800 text-white" : "bg-zinc-100 text-zinc-600 active:bg-zinc-200")}>
-              {tab}
-            </button>
-          ))}
+      {/* Hero / gallery */}
+      {Array.isArray((item as any).images) && (item as any).images.length > 0 ? (
+        <div className="pt-6">
+          <ItemGalleryViewer
+            images={(item as any).images as GalleryImage[]}
+            tabs={["Εσωτερικά", "Εξωτερικά"]}
+          />
         </div>
-        <div className="w-full h-[220px] rounded-[12px] overflow-hidden bg-zinc-800 flex items-center justify-center">
-          {coverUrl ? <img src={coverUrl} alt={title} className="w-full h-full object-cover" /> : <span className="text-zinc-500 text-5xl">☕</span>}
+      ) : (
+        <div className="px-6 pt-6">
+          <div className="w-full h-[220px] rounded-[12px] overflow-hidden bg-zinc-800 flex items-center justify-center">
+            {coverUrl ? <img src={coverUrl} alt={title} className="w-full h-full object-cover" /> : <span className="text-zinc-500 text-5xl">☕</span>}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Title + chips */}
       <div className="px-6 pt-5 space-y-3">

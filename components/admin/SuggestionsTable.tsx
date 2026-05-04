@@ -2,9 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import { AdminTabs } from "./AdminTabs";
 import { AdminPagination } from "./AdminPagination";
+import { useListKeyboard } from "@/hooks/useListKeyboard";
 import type { Database } from "@/types/database";
 
 const CATEGORY_TABS = [
@@ -75,6 +77,40 @@ export function SuggestionsTable({ authors, subcategories }: Props) {
   const [rows, setRows] = useState<SuggestionRow[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  const router = useRouter();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Toggle publish on a row optimistically. Used by the P shortcut.
+  const togglePublishAt = useCallback(async (idx: number) => {
+    const row = rows[idx];
+    if (!row) return;
+    const optimistic = !row.isPublished;
+    setRows((rs) => rs.map((r, i) => (i === idx ? { ...r, isPublished: optimistic } : r)));
+    try {
+      const supabase = getSupabase();
+      await (supabase.from("suggestions") as any)
+        .update({ is_published: optimistic, published_at: optimistic ? new Date().toISOString() : null })
+        .eq("id", row.id);
+    } catch {
+      // Revert on failure
+      setRows((rs) => rs.map((r, i) => (i === idx ? { ...r, isPublished: !optimistic } : r)));
+    }
+  }, [rows]);
+
+  const { activeIndex, setActiveIndex } = useListKeyboard({
+    count: rows.length,
+    onOpen: (i) => {
+      const row = rows[i];
+      if (row) router.push(`/admin/suggestions/${row.id}?queue=${publishFilter === "INACTIVE" ? "unpublished" : "all"}`);
+    },
+    onPublishToggle: togglePublishAt,
+    searchRef: searchInputRef,
+    disabled: openFilter !== null,
+  });
+
+  // Reset cursor on filter/page change
+  useEffect(() => { setActiveIndex(0); }, [activeTab, debouncedSearch, sortIdx, page, publishFilter, imageFilter, setActiveIndex]);
 
   // Debounce search
   useEffect(() => {
@@ -283,10 +319,11 @@ export function SuggestionsTable({ authors, subcategories }: Props) {
         <div className="ml-auto flex items-center gap-3">
           <div className="relative">
             <input
+              ref={searchInputRef}
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Αναζήτηση προτάσεων"
+              placeholder="Αναζήτηση προτάσεων  (/)"
               className="w-[220px] pl-3 pr-9 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400"
             />
             <svg className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -294,6 +331,14 @@ export function SuggestionsTable({ authors, subcategories }: Props) {
             </svg>
           </div>
         </div>
+      </div>
+
+      {/* Keyboard hint */}
+      <div className="flex items-center gap-3 mb-3 text-[11px] text-zinc-400">
+        <span><Kbd>↑↓</Kbd> or <Kbd>J/K</Kbd> navigate</span>
+        <span><Kbd>↵</Kbd> open</span>
+        <span><Kbd>P</Kbd> toggle publish</span>
+        <span><Kbd>/</Kbd> search</span>
       </div>
 
       {/* Table */}
@@ -455,10 +500,23 @@ export function SuggestionsTable({ authors, subcategories }: Props) {
                 </td>
               </tr>
             )}
-            {rows.map((row) => (
-              <tr key={row.id} className="border-b border-zinc-100 hover:bg-zinc-50/50 transition-colors">
+            {rows.map((row, idx) => (
+              <tr
+                key={row.id}
+                onMouseEnter={() => setActiveIndex(idx)}
+                className={`border-b border-zinc-100 transition-colors ${
+                  activeIndex === idx
+                    ? "bg-zinc-100 ring-1 ring-zinc-300"
+                    : "hover:bg-zinc-50/50"
+                }`}>
                 <td className="px-4 py-3">
-                  <Link href={`/admin/suggestions/${row.id}`} className="text-sm text-zinc-800 hover:underline font-medium">
+                  <Link
+                    href={{
+                      pathname: `/admin/suggestions/${row.id}`,
+                      query: { queue: publishFilter === "INACTIVE" ? "unpublished" : "all" },
+                    }}
+                    className="text-sm text-zinc-800 hover:underline font-medium"
+                  >
                     {row.title}
                   </Link>
                 </td>
@@ -552,4 +610,12 @@ function formatDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString("el-GR", { day: "2-digit", month: "2-digit", year: "numeric" }) +
     " " + d.toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="font-mono text-[10px] border border-zinc-200 rounded px-1 py-0.5 bg-zinc-50 text-zinc-600">
+      {children}
+    </kbd>
+  );
 }

@@ -25,20 +25,32 @@ Admins never touch code. Everything is managed through the admin UI.
 | Categories list | ✅ | ✅ | Real counts per category |
 | Category drill-down | ✅ | ✅ | Subcategory CRUD, reorder, publish toggle |
 | Suggestions list | ✅ | ✅ | Filters: category/subcategory/author/published/search/sort |
-| Suggestion editor | ✅ | ✅ | Saves items + suggestions + extension tables; DB-backed extra options |
+| Suggestion editor | ✅ | ✅ | Saves items + suggestions + extension tables; DB-backed extra options; Portrait/Landscape image uploads + Trailer URL wired |
 | Users | ✅ | ✅ | Search, sort, pagination, badges by level |
 | Reviews list | ✅ | ✅ | Votes (▲/▼), report badges, hide/delete inline, filter modes |
 | Review detail | ✅ | ✅ | Reports section, hide w/ reason, author flagged history |
 | Extra Fields | ✅ | ✅ | Collapsed cards + wizard (paste options bulk) |
 | Data Quality | ✅ | ✅ | NULL subcategory triage + inline subcategory creation |
+| Content: Collections | ✅ | ✅ | DB-driven home/category sections; live preview; reorder; replaces hardcoded carousels |
+| Content: Activities | ✅ | ✅ | Categories → Types → Activities taxonomy; admin form; hotel detail pages now show nearby activities by Haversine proximity |
+| Content: Movies Tonight | ✅ | ✅ | TV airing curation; today/this-week sections in admin; "Απόψε στην TV" home section |
+| Image upload | ✅ | ✅ | Reusable ImageUploader (drag-drop, preview, validation); Storage `media` bucket; wired into Collections + Activities + SuggestionEditor |
+| Content: Filters | ✅ | ✅ | Per-category filter rows (drag-reorder, chip vs panel toggle, label edit, publish); add new + edit options jsonb via UI; seeded from constants |
+| Item gallery | ✅ | ✅ | items.images jsonb + ImageGallery component (multi-upload, tab grouping, ▲▼ reorder, alt text); SuggestionEditor gallery mode wired |
+| Map picker | ✅ | ✅ | Leaflet click-to-pick + drag-marker in ActivityEditor (loaded via CDN, no npm) |
+| Movies Tonight bulk | ✅ | ✅ | Paste TV schedule "Title \| Channel \| YYYY-MM-DD \| HH:MM" → preview match/unmatch → commit |
+| Settings | ✅ | ✅ | Key/value `app_settings` table; admin form for maintenance mode + site identity; banner consumed by main layout |
+| Frontend gallery | ✅ | ✅ | `ItemGalleryViewer` renders `items.images` on food/bars/hotels detail pages with tabs + keyboard-navigable lightbox |
+| Production auth | ✅ | ✅ | `/admin` requires session + `role=admin`; `ADMIN_DEV_BYPASS=1` for local skip (NODE_ENV-checked) |
+| Map address search | ✅ | ✅ | Nominatim (OSM) autocomplete in MapPicker (no API key); GR-biased |
+| Image enrichment | ✅ | ✅ | TMDB / Google Books / Places candidates surfaced via "✨ Auto-fetch cover" in SuggestionEditor |
+| Address+map in venue ext | ✅ | ✅ | AddressMapSection now wires through state and uses MapPicker; food/bars/hotels/theater/events get click-to-set lat/lng + Nominatim search |
+| Item gallery backfill | ✅ | — | scripts/backfill-item-images.js — populates items.images from cover_url |
+| Bulk geocoding | ✅ | — | scripts/geocode-venues.js — Nominatim with rate limiting; supports --table/--limit |
+| Movies Tonight reminders | ✅ | ✅ | DB trigger creates notifications for every user who bookmarked the movie on airing insert |
 | Categories — New | ⏳ | ❌ | Mock UI; rare use case |
 | Suggestions — New | ⏳ | ❌ | Placeholder; rare (admin-created suggestions) |
-| Content: Collections | ⏳ | ❌ | Mock UI built; needs real data layer |
-| Content: Activities | ⏳ | ❌ | Mock UI built; needs schema + real data |
-| Content: Filters | ⏳ | ❌ | Mock UI; needs `filter_configs` schema |
-| Content: Movies Tonight | ⏳ | ❌ | Mock UI; needs schema |
 | Extra Fields — New | 🚫 | — | Superseded by wizard in main page |
-| Settings | ⏳ | ❌ | Placeholder |
 
 Legend: ✅ done · ⏳ mock UI exists, needs data wiring · 🚫 deprecated
 
@@ -295,26 +307,126 @@ API: `/api/admin/comments` (PATCH for hide/unhide, DELETE) + `/api/admin/comment
 
 ---
 
-## 9. Content (Pending real data)
+## 9. Content
 
-### 9A. Collections ⏳
-**UI:** Mock built — list with category filter, drag-reorder, type sub-filter (Card/Carousel), live mobile preview panel.
-**Pending:** DB schema (`home_sections` table per CLAUDE.md §19), real data wiring.
+### 9A. Collections ✅
+DB-driven curated sections that replace hardcoded home/category carousels.
 
-### 9B. Activities ⏳
-Nearby activities for hotels (CLAUDE.md §11: admin-managed only).
-**UI:** Mock built — list with category tabs (Αθλητικές/Εκπαιδευτικές/Ψυχαγωγικές/Αξιοθέατα), type filter chips.
-**Pending:** Schema enhancement on `nearby_activities` table, real data wiring.
+**Why it exists:**
+The home page (and category pages, eventually) had hardcoded carousels in
+`app/(main)/page.tsx`. Marketing/admins couldn't curate seasonal/themed
+content (Marvel movies, Netflix series, Oscar winners) without engineer +
+deploy. Collections turns this into a CMS surface.
 
-### 9C. Filters ⏳
-Two-purpose explorer + frontend filter config.
-**UI:** Mock built.
-**Pending:** Schema for `filter_configs` (per-category quick filter visibility config).
+**Data model:**
+- `collections` — what & how it looks (type, title, image, source_category, tags, audience, lifecycle)
+- `collection_placements` — where & in what order (context: home/category/suggestions; per-bucket display_order)
+- An item belongs to a collection if `items.category = source_category` (when set) AND `metadata.tags @> selected_tags`
 
-### 9D. Movies Tonight ⏳
-TV listings curation.
-**UI:** Mock built — Today/This week sections, inline edit, channel dropdown.
-**Pending:** New `movies_tonight` table.
+**Two visual formats:**
+- **Carousel** — horizontal scroll of 4–10 items. Picks Portrait or Landscape variant based on source category (movies/series/books = portrait, rest = landscape).
+- **Card** — compact pill linking to a filtered list page (e.g. "Από το σύμπαν της MARVEL").
+
+**Admin UX:**
+- Tabs by placement (Αρχική + 9 categories) — admin sees what's currently shown in each context
+- ▲▼ reorder per placement bucket (instant save)
+- Inline publish toggle (instant)
+- Live phone preview of the active placement bucket (renders real items)
+- Editor: split form + sticky live preview + tag autocomplete (with item counts) + match-count chip ("✓ 47 items ταιριάζουν")
+- Empty state explains the value: "curate without deploy"
+
+**Frontend behavior:**
+- Home page reads home-placed collections via `lib/collections.ts` → `fetchHomeCollections(sb, isRegistered)`
+- If admin has 0 home collections → falls back to existing hardcoded carousels (no breaking change)
+- If admin has ≥1 → curated content replaces the carousel block; heroes/footer/CTAs stay
+- Audience filter respects `target_audience`: 'all' / 'registered' / 'guest'
+- Lifecycle filter: `valid_from` / `valid_until` enforced server-side
+- Empty collections (0 matching items) silently dropped — no empty sections shown
+
+**API:** `/api/admin/collections` (GET, POST), `/api/admin/collections/[id]` (GET, PATCH, DELETE), `/api/admin/collections/reorder` (POST), `/api/admin/collections/preview` (POST — runs the filter live), `/api/admin/collections/tags` (GET — autocomplete).
+
+### 9B. Activities ✅
+Nearby attractions for hotels (CLAUDE.md §11: admin-managed only).
+
+**Why it exists:**
+Hotel detail pages were dead-ends — a user looking at a hotel had no way to know what to do nearby. Admin curates a global database of activities (skiing in Καλάβρυτα, rafting in Παρνασσός, museums in Αθήνα). Frontend (next pass) shows them on hotel detail pages via geographic proximity to the hotel's lat/lng.
+
+**Data model (3 tables):**
+- `activity_categories` — top-level (Αθλητικές / Εκπαιδευτικές / Ψυχαγωγικές / Αξιοθέατα). Seeded with 4. Admin can add/edit.
+- `activity_types` — children of categories (ΣΚΙ, RAFTING, MUSEUM…). Admin-managed.
+- `activities` — actual entries with name, type_id, lat/lng, address, description, website/social/phone, image_url, is_published.
+
+**Why geographic, not explicit FK:**
+Original schema used `nearby_activities (item_id FK)` — every new hotel would need manual linking. Geographic proximity (lat/lng) means a new hotel automatically gets nearby activities, and one activity surfaces at every hotel within range. Scales.
+
+**Admin UX:**
+- `/admin/content/activities` — list with category tab + type filter chips + search
+- Inline publish toggle, edit, delete
+- Empty state explains the value: "Πρόσθεσε δραστηριότητες για να εμφανίζονται στις σελίδες ξενοδοχείων κοντά τους"
+- `/admin/content/activities/[id]` (and `/new`) — full editor with cascading category→type select, lat/lng with Google Maps verification link, publish toggle, social links, image URL
+- `/admin/content/activities/taxonomy` — full CRUD for the categories/types taxonomy with inline edit (blur to save), publish toggle, delete with safety check
+
+**Pending:**
+- Frontend hotel-side proximity query (next pass — render activities within X km on hotel detail pages)
+- Map picker for lat/lng (Leaflet or Google Maps embed)
+- Image upload via Supabase Storage (URL-only for now)
+
+API: `/api/admin/activities` (CRUD) + `/api/admin/activity-categories` (CRUD) + `/api/admin/activity-types` (CRUD).
+
+### 9C. Filters ✅
+Per-category filter configuration. Curates which filters appear on category pages, in what order, as chips or in the bottom-sheet panel.
+
+**Why it exists:**
+Filter rows on category pages were hardcoded in `constants/filters.ts`. Marketing/admins couldn't change which filters show, where they appear, or their order without engineer + deploy.
+
+**Data model:**
+- `category_filters` — per-category filter rows: `(category, filter_id, label, widget, placeholder, options jsonb, is_quick, display_order, is_published)`
+- `category_filter_settings` — per-category metadata: `(category, has_nearby, sort_options jsonb)`
+
+**Seeded:** Migration `008-category-filters.sql` inserts the current `CATEGORY_FILTERS` constant values verbatim — going live doesn't break anything.
+
+**Admin UX:**
+- `/admin/content/filters` — tabs by category, per-tab list of filters
+- ▲▼ reorder (instant save), inline label edit on blur, is_quick chip toggle, publish toggle, delete
+- Live phone preview shows the chip row + bottom-sheet panel with current settings
+- Right rail: "Κουμπί Κοντά μου" toggle (saves to `category_filter_settings.has_nearby`)
+- Empty state explains the seed migration
+
+**Frontend:**
+- `lib/category-filters.ts` provides `fetchCategoryFilterConfig(sb, category)` which builds a `CategoryFilters` shape compatible with the existing `CategoryPageShell` prop
+- `app/(main)/[category]/page.tsx` fetches DB config and passes as prop; falls back to constant if DB has no rows (transitional safety)
+
+**Pending (v2):**
+- Editing filter `widget` type and `options` array via UI (currently options for dropdowns/cards must be edited via DB)
+- Adding new filter rows from UI (admin can only configure existing seeded filters today)
+
+### 9D. Movies Tonight ✅
+TV listings curation. Curated airings of movies on Greek TV, surfaced on the home page.
+
+**Why it exists:**
+Greeks watching TV at night need to know which good movies are airing — TV listings change daily. Admin manually curates "tonight's picks" linked to existing movie items in the catalog.
+
+**Schema (`scripts/sql/006-movies-tonight.sql`):**
+```sql
+movies_tonight (id, item_id FK→items, channel, air_date, air_time, is_published)
+UNIQUE(item_id, channel, air_date, air_time)
+```
+
+**Admin UX:**
+- `/admin/content/movies-tonight` — Today + This week sections (auto-derived from air_date)
+- Inline edit (channel/date/time; movie can't change — delete+recreate for clarity)
+- Movie autocomplete (queries `items` where category=movies)
+- Inline publish toggle, delete
+- Empty states inside each section
+
+**Frontend:**
+- `<MoviesTonightSection>` — horizontal-scroll cards, time badge top-right, channel chip, rating
+- Renders only when there are airings (no empty state for users)
+- Appears for both guest + registered, after CategoryTiles
+
+API: `/api/admin/movies-tonight` (CRUD) + `/api/admin/movies-tonight/items` (movie autocomplete).
+
+**Pending:** Bulk import (paste TV schedule); reminder notifications for items the user bookmarked.
 
 ---
 
@@ -389,11 +501,22 @@ Located in `/scripts/`:
 | `audit-data.js` | Report NULL subcategories + extension table coverage + missing critical fields | Active tool |
 | `fix-subcategories.js` | Strict re-mapping with --apply flag | ✅ Run (37 reassignments + new subcategories) |
 | `seed-extra-fields.js` | Seed 290+ option rows from hardcoded SuggestionEditor arrays | ✅ Done |
+| `backfill-item-images.js` | Populate `items.images` from `cover_url` so legacy items render in the gallery | Run after `009-item-gallery.sql` |
+| `geocode-venues.js` | Nominatim-based bulk geocoding (1 req/sec); fills lat/lng for venues missing it | Run as needed; supports `--table=item_food --limit=100` |
 
 SQL migrations in `/scripts/sql/`:
 - `001-create-subcategories-regions.sql`
 - `002-create-extra-field-options.sql`
 - `003-comments-votes-reports.sql`
+- `004-collections.sql`
+- `005-activities.sql`
+- `006-movies-tonight.sql`
+- `007-storage-media-bucket.sql`
+- `008-category-filters.sql`
+- `009-item-gallery.sql` ← **adds items.images jsonb for multi-image gallery**
+- `010-app-settings.sql`
+- `011-movies-tonight-reminders.sql`
+- `012-bookmarks-unique.sql` ← **adds UNIQUE constraint + RLS for bookmarks; needed for the bookmark API**
 
 ---
 
@@ -408,7 +531,35 @@ SQL migrations in `/scripts/sql/`:
 /api/admin/extra-fields/[id]     PATCH, DELETE (rename, reorder, toggle, delete)
 /api/admin/comments              PATCH, DELETE (hide/unhide, delete)
 /api/admin/comment-reports/[id]  PATCH         (resolve report)
+/api/admin/collections           GET, POST     (list/filter by placement; create + placements)
+/api/admin/collections/[id]      GET, PATCH, DELETE  (read; update + diff placements; delete cascades)
+/api/admin/collections/reorder   POST          (batch display_order within a placement bucket)
+/api/admin/collections/preview   POST          (run filter, return matching items + count)
+/api/admin/collections/tags      GET           (tag autocomplete from items.metadata.tags)
+/api/admin/activities            GET, POST     (filterable list; create)
+/api/admin/activities/[id]       GET, PATCH, DELETE
+/api/admin/activity-categories   GET, POST     (taxonomy: top-level)
+/api/admin/activity-categories/[id]  PATCH, DELETE  (refuses if any types still reference)
+/api/admin/activity-types        GET, POST     (taxonomy: children of categories)
+/api/admin/activity-types/[id]   PATCH, DELETE  (refuses if any activities still reference)
+/api/admin/movies-tonight        GET, POST     (filterable by from/to date; create airing)
+/api/admin/movies-tonight/[id]   PATCH, DELETE
+/api/admin/movies-tonight/items  GET           (movie autocomplete — searches items)
+/api/admin/upload                POST, DELETE  (multipart upload to media bucket; returns { url, path })
+/api/admin/category-filters           GET, POST     (filterable by category; create new row)
+/api/admin/category-filters/[id]      PATCH, DELETE (label/widget/options/is_quick/publish)
+/api/admin/category-filters/reorder   POST          (batch display_order within a category)
+/api/admin/category-filters/settings  GET, PATCH    (per-category has_nearby + sort_options)
+/api/admin/movies-tonight/bulk        POST, PUT     (preview match/unmatch; commit insert with dedup)
+/api/admin/settings                   GET, PATCH    (key/value app_settings)
+/api/admin/enrich                     POST          (TMDB / Google Books / Places candidates)
 ```
+
+**Required env vars (optional, all features degrade gracefully if missing):**
+- `TMDB_API_KEY` — for movies/series cover/backdrop enrichment (free at themoviedb.org)
+- `GOOGLE_BOOKS_API_KEY` — books (optional; small-volume works without)
+- `GOOGLE_PLACES_API_KEY` — food/bars/hotels venue photos
+- `ADMIN_DEV_BYPASS=1` — local-only; skip /admin auth check (refused in production NODE_ENV)
 
 ---
 
@@ -439,9 +590,9 @@ Custom map (`α→a`, `β→v`, etc.) used for slug generation across subcategor
 ## 15. Pending Work
 
 ### Critical (next priorities)
-1. **Content: Collections** — DB schema + real data wiring for home feed sections
-2. **Content: Activities** — Schema enhancement + real data
-3. **Settings page** — actual implementation
+1. **Notification page type-aware rendering** — current notifications list doesn't differentiate types; click-through for `movie_airing` should deeplink to the movie detail page
+2. **Bulk enrichment** for items missing covers (script that calls /api/admin/enrich for every item with no cover)
+3. **Production deploy checklist** — env vars (TMDB/Places/Books keys), run all migrations 001-011, run scripts in order: `seed-extra-fields.js`, `seed-regions.js`, `backfill-item-images.js`, `geocode-venues.js`
 
 ### Less critical
 4. **Content: Filters** — `filter_configs` schema and UI wiring

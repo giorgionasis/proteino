@@ -2,13 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AvatarImage } from "@/components/ui/AvatarImage";
 
 interface NavItem {
   label: string;
   href: string;
   icon: React.ReactNode;
+  /** Source key for the live-counter badge (matches /api/admin/counters response). */
+  counterKey?: "unpublishedSuggestions" | "reportedReviews" | "dataQualityIssues";
+  /** Visual tone for the badge. */
+  counterTone?: "red" | "amber";
 }
 
 interface NavGroup {
@@ -26,9 +30,9 @@ function isGroup(entry: NavEntry): entry is NavGroup {
 const NAV: NavEntry[] = [
   { label: "Overview",     href: "/admin",              icon: <IconGrid /> },
   { label: "Categories",   href: "/admin/categories",   icon: <IconFolder /> },
-  { label: "Suggestions",  href: "/admin/suggestions",  icon: <IconPencil /> },
+  { label: "Suggestions",  href: "/admin/suggestions",  icon: <IconPencil />, counterKey: "unpublishedSuggestions", counterTone: "red" },
   { label: "Extra Fields", href: "/admin/extra-fields",  icon: <IconDiamond /> },
-  { label: "Data Quality", href: "/admin/data-quality", icon: <IconAlert /> },
+  { label: "Data Quality", href: "/admin/data-quality", icon: <IconAlert />, counterKey: "dataQualityIssues", counterTone: "amber" },
   {
     label: "Content",
     icon: <IconLayers />,
@@ -39,10 +43,16 @@ const NAV: NavEntry[] = [
       { label: "Movies Tonight", href: "/admin/content/movies-tonight", icon: <IconFilm /> },
     ],
   },
-  { label: "Reviews",  href: "/admin/reviews",  icon: <IconStar /> },
+  { label: "Reviews",  href: "/admin/reviews",  icon: <IconStar />, counterKey: "reportedReviews", counterTone: "red" },
   { label: "Users",    href: "/admin/users",    icon: <IconUsers /> },
   { label: "Settings", href: "/admin/settings", icon: <IconSettings /> },
 ];
+
+interface Counters {
+  unpublishedSuggestions: number;
+  reportedReviews: number;
+  dataQualityIssues: number;
+}
 
 interface Props {
   user: {
@@ -55,6 +65,28 @@ interface Props {
 export function AdminSidebar({ user }: Props) {
   const pathname = usePathname();
   const [contentOpen, setContentOpen] = useState(true);
+  const [counters, setCounters] = useState<Counters>({
+    unpublishedSuggestions: 0,
+    reportedReviews: 0,
+    dataQualityIssues: 0,
+  });
+
+  // Poll counters every 60s — gives admins a live "needs attention" signal
+  // without expensive fetches. Pathname change also re-fetches so action you
+  // just took (publishing, hiding) updates the badge immediately.
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/admin/counters", { cache: "no-store" });
+        const data = await res.json();
+        if (!cancelled) setCounters(data);
+      } catch { /* offline — keep last values */ }
+    }
+    load();
+    const interval = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [pathname]);
 
   function isActive(href: string) {
     if (href === "/admin") return pathname === "/admin";
@@ -64,7 +96,7 @@ export function AdminSidebar({ user }: Props) {
   return (
     <aside className="fixed left-0 top-0 w-[220px] h-screen bg-white border-r border-zinc-200 flex flex-col z-30">
       {/* Logo */}
-      <div className="px-5 pt-6 pb-8">
+      <div className="px-5 pt-6 pb-4">
         <Link href="/admin" className="flex items-baseline gap-[2px] select-none">
           <span className="text-[22px] font-black text-zinc-800 tracking-tight leading-none">
             Proteino
@@ -72,6 +104,24 @@ export function AdminSidebar({ user }: Props) {
           <span className="w-[5px] h-[5px] rounded-full bg-[#FE6F5E] mb-[3px]" />
         </Link>
       </div>
+
+      {/* Search hint — clicking dispatches Cmd+K to open the palette */}
+      <button
+        onClick={() => {
+          window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+        }}
+        className="mx-3 mb-4 flex items-center gap-2 px-3 h-9 rounded-md text-sm text-zinc-500 bg-zinc-50 hover:bg-zinc-100 transition-colors"
+        aria-label="Search"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" className="shrink-0">
+          <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <span className="flex-1 text-left">Search</span>
+        <kbd className="text-[10px] font-mono text-zinc-400 border border-zinc-200 rounded px-1.5 py-0.5 bg-white">
+          ⌘K
+        </kbd>
+      </button>
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 space-y-1">
@@ -98,14 +148,14 @@ export function AdminSidebar({ user }: Props) {
                 {contentOpen && (
                   <div className="ml-4 mt-1 space-y-1">
                     {entry.children.map((child) => (
-                      <SidebarLink key={child.href} item={child} active={isActive(child.href)} />
+                      <SidebarLink key={child.href} item={child} active={isActive(child.href)} counters={counters} />
                     ))}
                   </div>
                 )}
               </div>
             );
           }
-          return <SidebarLink key={entry.href} item={entry} active={isActive(entry.href)} />;
+          return <SidebarLink key={entry.href} item={entry} active={isActive(entry.href)} counters={counters} />;
         })}
       </nav>
 
@@ -121,7 +171,11 @@ export function AdminSidebar({ user }: Props) {
   );
 }
 
-function SidebarLink({ item, active }: { item: NavItem; active: boolean }) {
+function SidebarLink({ item, active, counters }: { item: NavItem; active: boolean; counters?: Counters }) {
+  const count = item.counterKey && counters ? counters[item.counterKey] : 0;
+  const showCounter = count > 0;
+  const tone = item.counterTone ?? "red";
+
   return (
     <Link
       href={item.href}
@@ -132,7 +186,17 @@ function SidebarLink({ item, active }: { item: NavItem; active: boolean }) {
       }`}
     >
       <span className="w-5 h-5 flex items-center justify-center shrink-0">{item.icon}</span>
-      <span>{item.label}</span>
+      <span className="flex-1">{item.label}</span>
+      {showCounter && (
+        <span
+          className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 ${
+            tone === "red" ? "bg-red-500 text-white" : "bg-amber-500 text-white"
+          }`}
+          aria-label={`${count} need attention`}
+        >
+          {count > 99 ? "99+" : count}
+        </span>
+      )}
     </Link>
   );
 }

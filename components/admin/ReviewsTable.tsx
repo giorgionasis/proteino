@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import { AdminPagination } from "./AdminPagination";
+import { useListKeyboard } from "@/hooks/useListKeyboard";
 import type { Database } from "@/types/database";
 
 const PAGE_SIZE = 20;
@@ -156,6 +158,30 @@ export function ReviewsTable({ stats }: Props) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const router = useRouter();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const { activeIndex, setActiveIndex } = useListKeyboard({
+    count: rows.length,
+    onOpen: (i) => {
+      const row = rows[i];
+      if (row) router.push(`/admin/reviews/${row.id}`);
+    },
+    onHide: async (i) => {
+      const row = rows[i];
+      if (row) await toggleHidden(row);
+    },
+    onDelete: async (i) => {
+      const row = rows[i];
+      if (row) await deleteComment(row.id);
+    },
+    searchRef: searchInputRef,
+    disabled: sortOpen,
+  });
+
+  // Reset cursor on filter/page change
+  useEffect(() => { setActiveIndex(0); }, [debouncedSearch, categoryFilter, filterMode, sortIdx, page, setActiveIndex]);
+
   async function deleteComment(id: string) {
     if (!confirm("Διαγραφή σχολίου;")) return;
     setBusyId(id);
@@ -298,10 +324,11 @@ export function ReviewsTable({ stats }: Props) {
           {loading && <span className="text-xs text-zinc-400 animate-pulse">Loading...</span>}
           <div className="relative">
             <input
+              ref={searchInputRef}
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search σε κείμενο..."
+              placeholder="Search σε κείμενο...  (/)"
               className="w-[260px] pl-3 pr-9 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400"
             />
             <svg className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -309,6 +336,15 @@ export function ReviewsTable({ stats }: Props) {
             </svg>
           </div>
         </div>
+      </div>
+
+      {/* Keyboard hint */}
+      <div className="flex items-center gap-3 mb-3 text-[11px] text-zinc-400">
+        <span><Kbd>↑↓</Kbd> or <Kbd>J/K</Kbd> navigate</span>
+        <span><Kbd>↵</Kbd> open</span>
+        <span><Kbd>H</Kbd> hide/show</span>
+        <span><Kbd>D</Kbd> delete</span>
+        <span><Kbd>/</Kbd> search</span>
       </div>
 
       {/* Table */}
@@ -335,15 +371,19 @@ export function ReviewsTable({ stats }: Props) {
                 </td>
               </tr>
             )}
-            {rows.map((row) => {
+            {rows.map((row, idx) => {
               const isBusy = busyId === row.id;
               const netScore = row.vote_up - row.vote_down;
+              const isActive = activeIndex === idx;
 
               return (
                 <tr
                   key={row.id}
-                  className={`border-b border-zinc-100 hover:bg-zinc-50/50 transition-colors ${
-                    row.is_hidden ? "bg-zinc-50/80" : row.report_count > 0 ? "bg-red-50/30" : ""
+                  onMouseEnter={() => setActiveIndex(idx)}
+                  className={`border-b border-zinc-100 transition-colors ${
+                    isActive
+                      ? "bg-zinc-100 ring-1 ring-zinc-300"
+                      : row.is_hidden ? "bg-zinc-50/80 hover:bg-zinc-50" : row.report_count > 0 ? "bg-red-50/30 hover:bg-red-50/50" : "hover:bg-zinc-50/50"
                   }`}
                 >
                   <td className="px-4 py-3 max-w-[380px]">
@@ -452,4 +492,12 @@ function formatDate(iso: string): string {
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d πριν`;
   return d.toLocaleDateString("el-GR", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="font-mono text-[10px] border border-zinc-200 rounded px-1 py-0.5 bg-zinc-50 text-zinc-600">
+      {children}
+    </kbd>
+  );
 }

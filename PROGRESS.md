@@ -1,6 +1,6 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-03 (session 9)
+Last updated: 2026-05-04 (session 10)
 
 ---
 
@@ -119,6 +119,185 @@ Last updated: 2026-05-03 (session 9)
 - Users: management table with role, status
 - See `ADMIN.md` for full specification
 
+### Bookmark functionality ✅ (session 10)
+- API: `/api/bookmarks` POST/DELETE/GET (auth-gated, RLS = own only)
+- Schema: `012-bookmarks-unique.sql` adds UNIQUE(user_id, item_id) for upsert + RLS policies
+- Hook: `hooks/useBookmark.ts` with optimistic UI, revert on failure, redirect to /login on 401
+- Wired into all 9 detail components (movies/series/books/food/bars/hotels/recipes/theater/events) with initial state from server fetch
+- Closes the loop with the movie_airing reminder trigger — bookmarks now actually exist for the trigger to fan out from
+
+### Bookmarks list page ✅ (session 10)
+- `/profile/[handle]/bookmarks` rebuilt as server component reading real bookmarks
+- Grouped by category (icon + label + count) with 2-column grid per group
+- Empty state with "Πάτησε το 🔖" CTA when no bookmarks; non-own profiles show empty due to RLS
+- Click → deeplinks to item detail
+
+### Achievement progress block ✅ (session 10)
+- `<AchievementProgress>` reusable component per CLAUDE.md gamification spec
+- Milestones: Verified (3) → Expert (10) → Gold (25) → Platinum (50)
+- Auto-detects "unlock" state when count exactly hits milestone (animated badge); otherwise progress bar with remaining count
+- Per-state messages: "πρώτη πρόταση", "καταπληκτική αρχή", "λίγο ακόμα", "πολύ κοντά"
+- Wired into `Published.tsx` (post-publish state of suggestion overlay) — accepts `newSuggestionCount` prop
+
+### Notification page — real data + type-aware ✅ (session 10)
+- `lib/notifications.ts::fetchUserNotifications` — joins minimal item info for click-through
+- `/notifications` page now server-rendered: redirects guests to login, groups by Νέες/Παλιότερες
+- `<NotificationsPage>` rebuilt with type-aware rendering: movie_airing (📺 + channel + smart relative time "σήμερα στις 21:00", "αύριο στις 22:00"), rating, comment, follow, achievement, suggestion_published
+- `/api/notifications/[id]` PATCH for mark-read; click-through marks read + navigates
+- Body-scroll lock on lightbox; coral dot for unread; relative time formatting
+- Empty state with friendly "🔕 Όλα ήσυχα" message
+
+### Bulk enrichment script ✅ (session 10)
+- `scripts/bulk-enrich.js` — walks items missing covers, calls `/api/admin/enrich`, picks first candidate, updates poster_url + backdrop_url + cover_url
+- CLI: `--category=movies`, `--limit=50`, `--dry-run`; throttled 250ms
+- `ENRICH_BASE_URL` env var for pointing at production deploy
+
+### DEPLOY.md ✅ (session 10)
+- Single-file production checklist: env vars, migrations 001-012 in order, seed scripts, admin user setup, post-deploy smoke test
+- Operational toggles list (what admin can change without redeploy)
+- Rollback notes; storage bucket / Nominatim / TMDB rate limit notes
+
+### IS_REGISTERED + notification badge wired to real data ✅ (session 10)
+- Layout `notificationCount` was hardcoded `2`; now reads real unread count from notifications table per session
+- Audited remaining `isRegistered` references — all already wired to real Supabase session
+
+### Movies Tonight bookmark reminders ✅ (session 10)
+- DB trigger `notify_bookmarkers_of_airing` (`scripts/sql/011-movies-tonight-reminders.sql`)
+- On insert into `movies_tonight` (when `is_published = true`), looks up the movie title and creates one row in `notifications` per user who bookmarked the item
+- Notification payload includes `item_id`, `movie_title`, `channel`, `air_date`, `air_time`, `airing_id` so future type-aware UI can render rich entries with click-through
+- `SECURITY DEFINER` so trigger runs with elevated permissions to write notifications
+
+### Bulk geocoding script ✅ (session 10)
+- `scripts/geocode-venues.js` — Nominatim-based, 1 req/sec rate limit, GR-bias
+- CLI: `--table=item_food` to scope, `--limit=100` to cap
+- Idempotent (skips items that already have lat/lng); processes food/bars/hotels/theater/events by default
+
+### Items.images backfill script ✅ (session 10)
+- `scripts/backfill-item-images.js` — populates `items.images = [{url: cover_url}]` for any item with a cover but empty gallery
+- Page-paginated (500/batch); idempotent (skips items that already have images)
+
+### Address+map in venue ExtraFields ✅ (session 10)
+- `AddressMapSection` in SuggestionEditor refactored to accept address/lat/lng state props and use `<MapPicker>` (with Nominatim search)
+- Wired into FoodExtraFields, BarsExtraFields, HotelExtraFields, TheaterExtraFields — admin can now click-set venue location for ALL category types, not just Activities
+
+### Image enrichment (TMDB / Google Books / Places) ✅ (session 10)
+- `/api/admin/enrich` endpoint dispatches by category; returns up to 8 candidates with poster/backdrop URLs + title/subtitle/description
+- "✨ Auto-fetch cover" button in SuggestionEditor's Media section opens modal with grid of candidates → click to apply
+- All three APIs degrade gracefully if env keys missing (returns `{ candidates: [], reason }`)
+- Required env vars: `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY` (optional), `GOOGLE_PLACES_API_KEY`
+
+### Address autocomplete in MapPicker ✅ (session 10)
+- Nominatim (OpenStreetMap) integration — free, no API key, no rate limits at our scale
+- Search box above the map (debounced 350ms, min 3 chars), GR-biased with Greek language preference
+- Click a result → map re-centers + marker drops + lat/lng updated
+
+### Production auth on /admin ✅ (session 10)
+- Replaced NODE_ENV-based DEV bypass with explicit `ADMIN_DEV_BYPASS=1` env opt-in
+- Auto-refused if NODE_ENV=production (defense in depth)
+- Real path: requires Supabase session AND `users.role === 'admin'`; non-admins redirected
+- Dev bypass UI shows a yellow notice banner so you know it's active
+
+### Frontend item gallery rendering ✅ (session 10)
+- `<ItemGalleryViewer>` reusable component: tab grouping + horizontal scroll strip + keyboard-navigable fullscreen lightbox (← → Esc)
+- Wired into FoodDetail, BarsDetail, HotelDetail (food/bars use existing tab structure; hotel uses Δωμάτια/Κοινόχρηστοι/Εξωτερικά)
+- Body scroll locked while lightbox open; image lazy-loaded after first 3
+- Falls back to single cover_url hero when images empty (BarsDetail)
+
+### Settings page ✅ (session 10)
+- Schema: `app_settings (key, value jsonb, description, updated_at)` — `scripts/sql/010-app-settings.sql`
+- Default keys seeded: `site_name`, `site_tagline`, `maintenance_mode`, `maintenance_message`
+- Admin: `/admin/settings` form with sections (Maintenance mode toggle + message, Site identity, custom keys for advanced)
+- Frontend: `<MaintenanceBanner>` rendered in `app/(main)/layout.tsx` when `maintenance_mode = true`
+- API: `/api/admin/settings` (GET, PATCH bulk)
+- Helper: `lib/app-settings.ts::fetchAppSettings(sb)` with safe defaults
+
+### Collections — extension-field filters ✅ (session 10)
+- `collections.filters` jsonb now matches against extension-table columns: `[{ field: "channel", value: "Netflix" }]`
+- `lib/collections.ts` + `/api/admin/collections/preview` join `item_<source_category>!inner()` and apply `eq(table.field, value)` per filter row
+- CollectionEditor: new "Φίλτρα πεδίων (advanced)" section with quick-pick field hints per category (movies → channel/country/language; food → cuisine/type; etc.) plus custom-field option
+- Backwards-compatible: collections without filters work unchanged
+
+### Filters v2 — add new + edit options ✅ (session 10)
+- Admin can now add brand-new filter rows from UI: filter_id slug + label + widget type + placeholder
+- Inline options editor (modal) for `segmented`, `platform-cards`, `icon-cards`, `checkboxes` widgets — add/remove/reorder { id, label } pairs
+- Removes the "edit via DB only" limitation from v1
+
+### Movies Tonight — bulk import ✅ (session 10)
+- Paste textarea with format: `Title | Channel | YYYY-MM-DD | HH:MM`
+- Two-phase: POST `/bulk` returns matched/unmatched (case-insensitive exact + contains fallback), PUT commits with `onConflict ignoreDuplicates`
+- Modal preview shows matches (with cover) and unmatched titles separately
+
+### Map picker ✅ (session 10)
+- `<MapPicker>` component using Leaflet via CDN (no npm dependency); OpenStreetMap tiles
+- Click anywhere → marker drops; drag marker to fine-tune
+- Wired into ActivityEditor right below lat/lng inputs; bidirectional (typing in inputs updates marker)
+
+### Item gallery mode ✅ (session 10)
+- Schema: `items.images jsonb` (`scripts/sql/009-item-gallery.sql`)
+- `<ImageGallery>` component: multi-upload via ImageUploader, optional tab grouping (Δωμάτια / Κοινόχρηστοι / Εξωτερικά for hotels), ▲▼ reorder within tab, alt text, primary indicator
+- SuggestionEditor gallery mode now uses ImageGallery (food/bars/hotels)
+- cover_url auto-mirrors first gallery image for legacy reads
+
+### Category Filters — admin-curated ✅ (session 10)
+- Schema: `category_filters` + `category_filter_settings` (`scripts/sql/008-category-filters.sql`); seeded from current `CATEGORY_FILTERS` constant so going live doesn't break anything
+- Admin: rebuilt `FiltersManager` per-category list with ▲▼ reorder, inline label edit, is_quick chip toggle, publish toggle, delete; right rail with "Κοντά μου" toggle + live phone preview
+- Frontend: `lib/category-filters.ts::fetchCategoryFilterConfig()`; `app/(main)/[category]/page.tsx` reads DB, passes as `filterConfig` prop to `CategoryPageShell`; falls back to constant if DB rows missing
+- API: `/api/admin/category-filters` (CRUD) + `/reorder` + `/settings`
+- Type: `CategoryFilters` exported from constants/filters.ts as the prop type
+- v2 deferred: UI for adding new filter rows / editing widget+options jsonb (today via DB)
+
+### SuggestionEditor media wiring ✅ (session 10)
+- Single-mode tabs (Portrait/Landscape) now use `<ImageUploader>` instead of placeholder buttons
+- Saves to `items.poster_url`, `items.backdrop_url`, with `items.cover_url` mirrored from the orientation-appropriate field for legacy reads
+- Trailer tab YouTube/Vimeo URL inputs wired to `extData.trailer_url` (movies/series only)
+- Gallery mode (food/bars/hotels multi-image) deferred — needs `items.images jsonb` schema first
+
+### Image upload via Supabase Storage ✅ (session 10)
+- Schema: `scripts/sql/007-storage-media-bucket.sql` creates a public `media` bucket + read policy
+- API: `/api/admin/upload` (POST multipart, DELETE by path) — service-role; 5MB limit; validates content-type (JPG/PNG/WebP/GIF/SVG); slugifies filename; stores under `{prefix}/{uuid}-{name}.{ext}`
+- Component: `<ImageUploader>` — drag-drop, click-to-upload, preview, inline errors, optional URL-paste fallback, configurable aspect ratio
+- Wired into: CollectionEditor (logo, square aspect), ActivityEditor (cover photo, 16:9)
+- SuggestionEditor's complex media area (multi-tab gallery, trailer URL) noted as next iteration — `<ImageUploader>` is reusable
+
+### Movies Tonight — Curated TV airings ✅ (session 10)
+- Schema: `movies_tonight (item_id FK, channel, air_date, air_time)` (`scripts/sql/006-movies-tonight.sql`)
+- Admin: rebuilt `/admin/content/movies-tonight` with Today + This week sections, movie autocomplete picker, inline edit, publish toggle, delete
+- Frontend: `<MoviesTonightSection>` on home page after CategoryTiles — renders today's airings as horizontal-scroll cards with time/channel/rating; null if empty
+- API: `/api/admin/movies-tonight` (CRUD) + `/api/admin/movies-tonight/items` (autocomplete)
+- Helper: `lib/movies-tonight.ts` for server-side fetching by date
+
+### Hotel-side activity proximity ✅ (session 10)
+- Helper: `lib/activities.ts` — Haversine-based proximity query (bounding-box DB pre-filter + JS exact filter + sort)
+- Detail page fetcher (`app/(main)/[category]/[id]/page.tsx`) attaches `nearbyActivities` only for hotels with lat/lng
+- HotelDetail's existing "Κοντινές Δραστηριότητες" section now reads from real DB data (not metadata stub)
+- Cards show type icon + name + Greek-formatted distance ("1.2 χλμ" / "350 μ"); link out to website or Google Maps
+
+### Activities — Hotels' nearby attractions ✅ (session 10)
+- Schema: `activity_categories` + `activity_types` + `activities` (`scripts/sql/005-activities.sql`); 4 categories seeded
+- Admin list: tabs by category, type filter chips, search, inline publish toggle, edit/delete
+- Editor: cascading category→type select, address + lat/lng (with Google Maps verification link), website/social/phone, image URL
+- Taxonomy manager: full CRUD for categories + types with inline edit-on-blur, publish toggle, delete with safety checks
+- Geographic model (lat/lng) — frontend hotel pages will query by proximity, no manual hotel↔activity linking
+- Routes: `/admin/content/activities` (list) + `/[id]` (edit) + `/new` + `/taxonomy`
+- API: `/api/admin/activities` (CRUD) + `/api/admin/activity-categories` + `/api/admin/activity-types`
+- Frontend hotel-side proximity rendering: pending (next session)
+
+### Collection landing page ✅ (session 10)
+- `/collections/[alias]` — server-rendered page Card collections link to
+- Hero: title (with bold specific part) + image + tag chips + match count
+- Body: portrait grid (movies/series/books) or landscape list (food/bars/hotels/recipes/theater/events)
+- 404 on missing/unpublished/expired collections
+
+### Collections — DB-driven home/category sections ✅ (session 10)
+- Schema: `collections` + `collection_placements` (`scripts/sql/004-collections.sql`)
+- Two visual formats: Carousel (auto-picks Portrait/Landscape based on source category) + Card (compact pill linking to filtered list)
+- Admin UI: tab-per-placement list with ▲▼ reorder + publish toggle + live phone preview that runs the real filter via `/api/admin/collections/preview`; editor with sticky live preview, tag autocomplete, match-count chip
+- Filter model v1: `source_category` + `tags[]` matched against `metadata.tags @> [...]`
+- Audience-aware (`all` / `registered` / `guest`) + lifecycle window (`valid_from` / `valid_until`)
+- Home page (`app/(main)/page.tsx`) reads via `lib/collections.ts`; falls back to existing hardcoded carousels when admin has 0 collections — no breaking change
+- Empty collections silently dropped (no empty sections on the user's screen)
+- API: `/api/admin/collections` (CRUD) + `/reorder` + `/preview` + `/tags`
+
 ---
 
 ## 2. IN PROGRESS
@@ -126,6 +305,12 @@ Last updated: 2026-05-03 (session 9)
 ### Detail Page Figma Alignment
 - BookDetail rebuilt to match Figma ✅
 - Other 8 detail pages need same treatment (match Figma layout, show suggester above info)
+
+### Collections — follow-ups
+- Image upload (currently URL-only) → wire Supabase Storage
+- Frontend `/collections/[alias]` page (Card collections link there but page doesn't exist yet)
+- Extension-field filters beyond tags (e.g. `item_movies.channel = 'Netflix'`)
+- Migrate existing hardcoded home carousels into seed collections, then remove the hardcoded fallback in `app/(main)/page.tsx`
 
 ---
 

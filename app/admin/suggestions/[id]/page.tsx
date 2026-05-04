@@ -5,9 +5,19 @@ import { notFound } from "next/navigation";
 export default async function SuggestionDetailPage({ params }: { params: { id: string } }) {
   const supabase = createAdminClient();
 
-  const { data: rawSuggestion, error } = await supabase
-    .from("suggestions")
-    .select(`
+  // Try with the new `items.images` column first (post migration 009).
+  // If the column doesn't exist yet (Postgres error 42703), retry without it
+  // so the editor still loads — admin can run the migration when convenient.
+  const fullSelect = `
+      id, rating, reflection, is_published, created_at, published_at,
+      user_id,
+      users!inner(id, display_name),
+      items!inner(
+        id, title, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, images,
+        avg_rating, rating_count, suggestion_count, description_seo, metadata
+      )
+    `;
+  const fallbackSelect = `
       id, rating, reflection, is_published, created_at, published_at,
       user_id,
       users!inner(id, display_name),
@@ -15,9 +25,23 @@ export default async function SuggestionDetailPage({ params }: { params: { id: s
         id, title, slug, category, subcategory_id, cover_url, poster_url, backdrop_url,
         avg_rating, rating_count, suggestion_count, description_seo, metadata
       )
-    `)
+    `;
+
+  let { data: rawSuggestion, error } = await supabase
+    .from("suggestions")
+    .select(fullSelect)
     .eq("id", params.id)
     .single();
+
+  if (error && (error as any).code === "42703") {
+    const retry = await supabase
+      .from("suggestions")
+      .select(fallbackSelect)
+      .eq("id", params.id)
+      .single();
+    rawSuggestion = retry.data;
+    error = retry.error;
+  }
 
   if (error || !rawSuggestion) notFound();
 
@@ -86,6 +110,7 @@ export default async function SuggestionDetailPage({ params }: { params: { id: s
         coverUrl: item.cover_url,
         posterUrl: item.poster_url,
         backdropUrl: item.backdrop_url,
+        images: Array.isArray(item.images) ? item.images : [],
         avgRating: item.avg_rating,
         ratingCount: item.rating_count,
         suggestionCount: item.suggestion_count,
