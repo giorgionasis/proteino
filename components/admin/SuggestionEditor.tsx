@@ -1,55 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import Link from "next/link";
 import { CATEGORIES } from "@/constants/categories";
 
-type CategoryValue = string;
-
-interface RatingDistribution {
-  star: number;
-  percentage: number;
+interface ExtFieldsHandle {
+  getData(): Record<string, any>;
 }
 
-interface SuggestionData {
+interface SuggestionProps {
+  id: string;
+  rating: number | null;
+  reflection: string | null;
+  isPublished: boolean;
+  createdAt: string;
+  publishedAt: string | null;
+  userId: string;
+  authorName: string;
+}
+
+interface ItemProps {
   id: string;
   title: string;
-  alias: string;
-  category: CategoryValue;
-  subcategory: string;
-  isPublished: boolean;
-  author: string;
-  created: string;
-  published: string;
-  description: string;
+  slug: string;
+  category: string;
+  subcategoryId: string | null;
+  coverUrl: string | null;
+  posterUrl: string | null;
+  backdropUrl: string | null;
   avgRating: number;
-  totalRatings: number;
-  totalReviews: number;
-  distribution: RatingDistribution[];
+  ratingCount: number;
+  suggestionCount: number;
+  descriptionSeo: string | null;
+  metadata: any;
 }
 
-const MOCK: SuggestionData = {
-  id: "1",
-  title: "Εκεί που τραγουδούν οι καραβίδες",
-  alias: "ekei-pou-tragoudoun-oi-karavides",
-  category: "movies",
-  subcategory: "",
-  isPublished: true,
-  author: "George Nasis",
-  created: "11:30:45  01/11/2024",
-  published: "",
-  description: "",
-  avgRating: 4.71,
-  totalRatings: 187,
-  totalReviews: 45,
-  distribution: [
-    { star: 5, percentage: 80 },
-    { star: 4, percentage: 10 },
-    { star: 3, percentage: 0 },
-    { star: 2, percentage: 6 },
-    { star: 1, percentage: 4 },
-  ],
-};
+type ExtraOptions = Record<string, { value: string; label: string }[]>;
+
+interface Props {
+  suggestion: SuggestionProps;
+  item: ItemProps;
+  extData: Record<string, any>;
+  subcategories: { id: string; name: string }[];
+  regions: { id: string; name: string; parent_id: string | null }[];
+  extraOptions: ExtraOptions;
+}
+
+// Helper: get options for a field group, with hardcoded fallback
+function getOpts(extraOptions: ExtraOptions, group: string, fallback: string[] = []): string[] {
+  const opts = extraOptions[group];
+  if (opts && opts.length > 0) return opts.map((o) => o.label);
+  return fallback;
+}
 
 const COUNTRIES = [
   "Αυστραλία","Αυστρία","Αίγυπτος","Αλβανία","Αργεντινή","Βέλγιο","Βουλγαρία","Βραζιλία",
@@ -65,17 +67,6 @@ const BAFTA_CATEGORIES = ["Best Film","Best Director","Best Leading Actor","Best
 const GOLDEN_GLOBE_CATEGORIES = ["Best Motion Picture – Drama","Best Motion Picture – Musical/Comedy","Best Director","Best Actor – Drama","Best Actress – Drama","Best Actor – Musical/Comedy","Best Actress – Musical/Comedy"];
 const CANNES_CATEGORIES = ["Palme d'Or","Grand Prix","Best Director","Jury Prize","Best Actor","Best Actress","Best Screenplay"];
 
-const SUBCATEGORIES: Record<string, string[]> = {
-  movies: ["Δράμα", "Κωμωδία", "Θρίλερ", "Δράση", "Sci-Fi", "Ρομαντική", "Animation", "Ντοκιμαντέρ", "Horror", "Βιογραφική"],
-  series: ["Δράμα", "Κωμωδία", "Crime", "Sci-Fi", "Θρίλερ", "Ρομαντική", "Ντοκιμαντέρ", "Mini-series", "Animation"],
-  books: ["Μυθιστόρημα", "Θρίλερ", "Sci-Fi", "Ιστορία", "Αυτοβιογραφία", "Ψυχολογία", "Φιλοσοφία", "Self-help", "Ποίηση", "Business", "Παιδικά"],
-  recipes: ["Κυρίως Πιάτο", "Ορεκτικά", "Επιδόρπια", "Breakfast", "Ψητά", "Σαλάτες", "Σούπες", "Γλυκά", "Ψωμί & Ζύμες"],
-  food: ["Ελληνική", "Ιταλική", "Ασιατική", "Burger", "Sushi", "Fine Dining", "Brunch", "Vegan", "Seafood", "Street Food", "Middle Eastern"],
-  bars: ["Cocktail Bar", "Wine Bar", "Jazz Bar", "Rooftop", "Beach Bar", "Coffee", "Speakeasy", "Pub", "All-Day", "Sports Bar"],
-  hotels: ["Αθήνα", "Κρήτη", "Θεσσαλονίκη", "Σαντορίνη", "Μύκονος", "Ρόδος", "Πελοπόννησος", "Χαλκιδική"],
-  theater: ["Θέατρο", "Μιούζικαλ", "Stand-up", "Μονόπρακτο", "Παιδικό"],
-  events: ["Συναυλία", "Festival", "Έκθεση", "Stand-up", "Workshop", "Sports"],
-};
 
 function getMediaConfig(category: string): { tabs: string[]; mode: "single" | "gallery" } {
   switch (category) {
@@ -87,23 +78,75 @@ function getMediaConfig(category: string): { tabs: string[]; mode: "single" | "g
   }
 }
 
-export function SuggestionEditor({ id }: { id: string }) {
-  const [data, setData] = useState(MOCK);
+export function SuggestionEditor({ suggestion, item, extData, subcategories, regions, extraOptions }: Props) {
+  const [title, setTitle] = useState(item.title);
+  const [slug, setSlug] = useState(item.slug);
+  const [category, setCategory] = useState(item.category);
+  const [subcategoryId, setSubcategoryId] = useState(item.subcategoryId ?? "");
+  const [isPublished, setIsPublished] = useState(suggestion.isPublished);
+  const [descriptionSeo, setDescriptionSeo] = useState(item.descriptionSeo ?? "");
+  const [reflection, setReflection] = useState(suggestion.reflection ?? "");
   const [mediaTab, setMediaTab] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
+  const extFieldsRef = useRef<ExtFieldsHandle>(null);
 
-  function update<K extends keyof SuggestionData>(key: K, value: SuggestionData[K]) {
-    setData((d) => ({ ...d, [key]: value }));
-  }
+  const save = useCallback(async () => {
+    setSaving(true);
+    setSaveStatus("idle");
 
-  const mediaConfig = getMediaConfig(data.category);
+    const extPayload = extFieldsRef.current?.getData() ?? {};
+
+    const res = await fetch("/api/admin/suggestions", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        suggestionId: suggestion.id,
+        itemId: item.id,
+        category,
+        itemData: {
+          title,
+          slug,
+          category,
+          subcategory_id: subcategoryId || null,
+          description_seo: descriptionSeo || null,
+        },
+        suggestionData: {
+          is_published: isPublished,
+          reflection: reflection || null,
+          published_at: isPublished && !suggestion.publishedAt ? new Date().toISOString() : suggestion.publishedAt,
+        },
+        extData: extPayload,
+      }),
+    });
+
+    setSaving(false);
+    setSaveStatus(res.ok ? "saved" : "error");
+    if (res.ok) setTimeout(() => setSaveStatus("idle"), 3000);
+  }, [title, slug, category, subcategoryId, descriptionSeo, isPublished, reflection, item.id, suggestion.id, suggestion.publishedAt]);
+
+  const mediaConfig = getMediaConfig(category);
 
   return (
     <div>
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 mb-6 text-sm">
-        <Link href="/admin/suggestions" className="text-emerald-600 hover:underline font-medium">Suggestions</Link>
-        <span className="text-zinc-400">/</span>
-        <span className="text-zinc-600">Επεξεργασία Πρότασης</span>
+      {/* Breadcrumb + Save */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-2 text-sm">
+          <Link href="/admin/suggestions" className="text-emerald-600 hover:underline font-medium">Suggestions</Link>
+          <span className="text-zinc-400">/</span>
+          <span className="text-zinc-600">Επεξεργασία Πρότασης</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {saveStatus === "saved" && <span className="text-sm text-emerald-600 font-medium">Saved!</span>}
+          {saveStatus === "error" && <span className="text-sm text-red-500 font-medium">Error saving</span>}
+          <button
+            onClick={save}
+            disabled={saving}
+            className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
+        </div>
       </div>
 
       {/* Main card */}
@@ -112,26 +155,26 @@ export function SuggestionEditor({ id }: { id: string }) {
           <div className="flex-1 space-y-5">
             <div>
               <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Title</label>
-              <input type="text" value={data.title} onChange={(e) => update("title", e.target.value)} className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-800 focus:outline-none focus:border-zinc-400" />
+              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-800 focus:outline-none focus:border-zinc-400" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Alias</label>
-              <input type="text" value={data.alias} onChange={(e) => update("alias", e.target.value)} className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-500 focus:outline-none focus:border-zinc-400" />
+              <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Slug</label>
+              <input type="text" value={slug} onChange={(e) => setSlug(e.target.value)} className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-500 focus:outline-none focus:border-zinc-400" />
             </div>
             <div className="flex gap-4">
               <div className="flex-1">
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Category</label>
-                <select value={data.category} onChange={(e) => { update("category", e.target.value); setMediaTab(0); }} className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 focus:outline-none focus:border-zinc-400 bg-white">
+                <select value={category} onChange={(e) => { setCategory(e.target.value); setMediaTab(0); }} className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 focus:outline-none focus:border-zinc-400 bg-white">
                   <option value="">SELECT CATEGORY</option>
                   {CATEGORIES.map((c) => (<option key={c.slug} value={c.slug}>{c.labelEl}</option>))}
                 </select>
               </div>
               <div className="flex-1">
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Subcategory</label>
-                <select value={data.subcategory} onChange={(e) => update("subcategory", e.target.value)} className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 focus:outline-none focus:border-zinc-400 bg-white">
+                <select value={subcategoryId} onChange={(e) => setSubcategoryId(e.target.value)} className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 focus:outline-none focus:border-zinc-400 bg-white">
                   <option value="">SELECT SUBCATEGORY</option>
-                  {(SUBCATEGORIES[data.category] || []).map((sub) => (
-                    <option key={sub} value={sub}>{sub}</option>
+                  {subcategories.map((sub) => (
+                    <option key={sub.id} value={sub.id}>{sub.name}</option>
                   ))}
                 </select>
               </div>
@@ -140,25 +183,27 @@ export function SuggestionEditor({ id }: { id: string }) {
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Publish</label>
                 <div className="flex border border-zinc-200 rounded-lg overflow-hidden">
-                  <button onClick={() => update("isPublished", true)} className={`px-5 py-2 text-sm font-semibold transition-colors ${data.isPublished ? "bg-emerald-600 text-white" : "bg-white text-zinc-500 hover:bg-zinc-50"}`}>YES</button>
-                  <button onClick={() => update("isPublished", false)} className={`px-5 py-2 text-sm font-semibold transition-colors ${!data.isPublished ? "bg-zinc-900 text-white" : "bg-white text-zinc-500 hover:bg-zinc-50"}`}>NO</button>
+                  <button onClick={() => setIsPublished(true)} className={`px-5 py-2 text-sm font-semibold transition-colors ${isPublished ? "bg-emerald-600 text-white" : "bg-white text-zinc-500 hover:bg-zinc-50"}`}>YES</button>
+                  <button onClick={() => setIsPublished(false)} className={`px-5 py-2 text-sm font-semibold transition-colors ${!isPublished ? "bg-zinc-900 text-white" : "bg-white text-zinc-500 hover:bg-zinc-50"}`}>NO</button>
                 </div>
               </div>
               <div className="flex-1">
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Author</label>
-                <select className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 bg-white"><option>George Nasis</option></select>
+                <div className="px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 bg-zinc-50">
+                  {suggestion.authorName}
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Created</label>
-                <div className="flex items-center gap-2 px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600">
-                  {data.created}
+                <div className="flex items-center gap-2 px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-zinc-50">
+                  {formatDate(suggestion.createdAt)}
                   <CalendarIcon />
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Published</label>
-                <div className="flex items-center gap-2 px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-400">
-                  DATE
+                <div className="flex items-center gap-2 px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-zinc-50">
+                  {suggestion.publishedAt ? formatDate(suggestion.publishedAt) : "—"}
                   <CalendarIcon />
                 </div>
               </div>
@@ -169,46 +214,42 @@ export function SuggestionEditor({ id }: { id: string }) {
           <div className="w-[220px] shrink-0">
             <div className="flex items-baseline gap-2 mb-3">
               <span className="text-amber-500 text-xl">★</span>
-              <span className="text-3xl font-bold text-zinc-800">{data.avgRating}</span>
+              <span className="text-3xl font-bold text-zinc-800">{item.avgRating.toFixed(2)}</span>
             </div>
             <div className="flex gap-6 mb-4 text-sm text-zinc-500">
-              <span><strong className="text-zinc-700">{data.totalRatings}</strong> ΒΑΘΜΟΛΟΓΙΕΣ</span>
-              <span><strong className="text-zinc-700">{data.totalReviews}</strong> ΑΞΙΟΛΟΓΗΣΕΙΣ</span>
+              <span><strong className="text-zinc-700">{item.ratingCount}</strong> ΒΑΘΜΟΛΟΓΙΕΣ</span>
+              <span><strong className="text-zinc-700">{item.suggestionCount}</strong> ΠΡΟΤΑΣΕΙΣ</span>
             </div>
-            <div className="space-y-1.5">
-              {data.distribution.map((d) => (
-                <div key={d.star} className="flex items-center gap-2 text-sm">
-                  <span className="w-3 text-zinc-500 text-right">{d.star}</span>
-                  <div className="flex-1 h-2 bg-zinc-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-zinc-800 rounded-full" style={{ width: `${d.percentage}%` }} />
-                  </div>
-                  <span className="w-10 text-right text-zinc-600 font-medium">{d.percentage}%</span>
-                </div>
-              ))}
-            </div>
+            {suggestion.rating !== null && (
+              <div className="mt-3 p-3 bg-zinc-50 rounded-lg">
+                <p className="text-xs text-zinc-500 mb-1">User rating</p>
+                <span className="text-lg font-bold text-zinc-800">★ {suggestion.rating}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Description */}
+      {/* Description / SEO */}
       <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
-        <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-4">Description</h2>
-        <div className="flex items-center gap-1 mb-3 pb-3 border-b border-zinc-200">
-          <select className="px-3 py-1.5 text-sm border border-zinc-200 rounded text-zinc-600 bg-white"><option>Heading</option><option>Paragraph</option></select>
-          <div className="flex items-center gap-0.5 ml-2">
-            {["B", "I", "U", "S"].map((btn) => (
-              <button key={btn} className="w-8 h-8 flex items-center justify-center text-sm font-bold text-zinc-500 hover:bg-zinc-100 rounded">{btn}</button>
-            ))}
-          </div>
-          <div className="w-px h-5 bg-zinc-200 mx-1" />
-          <ToolbarIcon d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-          <ToolbarIcon d="M4 6h16M4 12h10M4 18h14" />
-          <div className="w-px h-5 bg-zinc-200 mx-1" />
-          <ToolbarIcon d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
-          <ToolbarIcon d="M12 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-          <ToolbarIcon d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-        </div>
-        <textarea placeholder="Enter Text Here..." className="w-full h-40 px-4 py-3 text-sm text-zinc-700 border border-zinc-200 rounded-lg resize-none focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-4">Description (SEO)</h2>
+        <textarea
+          value={descriptionSeo}
+          onChange={(e) => setDescriptionSeo(e.target.value)}
+          placeholder="Short SEO description for this item..."
+          className="w-full h-24 px-4 py-3 text-sm text-zinc-700 border border-zinc-200 rounded-lg resize-none focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400"
+        />
+      </div>
+
+      {/* Reflection */}
+      <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
+        <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-4">User Reflection</h2>
+        <textarea
+          value={reflection}
+          onChange={(e) => setReflection(e.target.value)}
+          placeholder="User's reflection about this item..."
+          className="w-full h-32 px-4 py-3 text-sm text-zinc-700 border border-zinc-200 rounded-lg resize-none focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400"
+        />
       </div>
 
       {/* Media — category-aware */}
@@ -279,54 +320,107 @@ export function SuggestionEditor({ id }: { id: string }) {
       </div>
 
       {/* ExtraFields */}
-      <ExtraFieldsSection category={data.category} />
+      <ExtraFieldsSection ref={extFieldsRef} category={category} extData={extData} regions={regions} extraOptions={extraOptions} />
     </div>
   );
 }
 
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("el-GR", { day: "2-digit", month: "2-digit", year: "numeric" }) +
+    " " + d.toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit" });
+}
+
 /* ─────────────── ExtraFields Router ─────────────── */
 
-function ExtraFieldsSection({ category }: { category: string }) {
-  switch (category) {
-    case "movies": return <MovieExtraFields />;
-    case "books": return <BookExtraFields />;
-    case "series": return <SeriesExtraFields />;
-    case "food": return <FoodExtraFields />;
-    case "bars": return <BarsExtraFields />;
-    case "hotels": return <HotelExtraFields />;
-    case "recipes": return <RecipeExtraFields />;
-    case "theater": case "events": return <TheaterExtraFields />;
-    default: return null;
+const ExtraFieldsSection = forwardRef<ExtFieldsHandle, { category: string; extData: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
+  function ExtraFieldsSection({ category, extData, regions, extraOptions }, ref) {
+    switch (category) {
+      case "movies": return <MovieExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
+      case "books": return <BookExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
+      case "series": return <SeriesExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
+      case "food": return <FoodExtraFields ref={ref} data={extData} regions={regions} extraOptions={extraOptions} />;
+      case "bars": return <BarsExtraFields ref={ref} data={extData} regions={regions} extraOptions={extraOptions} />;
+      case "hotels": return <HotelExtraFields ref={ref} data={extData} regions={regions} extraOptions={extraOptions} />;
+      case "recipes": return <RecipeExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
+      case "theater": case "events": return <TheaterExtraFields ref={ref} data={extData} regions={regions} extraOptions={extraOptions} />;
+      default: return null;
+    }
   }
-}
+);
 
 /* ─────────────── MOVIES ─────────────── */
 
-function MovieExtraFields() {
-  const [directors, setDirectors] = useState([""]);
-  const [countries, setCountries] = useState([""]);
-  const [actors, setActors] = useState(Array.from({ length: 8 }, () => ({ name: "", avatar: "" })));
-  const [awards, setAwards] = useState<{ type: string; category: string; year: string }[]>([]);
+const MovieExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; extraOptions: ExtraOptions }>(
+function MovieExtraFields({ data, extraOptions }, ref) {
+  const initDirectors = Array.isArray(data.director) ? data.director.map((d: any) => typeof d === "string" ? d : d.name || "") : (data.director ? [String(data.director)] : [""]);
+  const initCountries = Array.isArray(data.country) ? data.country : (data.country ? [data.country] : [""]);
+  const initActors = Array.isArray(data.actors) ? data.actors.map((a: any) => ({ name: typeof a === "string" ? a : a.name || "", avatar: a.avatar || "" })) : Array.from({ length: 8 }, () => ({ name: "", avatar: "" }));
+  const initAwards = Array.isArray(data.awards) ? data.awards : [];
+
+  const [directors, setDirectors] = useState(initDirectors.length ? initDirectors : [""]);
+  const [countries, setCountries] = useState(initCountries.length ? initCountries : [""]);
+  const [actors, setActors] = useState(initActors.length ? initActors : Array.from({ length: 8 }, () => ({ name: "", avatar: "" })));
+  const [awards, setAwards] = useState<{ type: string; category: string; year: string }[]>(initAwards);
+  const [plot, setPlot] = useState(data.plot ?? "");
+  const [durationMin, setDurationMin] = useState(data.duration_min?.toString() ?? "");
+  const [releaseYear, setReleaseYear] = useState(data.release_date ? new Date(data.release_date).getFullYear().toString() : "");
+  const [language, setLanguage] = useState(data.language ?? "");
+  const [channel, setChannel] = useState(data.channel ?? "");
+  const [trailerUrl, setTrailerUrl] = useState(data.trailer_url ?? "");
+
+  useImperativeHandle(ref, () => ({
+    getData() {
+      const filteredDirectors = directors.filter(Boolean);
+      const filteredCountries = countries.filter(Boolean);
+      const filteredActors = actors.filter((a) => a.name);
+      return {
+        director: filteredDirectors.join(", ") || null,
+        country: filteredCountries.join(", ") || null,
+        actors: filteredActors.length > 0 ? filteredActors : null,
+        awards: awards.length > 0 ? awards : null,
+        plot: plot || null,
+        duration_min: durationMin ? parseInt(durationMin) : null,
+        release_date: releaseYear ? `${releaseYear}-01-01` : null,
+        language: language || null,
+        channel: channel || null,
+        trailer_url: trailerUrl || null,
+      };
+    }
+  }));
 
   const addAward = (type: string) => setAwards((a) => [...a, { type, category: "", year: "" }]);
 
   const getAwardCategories = (type: string) => {
     switch (type) {
-      case "Oscar": return OSCAR_CATEGORIES;
-      case "BAFTA": return BAFTA_CATEGORIES;
-      case "Golden Globe": return GOLDEN_GLOBE_CATEGORIES;
-      case "Cannes": return CANNES_CATEGORIES;
+      case "Oscar": return getOpts(extraOptions, "award_oscar", OSCAR_CATEGORIES);
+      case "BAFTA": return getOpts(extraOptions, "award_bafta", BAFTA_CATEGORIES);
+      case "Golden Globe": return getOpts(extraOptions, "award_golden_globe", GOLDEN_GLOBE_CATEGORIES);
+      case "Cannes": return getOpts(extraOptions, "award_cannes", CANNES_CATEGORIES);
       default: return [];
     }
   };
+
+  const movieCountries = getOpts(extraOptions, "country", COUNTRIES);
+  const movieAttributes = getOpts(extraOptions, "attributes", [
+    "Based on true events", "Based on a book", "Remake", "Sequel", "Prequel",
+    "Contains violence", "Contains sex", "Classic", "Independent film",
+    "Black & White", "Foreign language", "Animated"
+  ]);
 
   return (
     <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
       <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-6">ExtraFields</h2>
 
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <FieldInput label="YEAR" placeholder="2024" />
-        <FieldInput label="DURATION" placeholder="127'" />
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Year</label>
+          <input type="text" value={releaseYear} onChange={(e) => setReleaseYear(e.target.value)} placeholder="2024" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Duration</label>
+          <input type="text" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} placeholder="127" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        </div>
 
         {/* Country with autocomplete */}
         <div>
@@ -356,9 +450,9 @@ function MovieExtraFields() {
         {/* Director with + */}
         <div>
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Director</label>
-          {directors.map((_, i) => (
+          {directors.map((d, i) => (
             <div key={i} className={`flex items-center gap-2 ${i > 0 ? "mt-2" : ""}`}>
-              <input type="text" placeholder="Αναζήτηση σκηνοθέτη..." className="flex-1 px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+              <input type="text" value={d} onChange={(e) => setDirectors((ds) => ds.map((v, j) => j === i ? e.target.value : v))} placeholder="Αναζήτηση σκηνοθέτη..." className="flex-1 px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
               {i > 0 && (
                 <button onClick={() => setDirectors((d) => d.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 shrink-0">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
@@ -453,7 +547,7 @@ function MovieExtraFields() {
       <div className="mb-6">
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Attributes</label>
         <div className="grid grid-cols-3 gap-x-8 gap-y-2">
-          {["Based on true events", "Based on a book", "Remake", "Sequel", "Prequel", "Contains violence", "Contains sex", "Classic", "Independent film", "Black & White", "Foreign language", "Animated"].map((attr) => (
+          {movieAttributes.map((attr) => (
             <label key={attr} className="flex items-center gap-2 text-sm text-zinc-600 py-1">
               <input type="checkbox" className="w-4 h-4 rounded border-zinc-300" />
               {attr}
@@ -462,85 +556,127 @@ function MovieExtraFields() {
         </div>
       </div>
 
-      <PlotField />
+      <div>
+        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Plot</label>
+        <textarea value={plot} onChange={(e) => setPlot(e.target.value)} placeholder="Type your message here..." className="w-full h-28 px-4 py-3 text-sm border border-zinc-200 rounded-lg resize-none focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+      </div>
 
       <datalist id="countries-list">
-        {COUNTRIES.map((c) => <option key={c} value={c} />)}
+        {movieCountries.map((c) => <option key={c} value={c} />)}
       </datalist>
     </div>
   );
-}
+});
 
 /* ─────────────── BOOKS ─────────────── */
 
-function BookExtraFields() {
+const BookExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; extraOptions: ExtraOptions }>(
+function BookExtraFields({ data, extraOptions }, ref) {
+  const [writer, setWriter] = useState(data.writer ?? "");
+  const [publication, setPublication] = useState(data.publication ?? "");
+  const [language, setLanguage] = useState(data.language ?? "");
+  const [pages, setPages] = useState(data.pages?.toString() ?? "");
+  const [pubYear, setPubYear] = useState(data.publication_year?.toString() ?? "");
+  const [plot, setPlot] = useState(data.plot ?? "");
+  const [isTrilogy, setIsTrilogy] = useState(data.is_trilogy ?? false);
+  const [trilogyName, setTrilogyName] = useState(data.trilogy_name ?? "");
+
+  useImperativeHandle(ref, () => ({
+    getData() {
+      return {
+        writer: writer || null,
+        publication: publication || null,
+        language: language || null,
+        pages: pages ? parseInt(pages) : null,
+        publication_year: pubYear ? parseInt(pubYear) : null,
+        plot: plot || null,
+        is_trilogy: isTrilogy,
+        trilogy_name: trilogyName || null,
+      };
+    }
+  }));
+
   return (
     <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
       <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-6">ExtraFields</h2>
 
       <div className="grid grid-cols-5 gap-4 mb-6">
-        <FieldInput label="AUTHOR" placeholder="Sebastian Fitzek" />
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Author</label>
+          <input type="text" value={writer} onChange={(e) => setWriter(e.target.value)} placeholder="Sebastian Fitzek" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        </div>
         <div>
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Editor</label>
-          <select className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white"><option>Διόπτρα</option></select>
+          <input type="text" value={publication} onChange={(e) => setPublication(e.target.value)} placeholder="Διόπτρα" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
         </div>
         <div>
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Language</label>
-          <select className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white"><option>Γερμανική</option><option>Ελληνικά</option><option>English</option></select>
+          <input type="text" value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="Ελληνικά" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
         </div>
-        <FieldInput label="PAGES" placeholder="432" />
-        <FieldInput label="RELEASED" placeholder="2001" />
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Pages</label>
+          <input type="text" value={pages} onChange={(e) => setPages(e.target.value)} placeholder="432" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Released</label>
+          <input type="text" value={pubYear} onChange={(e) => setPubYear(e.target.value)} placeholder="2001" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        </div>
       </div>
 
       {/* Plot */}
       <div className="mb-6">
-        <PlotField />
+        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Plot</label>
+        <textarea value={plot} onChange={(e) => setPlot(e.target.value)} placeholder="Type your message here..." className="w-full h-28 px-4 py-3 text-sm border border-zinc-200 rounded-lg resize-none focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
       </div>
 
-      {/* Buy */}
+      {/* Trilogy */}
       <div className="mb-6">
-        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Buy</label>
-        <div className="flex items-center gap-3 p-4 border border-zinc-200 rounded-lg">
-          <span className="text-2xl font-black text-orange-600 tracking-tight">Public</span>
-          <input type="text" defaultValue="https://www.e-food.gr/delivery/lamprinica-group" className="flex-1 px-3 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:border-zinc-400" />
-        </div>
-      </div>
-
-      {/* Author Info */}
-      <div>
-        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Πληροφορίες Συγγραφέα</label>
-        <div className="border border-zinc-200 rounded-xl p-6">
-          <div className="flex gap-6">
-            {/* Photo */}
-            <div className="shrink-0">
-              <div className="w-[100px] h-[100px] bg-zinc-100 rounded-full flex items-center justify-center border-2 border-dashed border-zinc-300">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-zinc-400"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-              </div>
-              <button className="mt-2 text-xs text-emerald-600 hover:underline w-full text-center">Upload</button>
-            </div>
-            {/* Info */}
-            <div className="flex-1 space-y-3">
-              <div className="grid grid-cols-3 gap-4">
-                <FieldInput label="Όνομα" placeholder="Sebastian Fitzek" />
-                <FieldInput label="Ηλικία" placeholder="53" />
-                <FieldInput label="Βιβλία" placeholder="32" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Βιογραφικό</label>
-                <textarea placeholder="Σύντομο βιογραφικό συγγραφέα..." className="w-full h-20 px-3 py-2 text-sm border border-zinc-200 rounded-lg resize-none focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
-              </div>
-            </div>
-          </div>
-        </div>
+        <label className="flex items-center gap-2 text-sm text-zinc-600">
+          <input type="checkbox" checked={isTrilogy} onChange={(e) => setIsTrilogy(e.target.checked)} className="w-4 h-4 rounded border-zinc-300" />
+          Part of a trilogy/series
+        </label>
+        {isTrilogy && (
+          <input type="text" value={trilogyName} onChange={(e) => setTrilogyName(e.target.value)} placeholder="Trilogy name..." className="mt-2 w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        )}
       </div>
     </div>
   );
-}
+});
 
 /* ─────────────── SERIES ─────────────── */
 
-function SeriesExtraFields() {
-  const [countries, setCountries] = useState([""]);
+const SeriesExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; extraOptions: ExtraOptions }>(
+function SeriesExtraFields({ data, extraOptions }, ref) {
+  const initCountries = Array.isArray(data.country) ? data.country : (data.country ? [data.country] : [""]);
+  const [countries, setCountries] = useState(initCountries.length ? initCountries : [""]);
+  const [seasons, setSeasons] = useState(data.seasons?.toString() ?? "");
+  const [director, setDirector] = useState(data.director ?? "");
+  const [releaseDate, setReleaseDate] = useState(data.release_date ? new Date(data.release_date).getFullYear().toString() : "");
+  const [endDate, setEndDate] = useState(data.end_date ? new Date(data.end_date).getFullYear().toString() : "");
+  const [statusMessage, setStatusMessage] = useState(data.status_message ?? "");
+  const [channel, setChannel] = useState(data.channel ?? "");
+  const [language, setLanguage] = useState(data.language ?? "");
+  const [plot, setPlot] = useState(data.plot ?? "");
+  const [trailerUrl, setTrailerUrl] = useState(data.trailer_url ?? "");
+  const [actors, setActors] = useState<any[]>(Array.isArray(data.actors) ? data.actors : []);
+
+  useImperativeHandle(ref, () => ({
+    getData() {
+      return {
+        director: director || null,
+        seasons: seasons ? parseInt(seasons) : null,
+        release_date: releaseDate ? `${releaseDate}-01-01` : null,
+        end_date: endDate ? `${endDate}-01-01` : null,
+        country: countries.filter(Boolean).join(", ") || null,
+        language: language || null,
+        channel: channel || null,
+        trailer_url: trailerUrl || null,
+        status_message: statusMessage || null,
+        plot: plot || null,
+        actors: actors.length > 0 ? actors : null,
+      };
+    }
+  }));
 
   return (
     <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
@@ -548,16 +684,31 @@ function SeriesExtraFields() {
 
       <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Seasons</label>
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <FieldInput label="No" placeholder="4" />
-        <FieldInput label="RELEASED" placeholder="2022" />
-        <FieldInput label="END" placeholder="" />
-        <FieldInput label="INFO" placeholder="Σύντομα ξεκινάει ακόμη μια σεζόν" />
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">No</label>
+          <input type="text" value={seasons} onChange={(e) => setSeasons(e.target.value)} placeholder="4" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Released</label>
+          <input type="text" value={releaseDate} onChange={(e) => setReleaseDate(e.target.value)} placeholder="2022" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">End</label>
+          <input type="text" value={endDate} onChange={(e) => setEndDate(e.target.value)} placeholder="" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Info</label>
+          <input type="text" value={statusMessage} onChange={(e) => setStatusMessage(e.target.value)} placeholder="Σύντομα ξεκινάει ακόμη μια σεζόν" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        </div>
       </div>
 
       <div className="mb-6">
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Attributes</label>
         <div className="grid grid-cols-2 gap-2">
-          {["Contain UFO", "Based on true events", "Contain SEX", "Series of one season", "Contain Religion", "Series is completed"].map((attr) => (
+          {getOpts(extraOptions, "attributes", [
+            "Contain UFO", "Based on true events", "Contain SEX",
+            "Series of one season", "Contain Religion", "Series is completed"
+          ]).map((attr) => (
             <label key={attr} className="flex items-center gap-2 text-sm text-zinc-600">
               <input type="checkbox" className="w-4 h-4 rounded border-zinc-300" />
               {attr}
@@ -591,24 +742,19 @@ function SeriesExtraFields() {
           </button>
         </div>
         <datalist id="countries-list-series">
-          {COUNTRIES.map((c) => <option key={c} value={c} />)}
+          {getOpts(extraOptions, "country", COUNTRIES).map((c) => <option key={c} value={c} />)}
         </datalist>
       </div>
 
       <div className="mb-6">
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Streaming</label>
         <div className="grid grid-cols-4 gap-3">
-          {[
-            { name: "Netflix", color: "#E50914", icon: "N" },
-            { name: "Disney+", color: "#113CCF", icon: "D+" },
-            { name: "Prime", color: "#00A8E1", icon: "P" },
-            { name: "YouTube", color: "#FF0000", icon: "▶" },
-          ].map((p) => (
-            <div key={p.name} className="flex flex-col items-center gap-2 p-4 border border-zinc-200 rounded-lg">
-              <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: p.color }}>
-                {p.icon}
+          {getOpts(extraOptions, "streaming", ["Netflix", "Disney+", "Prime", "YouTube"]).map((name) => (
+            <div key={name} className="flex flex-col items-center gap-2 p-4 border border-zinc-200 rounded-lg">
+              <div className="w-12 h-12 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-600 font-bold text-sm">
+                {name.slice(0, 2).toUpperCase()}
               </div>
-              <span className="text-xs font-medium text-zinc-600">{p.name}</span>
+              <span className="text-xs font-medium text-zinc-600">{name}</span>
               <input type="text" placeholder="Χωρίς Τίτλο" className="w-full text-center text-xs border border-zinc-200 rounded px-1 py-1.5 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
             </div>
           ))}
@@ -617,14 +763,53 @@ function SeriesExtraFields() {
 
       <SelectGrid label="Actors" placeholder="Επιλογή Ηθοποιού" count={8} />
       <SelectGrid label="Awards" placeholder="Επιλογή Βραβείου" count={8} />
-      <PlotField />
+      <div>
+        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Plot</label>
+        <textarea value={plot} onChange={(e) => setPlot(e.target.value)} placeholder="Type your message here..." className="w-full h-28 px-4 py-3 text-sm border border-zinc-200 rounded-lg resize-none focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+      </div>
     </div>
   );
-}
+});
 
 /* ─────────────── FOOD / RESTAURANT ─────────────── */
 
-function FoodExtraFields() {
+const FoodExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
+function FoodExtraFields({ data, regions, extraOptions }, ref) {
+  const [address, setAddress] = useState(data.address ?? "");
+  const [telephone, setTelephone] = useState(data.telephone ?? "");
+  const [lat, setLat] = useState(data.lat?.toString() ?? "");
+  const [lng, setLng] = useState(data.lng?.toString() ?? "");
+  const [plot, setPlot] = useState(data.plot ?? "");
+  const [cuisine, setCuisine] = useState(data.cuisine ?? "");
+  const [type, setType] = useState(data.type ?? "");
+  const [regionId, setRegionId] = useState(data.region_id ?? "");
+  const [deliveryLinks, setDeliveryLinks] = useState<Record<string, string>>(
+    typeof data.delivery_links === "object" && data.delivery_links ? data.delivery_links : {}
+  );
+  const [information, setInformation] = useState<Record<string, any>>(
+    typeof data.information === "object" && data.information ? data.information : {}
+  );
+
+  const parentRegions = regions.filter((r) => !r.parent_id);
+  const childRegions = regions.filter((r) => r.parent_id);
+
+  useImperativeHandle(ref, () => ({
+    getData() {
+      return {
+        address: address || null,
+        telephone: telephone || null,
+        lat: lat ? parseFloat(lat) : null,
+        lng: lng ? parseFloat(lng) : null,
+        cuisine: cuisine || null,
+        type: type || null,
+        region_id: regionId || null,
+        plot: plot || null,
+        delivery_links: Object.keys(deliveryLinks).length > 0 ? deliveryLinks : null,
+        information: Object.keys(information).length > 0 ? information : null,
+      };
+    }
+  }));
+
   return (
     <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
       <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-6">ExtraFields</h2>
@@ -632,20 +817,14 @@ function FoodExtraFields() {
       <AddressMapSection />
 
       {/* Region / Area */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Region</label>
-          <select className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white"><option>Select Region</option></select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Area</label>
-          <select className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white"><option>Select Area</option></select>
-        </div>
-      </div>
+      <RegionSelect regionId={regionId} setRegionId={setRegionId} parentRegions={parentRegions} childRegions={childRegions} />
 
       {/* Contact */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <FieldInput label="Telephone" placeholder="211 303 4793" />
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Telephone</label>
+          <input type="text" value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="211 303 4793" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        </div>
         <FieldInput label="Information" placeholder="https://www.facebook.com/..." />
         <div>
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Source</label>
@@ -659,7 +838,7 @@ function FoodExtraFields() {
       <div className="mb-6">
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Attributes</label>
         <div className="grid grid-cols-3 gap-x-8 gap-y-2">
-          {["Parking", "Wi-Fi", "Outdoor Seating", "Kid Friendly", "Pet Friendly", "Reservations", "Takeaway", "Delivery", "Live Music", "Accessible", "Smoking Area", "Credit Cards"].map((a) => (
+          {getOpts(extraOptions, "attributes", ["Parking", "Wi-Fi", "Outdoor Seating", "Kid Friendly", "Pet Friendly", "Reservations", "Takeaway", "Delivery", "Live Music", "Accessible", "Smoking Area", "Credit Cards"]).map((a) => (
             <label key={a} className="flex items-center gap-2 text-sm text-zinc-600 py-1">
               <input type="checkbox" className="w-4 h-4 rounded border-zinc-300" />
               {a}
@@ -672,18 +851,48 @@ function FoodExtraFields() {
       <div>
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Delivery</label>
         <div className="space-y-3">
-          <DeliveryRow name="efood" color="#E23744" placeholder="https://www.e-food.gr/delivery/lamprinica-group/foods/ita" />
-          <DeliveryRow name="Wolt" color="#009DE0" placeholder="https://wolt.com/el/grc/athens/restaurant/..." />
-          <DeliveryRow name="Box" color="#00B140" placeholder="https://box.gr/delivery/restaurant/..." />
+          {getOpts(extraOptions, "delivery_provider", ["efood", "Wolt", "Box"]).map((name) => (
+            <DeliveryRow key={name} name={name} color="#71717a" placeholder={`https://${name.toLowerCase()}.gr/...`} />
+          ))}
         </div>
       </div>
     </div>
   );
-}
+});
 
 /* ─────────────── BARS / CAFES ─────────────── */
 
-function BarsExtraFields() {
+const BarsExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
+function BarsExtraFields({ data, regions, extraOptions }, ref) {
+  const [address, setAddress] = useState(data.address ?? "");
+  const [telephone, setTelephone] = useState(data.telephone ?? "");
+  const [lat, setLat] = useState(data.lat?.toString() ?? "");
+  const [lng, setLng] = useState(data.lng?.toString() ?? "");
+  const [plot, setPlot] = useState(data.plot ?? "");
+  const [type, setType] = useState(data.type ?? "");
+  const [regionId, setRegionId] = useState(data.region_id ?? "");
+  const [information, setInformation] = useState<Record<string, any>>(
+    typeof data.information === "object" && data.information ? data.information : {}
+  );
+
+  const parentRegions = regions.filter((r) => !r.parent_id);
+  const childRegions = regions.filter((r) => r.parent_id);
+
+  useImperativeHandle(ref, () => ({
+    getData() {
+      return {
+        address: address || null,
+        telephone: telephone || null,
+        lat: lat ? parseFloat(lat) : null,
+        lng: lng ? parseFloat(lng) : null,
+        type: type || null,
+        region_id: regionId || null,
+        plot: plot || null,
+        information: Object.keys(information).length > 0 ? information : null,
+      };
+    }
+  }));
+
   return (
     <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
       <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-6">ExtraFields</h2>
@@ -691,20 +900,14 @@ function BarsExtraFields() {
       <AddressMapSection />
 
       {/* Region / Area */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Region</label>
-          <select className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white"><option>Select Region</option></select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Area</label>
-          <select className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white"><option>Select Area</option></select>
-        </div>
-      </div>
+      <RegionSelect regionId={regionId} setRegionId={setRegionId} parentRegions={parentRegions} childRegions={childRegions} />
 
       {/* Contact */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <FieldInput label="Telephone" placeholder="211 303 4793" />
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Telephone</label>
+          <input type="text" value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="211 303 4793" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        </div>
         <FieldInput label="Information" placeholder="https://www.facebook.com/..." />
         <div>
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Source</label>
@@ -718,7 +921,7 @@ function BarsExtraFields() {
       <div className="mb-6">
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Type</label>
         <div className="flex flex-wrap gap-3">
-          {["Cocktail Bar", "Wine Bar", "Jazz Bar", "Rooftop", "Beach Bar", "Coffee Shop", "Speakeasy", "Pub", "All-Day", "Sports Bar"].map((t) => (
+          {getOpts(extraOptions, "type", ["Cocktail Bar", "Wine Bar", "Jazz Bar", "Rooftop", "Beach Bar", "Coffee Shop", "Speakeasy", "Pub", "All-Day", "Sports Bar"]).map((t) => (
             <label key={t} className="flex items-center gap-2 px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 cursor-pointer hover:border-zinc-300">
               <input type="radio" name="barType" className="w-4 h-4" />
               {t}
@@ -731,7 +934,7 @@ function BarsExtraFields() {
       <div>
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Attributes</label>
         <div className="grid grid-cols-3 gap-x-8 gap-y-2">
-          {["Parking", "Wi-Fi", "Outdoor Seating", "Live Music", "DJ", "Pet Friendly", "Reservations", "Smoking Area", "Accessible", "Credit Cards", "Happy Hour", "Late Night"].map((a) => (
+          {getOpts(extraOptions, "attributes", ["Parking", "Wi-Fi", "Outdoor Seating", "Live Music", "DJ", "Pet Friendly", "Reservations", "Smoking Area", "Accessible", "Credit Cards", "Happy Hour", "Late Night"]).map((a) => (
             <label key={a} className="flex items-center gap-2 text-sm text-zinc-600 py-1">
               <input type="checkbox" className="w-4 h-4 rounded border-zinc-300" />
               {a}
@@ -741,12 +944,42 @@ function BarsExtraFields() {
       </div>
     </div>
   );
-}
+});
 
 /* ─────────────── HOTELS ─────────────── */
 
-function HotelExtraFields() {
-  const [availabilities, setAvailabilities] = useState([{ url: "https://www.booking.com/hotel/..." }]);
+const HotelExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
+function HotelExtraFields({ data, regions, extraOptions }, ref) {
+  const initLinks = Array.isArray(data.availability_links) ? data.availability_links : [{ url: "" }];
+  const [availabilities, setAvailabilities] = useState(initLinks.length ? initLinks : [{ url: "" }]);
+  const [address, setAddress] = useState(data.address ?? "");
+  const [telephone, setTelephone] = useState(data.telephone ?? "");
+  const [lat, setLat] = useState(data.lat?.toString() ?? "");
+  const [lng, setLng] = useState(data.lng?.toString() ?? "");
+  const [plot, setPlot] = useState(data.plot ?? "");
+  const [type, setType] = useState(data.type ?? "");
+  const [priceRange, setPriceRange] = useState(data.price_range ?? "");
+  const [regionId, setRegionId] = useState(data.region_id ?? "");
+  const [facilities, setFacilities] = useState<any>(data.facilities ?? {});
+
+  const parentRegions = regions.filter((r) => !r.parent_id);
+  const childRegions = regions.filter((r) => r.parent_id);
+
+  useImperativeHandle(ref, () => ({
+    getData() {
+      return {
+        address: address || null,
+        telephone: telephone || null,
+        lat: lat ? parseFloat(lat) : null,
+        lng: lng ? parseFloat(lng) : null,
+        type: type || null,
+        price_range: priceRange || null,
+        region_id: regionId || null,
+        plot: plot || null,
+        facilities: Object.keys(facilities).length > 0 ? facilities : null,
+      };
+    }
+  }));
 
   return (
     <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
@@ -755,20 +988,14 @@ function HotelExtraFields() {
       <AddressMapSection />
 
       {/* Region / Area */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Region</label>
-          <select className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white"><option>Select Region</option></select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Area</label>
-          <select className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white"><option>Select Area</option></select>
-        </div>
-      </div>
+      <RegionSelect regionId={regionId} setRegionId={setRegionId} parentRegions={parentRegions} childRegions={childRegions} />
 
       {/* Contact */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <FieldInput label="TELEPHONE" placeholder="211 303 4793" />
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Telephone</label>
+          <input type="text" value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="211 303 4793" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        </div>
         <FieldInput label="INFORMATION" placeholder="https://www.facebook.com/r-diadrom" />
         <div>
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Source</label>
@@ -779,8 +1006,8 @@ function HotelExtraFields() {
       {/* Type */}
       <div className="mb-6">
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Type</label>
-        <div className="flex gap-3">
-          {["Διαμέρισμα", "Δωμάτιο", "Camping", "Μονοκατοικία", "Ξενοδοχείο"].map((t) => (
+        <div className="flex gap-3 flex-wrap">
+          {getOpts(extraOptions, "type", ["Διαμέρισμα", "Δωμάτιο", "Camping", "Μονοκατοικία", "Ξενοδοχείο"]).map((t) => (
             <label key={t} className="flex flex-col items-center gap-2 p-4 border border-zinc-200 rounded-lg hover:border-zinc-300 min-w-[90px] cursor-pointer">
               <input type="radio" name="hotelType" className="sr-only peer" />
               <div className="w-10 h-10 rounded-full bg-zinc-100 peer-checked:bg-emerald-100 flex items-center justify-center">
@@ -796,19 +1023,19 @@ function HotelExtraFields() {
       <div className="grid grid-cols-3 gap-6 mb-6">
         <div>
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Παροχές</label>
-          {["Pool", "Bar", "Restaurant", "Parking", "Breakfast"].map((a) => (
+          {getOpts(extraOptions, "amenities_facilities", ["Pool", "Bar", "Restaurant", "Parking", "Breakfast"]).map((a) => (
             <label key={a} className="flex items-center gap-2 text-sm text-zinc-600 py-1"><input type="checkbox" className="w-4 h-4 rounded border-zinc-300" />{a}</label>
           ))}
         </div>
         <div>
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Δωμάτιο</label>
-          {["Sea view", "Mountain View", "Wifi"].map((a) => (
+          {getOpts(extraOptions, "amenities_room", ["Sea view", "Mountain View", "Wifi"]).map((a) => (
             <label key={a} className="flex items-center gap-2 text-sm text-zinc-600 py-1"><input type="checkbox" className="w-4 h-4 rounded border-zinc-300" />{a}</label>
           ))}
         </div>
         <div>
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Extra</label>
-          {["Pet Friendly", "Disabilities", "Transfer"].map((a) => (
+          {getOpts(extraOptions, "amenities_extra", ["Pet Friendly", "Disabilities", "Transfer"]).map((a) => (
             <label key={a} className="flex items-center gap-2 text-sm text-zinc-600 py-1"><input type="checkbox" className="w-4 h-4 rounded border-zinc-300" />{a}</label>
           ))}
         </div>
@@ -836,21 +1063,44 @@ function HotelExtraFields() {
       </div>
     </div>
   );
-}
+});
 
 /* ─────────────── RECIPES ─────────────── */
 
-function RecipeExtraFields() {
-  const [ingredients, setIngredients] = useState([
-    { qty: "2", unit: "κούπα", name: "αλεύρι ζαχαρι", link: "" },
-    { qty: "1", unit: "κούπα", name: "βούτυρο", link: "" },
-    { qty: "4", unit: "τεμ", name: "αυγά", link: "" },
-    { qty: "1", unit: "κούπα", name: "γάλα", link: "" },
-  ]);
-  const [steps, setSteps] = useState(["", "", "", ""]);
-  const [tips, setTips] = useState(["", ""]);
+const RecipeExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; extraOptions: ExtraOptions }>(
+function RecipeExtraFields({ data, extraOptions }, ref) {
+  const initIngredients = Array.isArray(data.ingredients) ? data.ingredients : [{ qty: "", unit: "", name: "", link: "" }];
+  const initSteps = Array.isArray(data.steps) ? data.steps.map((s: any) => typeof s === "string" ? s : s.text || "") : [""];
+  const initTips = Array.isArray(data.tips) ? data.tips.map((t: any) => typeof t === "string" ? t : t.text || "") : [""];
 
-  const UNITS = ["κ.γ.", "κ.σ.", "κούπα", "κούπες", "γρ.", "κιλό", "ml", "lt", "τεμ", "φέτες", "ματσάκι"];
+  const [ingredients, setIngredients] = useState(initIngredients.length ? initIngredients : [{ qty: "", unit: "", name: "", link: "" }]);
+  const [steps, setSteps] = useState(initSteps.length ? initSteps : [""]);
+  const [tips, setTips] = useState(initTips.length ? initTips : [""]);
+  const [level, setLevel] = useState(data.level ?? "");
+  const [calories, setCalories] = useState(data.calories?.toString() ?? "");
+  const [channel, setChannel] = useState(data.channel ?? "");
+  const [origin, setOrigin] = useState(data.origin ?? "");
+  const [yields, setYields] = useState(data.yields?.toString() ?? "");
+
+  useImperativeHandle(ref, () => ({
+    getData() {
+      return {
+        ingredients: ingredients.filter((i) => i.name),
+        steps: steps.filter(Boolean),
+        tips: tips.filter(Boolean).join("\n") || null,
+        level: level || null,
+        calories: calories ? parseInt(calories) : null,
+        channel: channel || null,
+        origin: origin || null,
+        yields: yields ? parseInt(yields) : null,
+      };
+    }
+  }));
+
+  const UNITS = getOpts(extraOptions, "unit", ["κ.γ.", "κ.σ.", "κούπα", "κούπες", "γρ.", "κιλό", "ml", "lt", "τεμ", "φέτες", "ματσάκι"]);
+  const NUTRITION = getOpts(extraOptions, "nutrition", ["Vegan", "Milk", "Sugar", "Gluten Free", "Nut Free"]);
+  const LEVELS = getOpts(extraOptions, "level", ["Easy", "Medium", "Hard"]);
+  const COMMON_INGREDIENTS = getOpts(extraOptions, "common_ingredient", ["αλεύρι", "ζάχαρη", "βούτυρο", "αυγά", "γάλα", "αλάτι", "πιπέρι", "ελαιόλαδο", "κρεμμύδι", "σκόρδο"]);
 
   return (
     <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
@@ -906,7 +1156,7 @@ function RecipeExtraFields() {
           </tbody>
         </table>
         <datalist id="ingredient-suggestions">
-          <option value="αλεύρι" /><option value="ζάχαρη" /><option value="βούτυρο" /><option value="αυγά" /><option value="γάλα" /><option value="αλάτι" /><option value="πιπέρι" /><option value="ελαιόλαδο" /><option value="κρεμμύδι" /><option value="σκόρδο" />
+          {COMMON_INGREDIENTS.map((i) => <option key={i} value={i} />)}
         </datalist>
       </div>
 
@@ -963,7 +1213,7 @@ function RecipeExtraFields() {
         <div>
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Level</label>
           <select className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white">
-            <option>Easy</option><option>Medium</option><option>Hard</option>
+            {LEVELS.map((l) => <option key={l}>{l}</option>)}
           </select>
         </div>
         <FieldInput label="Calories" placeholder="320" />
@@ -1004,8 +1254,8 @@ function RecipeExtraFields() {
 
       <div>
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Nutrition</label>
-        <div className="flex gap-4">
-          {["Vegan", "Milk", "Sugar", "Gluten Free", "Nut Free"].map((n) => (
+        <div className="flex gap-4 flex-wrap">
+          {NUTRITION.map((n) => (
             <label key={n} className="flex items-center gap-1.5 text-xs text-zinc-600">
               <input type="checkbox" className="w-3.5 h-3.5 rounded border-zinc-300" />
               {n}
@@ -1015,17 +1265,56 @@ function RecipeExtraFields() {
       </div>
     </div>
   );
-}
+});
 
 /* ─────────────── THEATER / EVENTS ─────────────── */
 
-function TheaterExtraFields() {
+const TheaterExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
+function TheaterExtraFields({ data, regions, extraOptions }, ref) {
   const [eventType, setEventType] = useState<"single" | "tour">("single");
   const [adsActive, setAdsActive] = useState(false);
-  const [dates, setDates] = useState([
+  const initDates = Array.isArray(data.dates) ? data.dates : [
     { status: "high", from: "10/03/25", to: "15/03/25", price: "25€" },
     { status: "low", from: "18/03/25", to: "22/03/25", price: "30€" },
-  ]);
+  ];
+  const [dates, setDates] = useState(initDates);
+  const [writer, setWriter] = useState(data.writer ?? "");
+  const [director, setDirector] = useState(data.director ?? "");
+  const [year, setYear] = useState(data.year?.toString() ?? "");
+  const [namePlace, setNamePlace] = useState(data.name_place ?? "");
+  const [address, setAddress] = useState(data.address ?? "");
+  const [lat, setLat] = useState(data.lat?.toString() ?? "");
+  const [lng, setLng] = useState(data.lng?.toString() ?? "");
+  const [ticketUrl, setTicketUrl] = useState(data.ticket_url ?? "");
+  const [price, setPrice] = useState(data.price ?? "");
+  const [availability, setAvailability] = useState(data.availability ?? "");
+  const [plot, setPlot] = useState(data.plot ?? data.description ?? "");
+  const [regionId, setRegionId] = useState(data.region_id ?? "");
+  const [actors, setActors] = useState<any[]>(Array.isArray(data.actors) ? data.actors : []);
+
+  const parentRegions = regions.filter((r) => !r.parent_id);
+  const childRegions = regions.filter((r) => r.parent_id);
+
+  useImperativeHandle(ref, () => ({
+    getData() {
+      return {
+        writer: writer || null,
+        director: director || null,
+        year: year ? parseInt(year) : null,
+        name_place: namePlace || null,
+        address: address || null,
+        lat: lat ? parseFloat(lat) : null,
+        lng: lng ? parseFloat(lng) : null,
+        ticket_url: ticketUrl || null,
+        price: price || null,
+        availability: availability || null,
+        plot: plot || null,
+        region_id: regionId || null,
+        dates: dates.length > 0 ? dates : null,
+        actors: actors.length > 0 ? actors : null,
+      };
+    }
+  }));
 
   return (
     <>
@@ -1076,9 +1365,9 @@ function TheaterExtraFields() {
                   <tr key={i} className="border-b border-zinc-100 last:border-b-0">
                     <td className="px-4 py-2.5">
                       <select defaultValue={d.status} className="px-2 py-1.5 text-sm border border-zinc-200 rounded bg-white focus:outline-none focus:border-zinc-400">
-                        <option value="high">Υψηλή</option>
-                        <option value="low">Χαμηλή</option>
-                        <option value="soldout">Εξαντλημένα</option>
+                        {getOpts(extraOptions, "availability", ["Υψηλή", "Χαμηλή", "Εξαντλημένα"]).map((s) => (
+                          <option key={s} value={s.toLowerCase()}>{s}</option>
+                        ))}
                       </select>
                     </td>
                     <td className="px-4 py-2.5"><input type="text" defaultValue={d.from} className="w-24 px-2 py-1.5 text-sm border border-zinc-200 rounded focus:outline-none focus:border-zinc-400" /></td>
@@ -1163,9 +1452,46 @@ function TheaterExtraFields() {
       </div>
     </>
   );
-}
+});
 
 /* ─────────────── SHARED COMPONENTS ─────────────── */
+
+function RegionSelect({ regionId, setRegionId, parentRegions, childRegions }: {
+  regionId: string;
+  setRegionId: (v: string) => void;
+  parentRegions: { id: string; name: string; parent_id: string | null }[];
+  childRegions: { id: string; name: string; parent_id: string | null }[];
+}) {
+  const selectedChild = childRegions.find((r) => r.id === regionId);
+  const selectedParentId = selectedChild?.parent_id ?? (parentRegions.find((r) => r.id === regionId)?.id ?? "");
+
+  return (
+    <div className="grid grid-cols-2 gap-4 mb-6">
+      <div>
+        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Region</label>
+        <select
+          value={selectedParentId}
+          onChange={(e) => setRegionId(e.target.value)}
+          className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white focus:outline-none focus:border-zinc-400"
+        >
+          <option value="">Select Region</option>
+          {parentRegions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Area</label>
+        <select
+          value={regionId}
+          onChange={(e) => setRegionId(e.target.value)}
+          className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white focus:outline-none focus:border-zinc-400"
+        >
+          <option value="">Select Area</option>
+          {childRegions.filter((r) => r.parent_id === selectedParentId).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+}
 
 function AddressMapSection({ showPlace, showActions }: { showPlace?: boolean; showActions?: boolean }) {
   return (
@@ -1243,11 +1569,11 @@ function PlotField() {
   );
 }
 
-function FieldInput({ label, placeholder }: { label: string; placeholder: string }) {
+function FieldInput({ label, placeholder, defaultValue }: { label: string; placeholder: string; defaultValue?: string }) {
   return (
     <div>
       {label && <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">{label}</label>}
-      <input type="text" placeholder={placeholder} defaultValue={placeholder} className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+      <input type="text" placeholder={placeholder} defaultValue={defaultValue ?? ""} className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
     </div>
   );
 }

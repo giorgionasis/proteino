@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { createBrowserClient } from "@supabase/ssr";
 import { AdminTabs } from "./AdminTabs";
 import { AdminPagination } from "./AdminPagination";
+import type { Database } from "@/types/database";
 
 const CATEGORY_TABS = [
   { label: "Αρχική", value: "all" },
@@ -19,113 +21,196 @@ const CATEGORY_TABS = [
 ];
 
 const SORT_OPTIONS = [
-  "Recent Published",
-  "Old Published",
-  "Recent Created",
-  "Old Created",
-  "Higher Rating",
-  "Lower Rating",
+  { label: "Recent Published", column: "published_at", ascending: false },
+  { label: "Old Published", column: "published_at", ascending: true },
+  { label: "Recent Created", column: "created_at", ascending: false },
+  { label: "Old Created", column: "created_at", ascending: true },
+  { label: "Higher Rating", column: "rating", ascending: false },
+  { label: "Lower Rating", column: "rating", ascending: true },
 ];
 
-const SUBCATEGORY_OPTIONS = [
-  "ALL",
-  "Αισθηματικές",
-  "Επιστημονικής Φαντασίας",
-  "Κοινωνικές",
-  "Κωμωδίες",
-  "Δράμα",
-  "Θρίλερ",
-  "Δράση",
-  "Animation",
-  "Ντοκιμαντέρ",
-  "Horror",
-];
-
-const AUTHOR_OPTIONS = [
-  "Stavroula Kyriakopoulou",
-  "Stavros Christou",
-  "Stavroula Papachristou",
-  "Stavr. Athanas.",
-  "Stavropoulos Apostolos",
-  "George Nasis",
-  "Lefteris Tsagk",
-  "Socrates Chartsis",
-  "Nikos Αβραμίδης",
-  "Konstantina Foutsi",
-  "Kostas Pap",
-];
+const PAGE_SIZE = 10;
 
 interface SuggestionRow {
   id: string;
   title: string;
-  category: string;
+  subcategory: string | null;
   author: string;
-  image: string | null;
+  coverUrl: string | null;
   rating: number | null;
-  ratingCount: number | null;
+  ratingCount: number;
   created: string;
   published: string | null;
   isPublished: boolean;
 }
 
-const MOCK_ROWS: SuggestionRow[] = [
-  { id: "1", title: "Inception", category: "Επιστημονικής Φα...", author: "Stavroula Kyriakop...", image: "/placeholder.jpg", rating: null, ratingCount: null, created: "05/11/2024 00:28", published: "06/11/2024 07:28", isPublished: true },
-  { id: "2", title: "Contagion", category: "Επιστημονικής Φα...", author: "George Nasis", image: "/placeholder.jpg", rating: null, ratingCount: null, created: "05/11/2024 00:28", published: "06/11/2024 07:28", isPublished: true },
-  { id: "3", title: "Εκεί που τραγουδούν ο...", category: "Επιστημονικής Φα...", author: "Stavroula Kyriakop...", image: "/placeholder.jpg", rating: 4.6, ratingCount: 23, created: "05/11/2024 00:28", published: null, isPublished: false },
-  { id: "4", title: "Interstellar", category: "Επιστημονικής Φα...", author: "Lefteris Tsagk", image: "/placeholder.jpg", rating: 4.5, ratingCount: 123, created: "05/11/2024 00:28", published: null, isPublished: false },
-  { id: "5", title: "Breaking Bad", category: "Επιστημονικής Φα...", author: "Socrates Chartsis", image: "/placeholder.jpg", rating: 4.3, ratingCount: 56, created: "05/11/2024 00:28", published: "06/11/2024 07:28", isPublished: true },
-  { id: "6", title: "Η Βοσκοπούλα", category: "Επιστημονικής Φα...", author: "Nikos Αβραμίδης", image: "/placeholder.jpg", rating: null, ratingCount: null, created: "05/11/2024 00:28", published: "06/11/2024 07:28", isPublished: true },
-  { id: "7", title: "Etouto Athens", category: "Επιστημονικής Φα...", author: "Mihalis Nasis", image: "/placeholder.jpg", rating: null, ratingCount: null, created: "05/11/2024 00:28", published: "06/11/2024 07:28", isPublished: true },
-  { id: "8", title: "Ο Θάνατος ενός τυρά...", category: "Επιστημονικής Φα...", author: "Ανδρέας Πουλά", image: "/placeholder.jpg", rating: null, ratingCount: null, created: "05/11/2024 00:28", published: "06/11/2024 07:28", isPublished: true },
-  { id: "9", title: "Lucifer", category: "Επιστημονικής Φα...", author: "Konstantina Foutsi", image: "/placeholder.jpg", rating: null, ratingCount: null, created: "05/11/2024 00:28", published: "06/11/2024 07:28", isPublished: true },
-  { id: "10", title: "Το δάρι", category: "Επιστημονικής Φα...", author: "Kostas Pap", image: "/placeholder.jpg", rating: null, ratingCount: null, created: "05/11/2024 00:28", published: "06/11/2024 07:28", isPublished: true },
-];
-
-interface FilterChip {
-  id: string;
-  label: string;
+interface Props {
+  authors: { id: string; display_name: string }[];
+  subcategories: { id: string; category: string; name: string }[];
 }
 
-type OpenFilter = "sort" | "category" | "author" | "rating" | "published" | "image" | null;
+type OpenFilter = "sort" | "subcategory" | "author" | "rating" | "published" | "image" | null;
 
-export function SuggestionsTable() {
-  const [activeTab, setActiveTab] = useState("movies");
+function getSupabase() {
+  return createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+
+export function SuggestionsTable({ authors, subcategories }: Props) {
+  const [activeTab, setActiveTab] = useState("all");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [sortOption, setSortOption] = useState("Recent Published");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [sortIdx, setSortIdx] = useState(0);
   const [openFilter, setOpenFilter] = useState<OpenFilter>(null);
-  const [filters, setFilters] = useState<FilterChip[]>([
-    { id: "1", label: "Επιστημονικής Φαντασίας" },
-    { id: "2", label: "Inactive" },
-    { id: "3", label: "Image: YES" },
-  ]);
 
-  // Filter states
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(["Επιστημονικής Φαντασίας"]);
+  const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>([]);
+  const [authorFilter, setAuthorFilter] = useState<string | null>(null);
   const [authorSearch, setAuthorSearch] = useState("");
-  const [ratingMode, setRatingMode] = useState("ALL");
-  const [ratingMin, setRatingMin] = useState("3.0");
-  const [ratingMax, setRatingMax] = useState("5");
-  const [publishFilter, setPublishFilter] = useState("ALL");
-  const [imageFilter, setImageFilter] = useState("ALL");
+  const [publishFilter, setPublishFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ALL");
+  const [imageFilter, setImageFilter] = useState<"ALL" | "YES" | "NO">("ALL");
 
-  function removeFilter(id: string) {
-    setFilters((f) => f.filter((c) => c.id !== id));
-  }
+  const [rows, setRows] = useState<SuggestionRow[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Reset page on filter change
+  useEffect(() => { setPage(1); }, [activeTab, debouncedSearch, sortIdx, selectedSubcategories, authorFilter, publishFilter, imageFilter]);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    const supabase = getSupabase();
+    const sort = SORT_OPTIONS[sortIdx];
+
+    let query = supabase
+      .from("suggestions")
+      .select(`
+        id,
+        rating,
+        is_published,
+        created_at,
+        published_at,
+        items!inner(id, title, category, subcategory_id, cover_url, rating_count),
+        users!inner(display_name)
+      `, { count: "exact" });
+
+    // Category filter
+    if (activeTab !== "all") {
+      query = query.eq("items.category", activeTab);
+    }
+
+    // Subcategory filter
+    if (selectedSubcategories.length > 0) {
+      query = query.in("items.subcategory_id", selectedSubcategories);
+    }
+
+    // Author filter
+    if (authorFilter) {
+      query = query.eq("user_id", authorFilter);
+    }
+
+    // Published filter
+    if (publishFilter === "ACTIVE") {
+      query = query.eq("is_published", true);
+    } else if (publishFilter === "INACTIVE") {
+      query = query.eq("is_published", false);
+    }
+
+    // Image filter
+    if (imageFilter === "YES") {
+      query = query.not("items.cover_url", "is", null);
+    } else if (imageFilter === "NO") {
+      query = query.is("items.cover_url", null);
+    }
+
+    // Search
+    if (debouncedSearch) {
+      query = query.ilike("items.title", `%${debouncedSearch}%`);
+    }
+
+    // Sort
+    query = query.order(sort.column, { ascending: sort.ascending, nullsFirst: false });
+
+    // Pagination
+    const from = (page - 1) * PAGE_SIZE;
+    query = query.range(from, from + PAGE_SIZE - 1);
+
+    const { data, count, error } = await query;
+
+    if (error) {
+      console.error("Suggestions fetch error:", error);
+      setRows([]);
+      setTotalItems(0);
+    } else {
+      const mapped: SuggestionRow[] = (data || []).map((row: any) => {
+        const item = row.items;
+        const user = row.users;
+        const subcat = subcategories.find(s => s.id === item.subcategory_id);
+        return {
+          id: row.id,
+          title: item.title,
+          subcategory: subcat?.name ?? null,
+          author: user.display_name,
+          coverUrl: item.cover_url,
+          rating: row.rating,
+          ratingCount: item.rating_count ?? 0,
+          created: formatDate(row.created_at),
+          published: row.published_at ? formatDate(row.published_at) : null,
+          isPublished: row.is_published,
+        };
+      });
+      setRows(mapped);
+      setTotalItems(count ?? 0);
+    }
+    setLoading(false);
+  }, [activeTab, page, debouncedSearch, sortIdx, selectedSubcategories, authorFilter, publishFilter, imageFilter, subcategories]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const filteredAuthors = authorSearch
+    ? authors.filter((a) => a.display_name.toLowerCase().includes(authorSearch.toLowerCase()))
+    : authors.slice(0, 10);
+
+  const currentSubcats = activeTab === "all"
+    ? subcategories
+    : subcategories.filter(s => s.category === activeTab);
+
+  const totalPages = Math.ceil(totalItems / PAGE_SIZE);
 
   function toggleFilter(filter: OpenFilter) {
     setOpenFilter((prev) => (prev === filter ? null : filter));
   }
 
-  function toggleCategory(cat: string) {
-    setSelectedCategories((prev) =>
-      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+  function toggleSubcategory(id: string) {
+    setSelectedSubcategories((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
     );
   }
 
-  const filteredAuthors = authorSearch
-    ? AUTHOR_OPTIONS.filter((a) => a.toLowerCase().includes(authorSearch.toLowerCase()))
-    : [];
+  // Active filter chips
+  const chips: { id: string; label: string; clear: () => void }[] = [];
+  if (selectedSubcategories.length > 0) {
+    const names = selectedSubcategories.map(id => subcategories.find(s => s.id === id)?.name ?? id);
+    chips.push({ id: "subcat", label: names.join(", "), clear: () => setSelectedSubcategories([]) });
+  }
+  if (authorFilter) {
+    const name = authors.find(a => a.id === authorFilter)?.display_name ?? "Author";
+    chips.push({ id: "author", label: name, clear: () => setAuthorFilter(null) });
+  }
+  if (publishFilter !== "ALL") {
+    chips.push({ id: "publish", label: publishFilter, clear: () => setPublishFilter("ALL") });
+  }
+  if (imageFilter !== "ALL") {
+    chips.push({ id: "image", label: `Image: ${imageFilter}`, clear: () => setImageFilter("ALL") });
+  }
 
   return (
     <div>
@@ -143,20 +228,21 @@ export function SuggestionsTable() {
             New Suggestion
           </Link>
         </div>
+        {loading && <span className="text-xs text-zinc-400 animate-pulse">Loading...</span>}
       </div>
 
       {/* Category tabs */}
       <AdminTabs tabs={CATEGORY_TABS} active={activeTab} onChange={setActiveTab} />
 
       {/* Filter row */}
-      <div className="flex items-center gap-3 py-4">
+      <div className="flex items-center gap-3 py-4 flex-wrap">
         {/* Sort dropdown */}
         <div className="relative">
           <button
             onClick={() => toggleFilter("sort")}
             className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 border border-zinc-200 rounded-lg hover:bg-zinc-50"
           >
-            {sortOption}
+            {SORT_OPTIONS[sortIdx].label}
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M7 15l5 5 5-5M7 9l5-5 5 5" />
             </svg>
@@ -164,16 +250,16 @@ export function SuggestionsTable() {
           {openFilter === "sort" && (
             <DropdownPanel onClose={() => setOpenFilter(null)}>
               <div className="w-[200px] py-1">
-                {SORT_OPTIONS.map((opt) => (
+                {SORT_OPTIONS.map((opt, i) => (
                   <button
-                    key={opt}
-                    onClick={() => { setSortOption(opt); setOpenFilter(null); }}
+                    key={opt.label}
+                    onClick={() => { setSortIdx(i); setOpenFilter(null); }}
                     className={`w-full text-left px-4 py-2 text-sm hover:bg-zinc-50 flex items-center justify-between ${
-                      sortOption === opt ? "text-zinc-900 font-medium" : "text-zinc-600"
+                      sortIdx === i ? "text-zinc-900 font-medium" : "text-zinc-600"
                     }`}
                   >
-                    {opt}
-                    {sortOption === opt && <span className="w-2 h-2 rounded-full bg-zinc-900" />}
+                    {opt.label}
+                    {sortIdx === i && <span className="w-2 h-2 rounded-full bg-zinc-900" />}
                   </button>
                 ))}
               </div>
@@ -182,10 +268,10 @@ export function SuggestionsTable() {
         </div>
 
         {/* Active filter chips */}
-        {filters.map((f) => (
-          <span key={f.id} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-zinc-700 bg-zinc-100 rounded-full">
-            {f.label}
-            <button onClick={() => removeFilter(f.id)} className="text-zinc-400 hover:text-zinc-600">
+        {chips.map((c) => (
+          <span key={c.id} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-zinc-700 bg-zinc-100 rounded-full">
+            {c.label}
+            <button onClick={c.clear} className="text-zinc-400 hover:text-zinc-600">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
               </svg>
@@ -193,7 +279,7 @@ export function SuggestionsTable() {
           </span>
         ))}
 
-        {/* Spacer + search */}
+        {/* Search */}
         <div className="ml-auto flex items-center gap-3">
           <div className="relative">
             <input
@@ -207,12 +293,6 @@ export function SuggestionsTable() {
               <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
           </div>
-          <button className="p-2 text-zinc-400 hover:text-zinc-600 border border-zinc-200 rounded-lg">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
-            </svg>
-          </button>
         </div>
       </div>
 
@@ -223,32 +303,36 @@ export function SuggestionsTable() {
             <tr className="bg-zinc-50 border-b border-zinc-200">
               <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">Title</th>
 
-              {/* CATEGORY filter header */}
+              {/* SUBCATEGORY filter header */}
               <th className="px-4 py-3 text-left relative">
                 <button
-                  onClick={() => toggleFilter("category")}
+                  onClick={() => toggleFilter("subcategory")}
                   className="flex items-center gap-1 text-xs font-semibold text-zinc-500 uppercase tracking-wide hover:text-zinc-700"
                 >
-                  CATEGORY
+                  SUBCATEGORY
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M6 9l6 6 6-6" /></svg>
                 </button>
-                {openFilter === "category" && (
+                {openFilter === "subcategory" && (
                   <DropdownPanel onClose={() => setOpenFilter(null)}>
-                    <div className="w-[220px] py-1">
-                      {SUBCATEGORY_OPTIONS.map((cat) => (
+                    <div className="w-[220px] py-1 max-h-[300px] overflow-y-auto">
+                      <button
+                        onClick={() => setSelectedSubcategories([])}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-zinc-50 ${
+                          selectedSubcategories.length === 0 ? "text-zinc-900 font-medium bg-zinc-50" : "text-zinc-600"
+                        }`}
+                      >
+                        ALL
+                      </button>
+                      {currentSubcats.map((cat) => (
                         <button
-                          key={cat}
-                          onClick={() => cat === "ALL" ? setSelectedCategories([]) : toggleCategory(cat)}
+                          key={cat.id}
+                          onClick={() => toggleSubcategory(cat.id)}
                           className={`w-full text-left px-4 py-2 text-sm hover:bg-zinc-50 flex items-center justify-between ${
-                            (cat === "ALL" && selectedCategories.length === 0) || selectedCategories.includes(cat)
-                              ? "text-zinc-900 font-medium bg-zinc-50"
-                              : "text-zinc-600"
+                            selectedSubcategories.includes(cat.id) ? "text-zinc-900 font-medium bg-zinc-50" : "text-zinc-600"
                           }`}
                         >
-                          {cat}
-                          {((cat === "ALL" && selectedCategories.length === 0) || selectedCategories.includes(cat)) && (
-                            <span className="w-2 h-2 rounded-full bg-zinc-900" />
-                          )}
+                          {cat.name}
+                          {selectedSubcategories.includes(cat.id) && <span className="w-2 h-2 rounded-full bg-zinc-900" />}
                         </button>
                       ))}
                     </div>
@@ -273,7 +357,7 @@ export function SuggestionsTable() {
                           type="text"
                           value={authorSearch}
                           onChange={(e) => setAuthorSearch(e.target.value)}
-                          placeholder=""
+                          placeholder="Search author..."
                           autoFocus
                           className="w-full pl-3 pr-8 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:border-zinc-400"
                         />
@@ -285,19 +369,17 @@ export function SuggestionsTable() {
                           </button>
                         )}
                       </div>
-                      {authorSearch && filteredAuthors.length > 0 && (
-                        <div className="max-h-[200px] overflow-y-auto">
-                          {filteredAuthors.map((a) => (
-                            <button
-                              key={a}
-                              onClick={() => { setAuthorSearch(a); setOpenFilter(null); }}
-                              className="w-full text-left px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 rounded"
-                            >
-                              <HighlightMatch text={a} query={authorSearch} />
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      <div className="max-h-[200px] overflow-y-auto">
+                        {filteredAuthors.map((a) => (
+                          <button
+                            key={a.id}
+                            onClick={() => { setAuthorFilter(a.id); setAuthorSearch(""); setOpenFilter(null); }}
+                            className="w-full text-left px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 rounded"
+                          >
+                            {authorSearch ? <HighlightMatch text={a.display_name} query={authorSearch} /> : a.display_name}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </DropdownPanel>
                 )}
@@ -315,7 +397,7 @@ export function SuggestionsTable() {
                 {openFilter === "image" && (
                   <DropdownPanel onClose={() => setOpenFilter(null)}>
                     <div className="w-[140px] py-1">
-                      {["ALL", "YES", "NO"].map((opt) => (
+                      {(["ALL", "YES", "NO"] as const).map((opt) => (
                         <button
                           key={opt}
                           onClick={() => { setImageFilter(opt); setOpenFilter(null); }}
@@ -332,79 +414,7 @@ export function SuggestionsTable() {
                 )}
               </th>
 
-              {/* RATING filter header */}
-              <th className="px-4 py-3 text-left relative">
-                <button
-                  onClick={() => toggleFilter("rating")}
-                  className="flex items-center gap-1 text-xs font-semibold text-zinc-500 uppercase tracking-wide hover:text-zinc-700"
-                >
-                  RATING
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M6 9l6 6 6-6" /></svg>
-                </button>
-                {openFilter === "rating" && (
-                  <DropdownPanel onClose={() => setOpenFilter(null)}>
-                    <div className="w-[240px] p-4">
-                      <div className="space-y-2 mb-4">
-                        {[
-                          { label: "ALL", value: "ALL" },
-                          { label: "3 ★ - 4 ★", value: "3-4" },
-                          { label: "4 ★ - 5 ★", value: "4-5" },
-                        ].map((opt) => (
-                          <label key={opt.value} className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="ratingFilter"
-                              checked={ratingMode === opt.value}
-                              onChange={() => setRatingMode(opt.value)}
-                              className="w-4 h-4 text-zinc-900 border-zinc-300"
-                            />
-                            {opt.label}
-                          </label>
-                        ))}
-                      </div>
-
-                      <div className="border-t border-zinc-200 pt-3">
-                        <p className="text-xs font-medium text-zinc-500 mb-2">Range</p>
-                        <input
-                          type="range"
-                          min="0"
-                          max="5"
-                          step="0.1"
-                          className="w-full mb-3 accent-zinc-900"
-                        />
-                        <div className="flex items-center gap-2">
-                          <div>
-                            <p className="text-[10px] text-zinc-400 mb-1">Min</p>
-                            <div className="flex items-center gap-1 px-3 py-1.5 border border-zinc-200 rounded text-sm text-zinc-700">
-                              <span className="text-amber-500">★</span>
-                              <input
-                                type="text"
-                                value={ratingMin}
-                                onChange={(e) => setRatingMin(e.target.value)}
-                                className="w-8 text-sm focus:outline-none"
-                              />
-                            </div>
-                          </div>
-                          <span className="text-zinc-400 mt-4">—</span>
-                          <div>
-                            <p className="text-[10px] text-zinc-400 mb-1">Max</p>
-                            <div className="flex items-center gap-1 px-3 py-1.5 border border-zinc-200 rounded text-sm text-zinc-700">
-                              <span className="text-amber-500">★</span>
-                              <input
-                                type="text"
-                                value={ratingMax}
-                                onChange={(e) => setRatingMax(e.target.value)}
-                                className="w-8 text-sm focus:outline-none"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </DropdownPanel>
-                )}
-              </th>
-
+              <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">Rating</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">Created</th>
 
               {/* PUBLISHED filter header */}
@@ -419,7 +429,7 @@ export function SuggestionsTable() {
                 {openFilter === "published" && (
                   <DropdownPanel onClose={() => setOpenFilter(null)}>
                     <div className="w-[160px] py-1">
-                      {["ALL", "ACTIVE", "INACTIVE"].map((opt) => (
+                      {(["ALL", "ACTIVE", "INACTIVE"] as const).map((opt) => (
                         <button
                           key={opt}
                           onClick={() => { setPublishFilter(opt); setOpenFilter(null); }}
@@ -438,19 +448,34 @@ export function SuggestionsTable() {
             </tr>
           </thead>
           <tbody>
-            {MOCK_ROWS.map((row) => (
+            {rows.length === 0 && !loading && (
+              <tr>
+                <td colSpan={7} className="px-4 py-12 text-center text-sm text-zinc-400">
+                  No suggestions found
+                </td>
+              </tr>
+            )}
+            {rows.map((row) => (
               <tr key={row.id} className="border-b border-zinc-100 hover:bg-zinc-50/50 transition-colors">
                 <td className="px-4 py-3">
                   <Link href={`/admin/suggestions/${row.id}`} className="text-sm text-zinc-800 hover:underline font-medium">
                     {row.title}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-sm text-zinc-600">{row.category}</td>
+                <td className="px-4 py-3 text-sm text-zinc-600">{row.subcategory ?? "—"}</td>
                 <td className="px-4 py-3 text-sm text-zinc-700 font-medium">{row.author}</td>
                 <td className="px-4 py-3">
-                  {row.image && (
+                  {row.coverUrl ? (
                     <div className="w-10 h-14 bg-zinc-200 rounded overflow-hidden">
-                      <div className="w-full h-full bg-gradient-to-br from-zinc-300 to-zinc-200" />
+                      <img src={row.coverUrl} alt="" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-10 h-14 bg-zinc-100 rounded flex items-center justify-center">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-zinc-300">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <path d="M21 15l-5-5L5 21" />
+                      </svg>
                     </div>
                   )}
                 </td>
@@ -458,9 +483,11 @@ export function SuggestionsTable() {
                   {row.rating !== null ? (
                     <span className="text-sm text-zinc-700">
                       <span className="text-amber-500 mr-1">★</span>
-                      {row.rating} ({row.ratingCount})
+                      {row.rating.toFixed(1)} {row.ratingCount > 0 && `(${row.ratingCount})`}
                     </span>
-                  ) : null}
+                  ) : (
+                    <span className="text-sm text-zinc-300">—</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-sm text-zinc-500">{row.created}</td>
                 <td className="px-4 py-3">
@@ -477,13 +504,15 @@ export function SuggestionsTable() {
       </div>
 
       {/* Pagination */}
-      <AdminPagination
-        page={page}
-        totalPages={16}
-        totalItems={156}
-        pageSize={10}
-        onPageChange={setPage}
-      />
+      {totalItems > 0 && (
+        <AdminPagination
+          page={page}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
+        />
+      )}
     </div>
   );
 }
@@ -517,4 +546,10 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
       {text.slice(idx + query.length)}
     </>
   );
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("el-GR", { day: "2-digit", month: "2-digit", year: "numeric" }) +
+    " " + d.toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit" });
 }

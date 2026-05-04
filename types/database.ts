@@ -34,10 +34,37 @@ export interface Database {
         Insert: Omit<Database["public"]["Tables"]["users"]["Row"], "created_at">;
         Update: Partial<Database["public"]["Tables"]["users"]["Row"]>;
       };
+      subcategories: {
+        Row: {
+          id: string;
+          category: string;
+          name: string;
+          slug: string;
+          description_seo: string | null;
+          display_order: number;
+          is_published: boolean;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["subcategories"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["subcategories"]["Row"]>;
+      };
+      regions: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string;
+          parent_id: string | null;
+          display_order: number;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["regions"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["regions"]["Row"]>;
+      };
       items: {
         Row: {
           id: string;
           category: string;
+          subcategory_id: string | null;
           title: string;
           slug: string;
           description_seo: string | null;
@@ -59,11 +86,11 @@ export interface Database {
       item_movies: {
         Row: {
           item_id: string;
-          director: string | null;
+          director: Json;
           duration_min: number | null;
           release_date: string | null;
           end_date: string | null;
-          country: string | null;
+          country: Json;
           language: string | null;
           channel: string | null;
           trailer_url: string | null;
@@ -71,6 +98,7 @@ export interface Database {
           plot: string | null;
           actors: Json;
           awards: Json;
+          attributes: Json;
         };
         Insert: Database["public"]["Tables"]["item_movies"]["Row"];
         Update: Partial<Database["public"]["Tables"]["item_movies"]["Row"]>;
@@ -79,16 +107,19 @@ export interface Database {
         Row: {
           item_id: string;
           director: string | null;
-          seasons: number | null;
+          seasons: Json;
           release_date: string | null;
           end_date: string | null;
-          country: string | null;
+          country: Json;
           language: string | null;
           channel: string | null;
           trailer_url: string | null;
           status_message: string | null;
           plot: string | null;
           actors: Json;
+          awards: Json;
+          attributes: Json;
+          streaming_platforms: Json;
         };
         Insert: Database["public"]["Tables"]["item_series"]["Row"];
         Update: Partial<Database["public"]["Tables"]["item_series"]["Row"]>;
@@ -104,6 +135,8 @@ export interface Database {
           plot: string | null;
           is_trilogy: boolean;
           trilogy_name: string | null;
+          buy_links: Json;
+          author_info: Json;
         };
         Insert: Database["public"]["Tables"]["item_books"]["Row"];
         Update: Partial<Database["public"]["Tables"]["item_books"]["Row"]>;
@@ -117,6 +150,9 @@ export interface Database {
           telephone: string | null;
           lat: number | null;
           lng: number | null;
+          region_id: string | null;
+          source: string | null;
+          attributes: Json;
           delivery_links: Json;
           external_ratings: Json;
           information: Json;
@@ -133,11 +169,13 @@ export interface Database {
           origin: string | null;
           level: string | null;
           channel: string | null;
+          chef: string | null;
+          website: string | null;
           duration: Json;
           nutrition: Json;
           ingredients: Json;
           steps: Json;
-          tips: string | null;
+          tips: Json;
         };
         Insert: Database["public"]["Tables"]["item_recipes"]["Row"];
         Update: Partial<Database["public"]["Tables"]["item_recipes"]["Row"]>;
@@ -150,6 +188,9 @@ export interface Database {
           telephone: string | null;
           lat: number | null;
           lng: number | null;
+          region_id: string | null;
+          source: string | null;
+          attributes: Json;
           external_ratings: Json;
           information: Json;
           plot: string | null;
@@ -165,8 +206,11 @@ export interface Database {
           telephone: string | null;
           lat: number | null;
           lng: number | null;
+          region_id: string | null;
+          source: string | null;
           price_range: string | null;
           facilities: Json;
+          availability_links: Json;
           information: Json;
           external_ratings: Json;
           plot: string | null;
@@ -181,13 +225,13 @@ export interface Database {
           address: string | null;
           lat: number | null;
           lng: number | null;
+          region_id: string | null;
           type: string | null;
+          event_mode: string | null;
           year: number | null;
           writer: string | null;
           director: string | null;
-          availability: string | null;
           ticket_url: string | null;
-          price: string | null;
           actors: Json;
           dates: Json;
           plot: string | null;
@@ -202,11 +246,14 @@ export interface Database {
           address: string | null;
           lat: number | null;
           lng: number | null;
+          region_id: string | null;
           event_type: string | null;
-          availability: string | null;
+          event_mode: string | null;
           status: string | null;
+          year: number | null;
+          writer: string | null;
+          director: string | null;
           ticket_url: string | null;
-          price: string | null;
           performers: Json;
           dates: Json;
           description: string | null;

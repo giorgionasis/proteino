@@ -683,8 +683,18 @@ TMDB_API_KEY, GOOGLE_BOOKS_API_KEY, GOOGLE_PLACES_API_KEY, TICKETMASTER_API_KEY
 - Level 1: Genre chips horizontal scroll
 - Level 2: ⚙ Φίλτρα button → slide-up panel with advanced filters
 
-### Subcategories → Attributes (✅ decided + built)
-No subcategory navigation. Genres/types are attributes/tags in item metadata jsonb.
+### Subcategories → Proper Table (✅ revised decision)
+Subcategories are a proper `subcategories` table (id, category, name, slug, description_seo, display_order, is_published).
+Items reference via `subcategory_id` FK. Subcategory = genre/type for ALL categories (never location):
+- Movies/Series/Books: genre (Δράμα, Κωμωδία, Θρίλερ...)
+- Food: cuisine (Ελληνική, Ιταλική, Ασιατική...)
+- Bars: type (Cocktail Bar, Wine Bar, Jazz Bar...)
+- Hotels: accommodation type (Ξενοδοχείο, Διαμέρισμα, Camping...)
+- Theater: genre (Θέατρο, Μιούζικαλ, Stand-up...)
+- Events: type (Συναυλία, Festival, Έκθεση...)
+- Recipes: type (Κυρίως Πιάτο, Ορεκτικά, Επιδόρπια...)
+Location filtering uses the `regions` table (id, name, slug, parent_id, display_order) — two-level hierarchy: Region → Area.
+Frontend category page tab dimension is independent of the DB model (can tab by city OR by subcategory per category).
 
 ### Category Access Points (✅ built)
 1. Home screen "Εξερεύνησε" grid
@@ -749,7 +759,7 @@ MySQL DB with: users, items/objects (categories + subcategories), suggestions, c
 
 ### Mapping
 - categories → constants/categories.ts (static, no migration needed)
-- subcategories → item.metadata.tags[] jsonb (transform during migration)
+- subcategories → subcategories table (id, category, name, slug, display_order, is_published)
 - items/objects → items + category extension tables
 - suggestions → suggestions table
 - comments → comments table

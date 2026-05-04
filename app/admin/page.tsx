@@ -1,17 +1,35 @@
 import Link from "next/link";
+import { createAdminClient } from "@/lib/supabase/admin";
 
-export default function AdminOverviewPage() {
+export default async function AdminOverviewPage() {
+  const supabase = createAdminClient();
+
+  const now = new Date();
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+
+  const [suggestionsRes, usersRes, itemsRes, recentSuggestionsRes] = await Promise.all([
+    supabase.from("suggestions").select("id", { count: "exact", head: true }).eq("is_published", false),
+    supabase.from("users").select("id", { count: "exact", head: true }),
+    supabase.from("items").select("id", { count: "exact", head: true }),
+    supabase.from("suggestions").select("id", { count: "exact", head: true }).gte("created_at", oneDayAgo),
+  ]);
+
+  const unpublished = suggestionsRes.count ?? 0;
+  const totalUsers = usersRes.count ?? 0;
+  const totalItems = itemsRes.count ?? 0;
+  const lastDaySuggestions = recentSuggestionsRes.count ?? 0;
+
   const quickCreate = [
-    { label: "Category", href: "/admin/categories/new", icon: "grid" },
-    { label: "ExtraField", href: "/admin/extra-fields/new", icon: "diamond" },
+    { label: "Suggestion", href: "/admin/suggestions/new", icon: "diamond" },
     { label: "Collection", href: "/admin/content/collections/new", icon: "collection" },
     { label: "Activity", href: "/admin/content/activities/new", icon: "activity" },
   ];
 
   const stats = [
-    { value: 4, label: "Reviews\nUnresolved", color: "bg-red-500", href: "/admin/reviews" },
-    { value: 13, label: "Last Day\nSuggestions", color: "bg-emerald-600", href: "/admin/suggestions" },
-    { value: 2, label: "Movies\nTonight", color: "bg-zinc-700", href: "/admin/content/movies-tonight" },
+    { value: unpublished, label: "Unpublished\nSuggestions", color: "bg-red-500", href: "/admin/suggestions" },
+    { value: lastDaySuggestions, label: "Last 24h\nSuggestions", color: "bg-emerald-600", href: "/admin/suggestions" },
+    { value: totalUsers, label: "Total\nUsers", color: "bg-blue-600", href: "/admin/users" },
+    { value: totalItems, label: "Total\nItems", color: "bg-zinc-700", href: "/admin/categories" },
   ];
 
   return (
@@ -36,15 +54,15 @@ export default function AdminOverviewPage() {
       </div>
 
       {/* Stats cards */}
-      <div className="flex gap-4">
+      <div className="flex gap-4 flex-wrap">
         {stats.map((s) => (
           <Link
             key={s.label}
             href={s.href}
-            className="flex-1 max-w-[220px] border border-zinc-200 rounded-xl p-5 hover:border-zinc-300 transition-colors"
+            className="flex-1 min-w-[180px] max-w-[220px] border border-zinc-200 rounded-xl p-5 hover:border-zinc-300 transition-colors"
           >
             <div className="flex items-start justify-between mb-4">
-              <span className={`w-8 h-8 rounded-lg ${s.color} text-white text-sm font-bold flex items-center justify-center`}>
+              <span className={`min-w-[32px] h-8 px-2 rounded-lg ${s.color} text-white text-sm font-bold flex items-center justify-center`}>
                 {s.value}
               </span>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-zinc-400" strokeLinecap="round">
@@ -64,8 +82,6 @@ export default function AdminOverviewPage() {
 function QuickIcon({ type }: { type: string }) {
   const cls = "w-4 h-4 text-zinc-500";
   switch (type) {
-    case "grid":
-      return <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>;
     case "diamond":
       return <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 2l10 10-10 10L2 12z" /></svg>;
     case "collection":

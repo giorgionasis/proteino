@@ -1,11 +1,9 @@
-# Proteino — Admin Panel Specification
+# Proteino — Admin Panel
 
-> ✅ IN PROGRESS — Shell, routing, and core pages built. Data layer pending.
-> Route: `/admin` — protected, requires admin role in public.users.role
+> Route: `/admin` — protected via `public.users.role === 'admin'` (currently dev bypass enabled)
+> Last updated: 2026-05-04
 
-This file documents the complete admin panel architecture and implementation status.
-The admin panel is the back-office for administrators to manage
-all platform content, structure, metadata, and what users see on the front page.
+The admin panel is the back-office for managing all platform content, structure, metadata, and what users see on the frontend.
 
 ---
 
@@ -20,33 +18,43 @@ Admins never touch code. Everything is managed through the admin UI.
 
 ## Implementation Status
 
-| Section | Status | Notes |
-|---|---|---|
-| Shell & Layout | ✅ Done | Sidebar, routing, responsive desktop layout |
-| Overview | ✅ Done | Dashboard with stats cards, quick actions |
-| Categories | ✅ Done | List + drill-down + create/edit form |
-| Suggestions | ✅ Done | List table + full editor with category-specific ExtraFields |
-| Extra Fields | ✅ Done | Table per category with values management |
-| Content: Collections | ✅ Done | List + create flow + live mobile preview |
-| Content: Activities | ✅ Done | Table + New Activity + New Category/Type form |
-| Content: Movies Tonight | ✅ Done | Table with inline edit/remove + New Movie form |
-| Content: Filters | ✅ Done | Explorer + Frontend filter config per category |
-| Reviews | ✅ Done | Table with moderation actions |
-| Users | ✅ Done | Table with user management |
-| Settings | ⏳ Skeleton | Page exists, no screenshot reference yet |
+| Section | Status | Real Data | Notes |
+|---|---|---|---|
+| Shell & Layout | ✅ | — | Sidebar, routing, dev auth bypass |
+| Overview | ✅ | ✅ | Real Supabase stats (unpublished, last 24h, totals) |
+| Categories list | ✅ | ✅ | Real counts per category |
+| Category drill-down | ✅ | ✅ | Subcategory CRUD, reorder, publish toggle |
+| Suggestions list | ✅ | ✅ | Filters: category/subcategory/author/published/search/sort |
+| Suggestion editor | ✅ | ✅ | Saves items + suggestions + extension tables; DB-backed extra options |
+| Users | ✅ | ✅ | Search, sort, pagination, badges by level |
+| Reviews list | ✅ | ✅ | Votes (▲/▼), report badges, hide/delete inline, filter modes |
+| Review detail | ✅ | ✅ | Reports section, hide w/ reason, author flagged history |
+| Extra Fields | ✅ | ✅ | Collapsed cards + wizard (paste options bulk) |
+| Data Quality | ✅ | ✅ | NULL subcategory triage + inline subcategory creation |
+| Categories — New | ⏳ | ❌ | Mock UI; rare use case |
+| Suggestions — New | ⏳ | ❌ | Placeholder; rare (admin-created suggestions) |
+| Content: Collections | ⏳ | ❌ | Mock UI built; needs real data layer |
+| Content: Activities | ⏳ | ❌ | Mock UI built; needs schema + real data |
+| Content: Filters | ⏳ | ❌ | Mock UI; needs `filter_configs` schema |
+| Content: Movies Tonight | ⏳ | ❌ | Mock UI; needs schema |
+| Extra Fields — New | 🚫 | — | Superseded by wizard in main page |
+| Settings | ⏳ | ❌ | Placeholder |
+
+Legend: ✅ done · ⏳ mock UI exists, needs data wiring · 🚫 deprecated
 
 ---
 
 ## 1. Navigation Structure
 
-✅ Built as a fixed sidebar (`AdminSidebar`) with these routes:
+Fixed sidebar (`AdminSidebar`):
 
 ```
-Proteino (logo)
+Proteino•
 ├── Overview          → /admin
 ├── Categories        → /admin/categories
 ├── Suggestions       → /admin/suggestions
 ├── Extra Fields      → /admin/extra-fields
+├── Data Quality      → /admin/data-quality        [NEW]
 ├── Content
 │   ├── Collections   → /admin/content/collections
 │   ├── Activities    → /admin/content/activities
@@ -59,353 +67,404 @@ Proteino (logo)
 
 ---
 
-## 2. Overview (Home) ✅
+## 2. Overview ✅
 
-Quick dashboard with:
-- **Stats cards:** Reviews Unresolved (red badge), Last Day Suggestions, Movies Tonight count
-- **Quick create buttons:** + Category, + ExtraField, + Collection, + Activity
+`/admin/page.tsx` — Server component.
+
+**Real stats (live from Supabase):**
+- Unpublished suggestions count (red badge)
+- Last 24h suggestions count (green)
+- Total users
+- Total items
+- Quick create buttons: Suggestion, Collection, Activity
 
 ---
 
 ## 3. Categories ✅
 
-### Categories List
-Table with: Category icon, Name, Subcategories count, Suggestions count, Reviews count, Publish status, Edit link.
+### Categories List (`/admin/categories`)
+- All 9 categories with real counts: subcategories, items, suggestions
+- Click → drill-down to category detail
+- Client-side fetch via Supabase browser client
 
-All 9 platform categories: Βιβλίο, Ταινίες, Σειρές, Συνταγές, Καφέ/Μπαρ, Φαγητό, Θέατρο, Εκδηλώσεις, Διαμονή.
+### Category Drill-down (`/admin/categories/[id]`)
+- **Stats bar:** Subcategories count, Items, Suggestions, Distinct Users, **Unassigned items**
+- Banner with link to `/admin/data-quality` if there are NULL-subcategory items
+- **Subcategories table** with full CRUD:
+  - Inline edit name (Enter to save, Esc to cancel)
+  - Toggle Active/Inactive
+  - Reorder via ▲▼ arrows (swaps `display_order`)
+  - Delete with safety check (refuses if items still use it)
+  - Inline create new subcategory with auto-slugified Greek-to-Latin slug
 
-### Category Drill-down (e.g. Categories / Βιβλίο)
-Stats bar: Subcategories, Suggestions, Reviews, Users, Reports.
-Table of subcategories with: Name, Suggestions count, Reviews count, Extra Fields count, Published status, Edit link.
-
-### Create/Edit Category (subcategory = tag/attribute)
-- Publish: Active / Inactive toggle
-- Parent Category: dropdown (selects which of the 9 categories this belongs to)
-- Title: text input
-- Alias: auto-generated slug
-- Description: textarea (for SEO)
-- Save / Cancel
+API: `/api/admin/subcategories` (POST, GET) + `/api/admin/subcategories/[id]` (PATCH, DELETE)
 
 ---
 
 ## 4. Suggestions ✅
 
-Suggestions = the items on the platform (books, movies, restaurants etc).
-Each suggestion was submitted by a user or created by admin.
+### Suggestions List (`/admin/suggestions`)
+Server component fetches authors (top 50 by suggestion count) and subcategories; client component handles interactivity.
 
-### Suggestions List
-Table with: Title, Category, Subcategory, Author, Created date, Published status, Edit link.
-Filters: by category, by status, by date range, search by title.
+**Filters:**
+- Category tabs (all 9 + "All")
+- Subcategory dropdown (filtered by selected category)
+- Author dropdown
+- Published / Unpublished toggle
+- Has image / No image toggle
+- Debounced search (300ms) on title
 
-### Edit Suggestion (SuggestionEditor component)
-**Header section:**
-- Title (text input)
-- Alias (auto-generated slug)
-- Category (dropdown — all 9 categories)
-- Subcategory (dropdown — dynamically populated based on category selection)
-- Publish: YES / NO toggle
-- Author (dropdown — which user submitted this)
-- Created (datetime)
-- Published (datetime)
-- Rating stats: average ★, total ratings count, total reviews count, distribution bar chart (5★/4★/3★/2★/1★ with percentages)
+**6 sort options:** newest, oldest, by author, by category, etc.
+**Pagination:** 20 per page
 
-**Subcategory values per category:**
-- Movies: Δράμα, Κωμωδία, Θρίλερ, Δράση, Sci-Fi, Ρομαντική, Animation, Ντοκιμαντέρ, Horror, Βιογραφική
-- Series: Δράμα, Κωμωδία, Crime, Sci-Fi, Θρίλερ, Ρομαντική, Ντοκιμαντέρ, Mini-series, Animation
-- Books: Μυθιστόρημα, Θρίλερ, Sci-Fi, Ιστορία, Αυτοβιογραφία, Ψυχολογία, Φιλοσοφία, Self-help, Ποίηση, Business, Παιδικά
-- Recipes: Κυρίως Πιάτο, Ορεκτικά, Επιδόρπια, Breakfast, Ψητά, Σαλάτες, Σούπες, Γλυκά, Ψωμί & Ζύμες
-- Food: Ελληνική, Ιταλική, Ασιατική, Burger, Sushi, Fine Dining, Brunch, Vegan, Seafood, Street Food, Middle Eastern
-- Bars: Cocktail Bar, Wine Bar, Jazz Bar, Rooftop, Beach Bar, Coffee, Speakeasy, Pub, All-Day, Sports Bar
-- Hotels: Dynamic destinations (Αθήνα, Κρήτη, Θεσσαλονίκη, Σαντορίνη, Μύκονος, Ρόδος, κτλ)
-- Theater: Θέατρο, Μιούζικαλ, Stand-up, Μονόπρακτο, Παιδικό
-- Events: Συναυλία, Festival, Έκθεση, Stand-up, Workshop, Sports
+### Suggestion Editor (`/admin/suggestions/[id]`)
+Full editor with category-specific extra fields. **All fields persist to DB on Save.**
 
-**Description:**
-Rich text editor (Heading, Bold, Italic, Underline, Strikethrough, Lists, Link, Image, Table, Attachment)
+**Save flow** (via `/api/admin/suggestions` PUT, service-role):
+1. Update `items` table: title, slug, category, subcategory_id, description_seo
+2. Update `suggestions` table: is_published, reflection, published_at
+3. Upsert `item_${category}` extension table with all collected fields
 
-**Media section (category-aware):**
-Different tabs and modes per category:
-- Movies/Series/Books: Portrait | Landscape | Trailer (single mode — one image per tab)
-- Food: Εξωτερικά | Εσωτερικά | Πιάτα (gallery mode — multiple photos per tab)
-- Bars: Εσωτερικά | Εξωτερικά (gallery mode)
-- Hotels: Δωμάτια | Κοινόχρηστοι | Εξωτερικά (gallery mode)
-- Theater/Events: Landscape | Trailer (single mode)
+**Each ExtraFields component:**
+- Uses `forwardRef` + `useImperativeHandle` exposing `getData()` to parent
+- Initializes state from passed `data` prop (the existing extension row)
+- Receives `extraOptions` from DB (or falls back to hardcoded defaults if DB empty)
 
-Gallery mode: drag & drop to reorder, first image = default. Each photo has Change/Delete.
-Single mode: one image with Change/Delete buttons, filename shown.
-Trailer tab: YouTube + Vimeo URL inputs (not image upload).
+**Per-category extension fields:**
 
-**Extra Fields section (varies by category):**
+MOVIES (`item_movies`): director, country (comma-separated), duration_min, release_date, language, channel, trailer_url, plot, actors (JSON: `[{name, avatar}]`), awards (JSON: `[{type, category, year}]`)
 
-MOVIES:
-- Year, Duration (top row)
-- Country (autocomplete input with datalist of 48 countries, multiple with + button)
-- Director (text input with + button for multiple)
-- Actors (grid with avatar circle + name input per actor, hover to change avatar, "Add Actor" button)
-- Awards (split by type: Oscar, BAFTA, Golden Globe, Cannes — each with predefined category dropdown + year)
-- Attributes: checkboxes (Based on true events, Based on a book, Remake, Sequel, Prequel, Contains violence, Contains sex, Classic, Independent film, Black & White, Foreign language, Animated)
-- Plot (textarea)
+SERIES (`item_series`): director, seasons, country, language, channel, trailer_url, status_message, plot, actors
 
-SERIES:
-- Seasons (No, Released, End, Info — 4 fields)
-- Attributes: checkboxes (Contain UFO, Based on true events, Contain SEX, Series of one season, Contain Religion, Series is completed)
-- Country (autocomplete input with datalist, multiple with + button)
-- Streaming: Netflix, Disney+, Prime, YouTube (logo + title input per platform)
-- Actors (8 dropdown slots)
-- Awards (8 dropdown slots)
-- Plot (textarea)
+BOOKS (`item_books`): writer, publication, language, pages, publication_year, plot, is_trilogy, trilogy_name
 
-BOOKS:
-- Author, Editor/Publisher, Language, Pages, Released (5 fields)
-- Plot (textarea)
-- Buy links (e.g. Public bookstore URL)
-- Author Info card: photo circle + Name, Age, Books count, Biography textarea
+FOOD (`item_food`): cuisine, type, address, telephone, lat, lng, region_id, plot, delivery_links (JSON), information (JSON)
 
-FOOD:
-- Address + lat/lng OR drag & drop on map
-- Region (dropdown), Area (dropdown)
-- Telephone, Information URL, Source (dropdown)
-- Attributes: checkboxes (Parking, Wi-Fi, Outdoor Seating, Kid Friendly, Pet Friendly, Reservations, Takeaway, Delivery, Live Music, Accessible, Smoking Area, Credit Cards)
-- Delivery links: efood, Wolt, Box (URL per platform)
+BARS (`item_bars`): type, address, telephone, lat, lng, region_id, plot, information
 
-BARS/CAFES:
-- Address + lat/lng OR drag & drop on map
-- Region (dropdown), Area (dropdown)
-- Telephone, Information URL, Source (dropdown)
-- Type: radio buttons (Cocktail Bar, Wine Bar, Jazz Bar, Rooftop, Beach Bar, Coffee Shop, Speakeasy, Pub, All-Day, Sports Bar)
-- Attributes: checkboxes (Parking, Wi-Fi, Outdoor Seating, Live Music, DJ, Pet Friendly, Reservations, Smoking Area, Accessible, Credit Cards, Happy Hour, Late Night)
+HOTELS (`item_hotels`): type, address, telephone, lat, lng, region_id, price_range, plot, facilities (JSON: `{facilities, room, extra}` arrays)
 
-HOTELS:
-- Address + lat/lng OR drag & drop on map
-- Region (dropdown), Area (dropdown)
-- Telephone, Information URL, Source (dropdown)
-- Type: visual radio (Διαμέρισμα, Δωμάτιο, Camping, Μονοκατοικία, Ξενοδοχείο)
-- Amenities (3-column checkboxes):
-  - Παροχές: Pool, Bar, Restaurant, Parking, Breakfast
-  - Δωμάτιο: Sea view, Mountain View, Wifi
-  - Extra: Pet Friendly, Disabilities, Transfer
-- Availability: Booking.com URL (+ add more)
+RECIPES (`item_recipes`): yields, calories, level, channel, origin, ingredients (JSON array), steps (JSON), tips
 
-RECIPES:
-- Ingredients table: drag-reorder rows, columns: #, Ποσότητα, Μονάδα (dropdown), Υλικό (autocomplete), Link, Remove
-- Steps: numbered list with textarea per step, add/remove
-- Tips: numbered list with textarea, add/remove
-- Chef, Website, Level (dropdown), Calories
-- Duration split into:
-  - Χρόνος Προετοιμασίας (Ώρες + Λεπτά inputs)
-  - Χρόνος Ψησίματος (Ώρες + Λεπτά inputs)
-- Nutrition checkboxes: Vegan, Milk, Sugar, Gluten Free, Nut Free
+THEATER/EVENTS (`item_theater`/`item_events`): name_place, writer, director, year, address, lat, lng, ticket_url, price, availability, plot, region_id, dates (JSON), actors
 
-THEATER/EVENTS:
-- Type: Single / Tour (radio)
-- Writer, Director, Year
-- Place (dropdown) + Address + lat/lng OR map
-- Actors (8 dropdown slots)
-- Dates table: Availability (Υψηλή/Χαμηλή/Εξαντλημένα), From, To, Price + add/remove
-- Ticket/Buy URL
-- Ads section: Active/Inactive toggle, URL, Text, Buy link, live preview
+**Subcategory + Region selectors** (server-fetched, passed as props).
 
 ---
 
 ## 5. Extra Fields ✅
 
-Management of the metadata field definitions per category.
-These are the fields that appear in the Suggestions edit form.
+`/admin/extra-fields` — Manages configurable option lists used by SuggestionEditor.
 
-### Extra Fields List
-Tabs: Αρχική | Βιβλίο | Ταινίες | Σειρές | Φαγητό | Καφέ/Μπαρ | Συνταγές | Θέατρο | Εκδηλώσεις | Διαμονή
+**Architecture:**
+- DB table: `extra_field_options` with `(category, field_group, value, label, display_order, is_published)`
+- Currently 295+ options seeded across 9 categories
+- SuggestionEditor reads from DB on every render; falls back to hardcoded if empty
 
-Table columns: Title, Type (Dropdown/Textarea/Date/Number), Values (count or range), Image (icon), Published status, Edit link.
+**UI: Collapsed cards by default**
+- Each card shows: friendly name, count badge, "X hidden" badge, preview of first 5 options
+- Click to expand → full edit list
+- Inline option add/edit/reorder/delete/toggle publish
+- "Delete Group" button (deletes all options in group)
 
-### Create/Edit Extra Field
-- Title (e.g. "Actor")
-- Type: Dropdown / Textarea / Date / Number / Checkbox / URL
-- Category: which category this field belongs to
-- Published: Active / Inactive
-- For Dropdown type: manage the list of values (add/edit/delete/reorder)
-  - Each value can have: name, image/icon
+**New Group Wizard (modal):**
+- Friendly name input → auto-generates tech key (Greek-to-Latin transliteration)
+- Manual override toggle for tech key
+- Bulk paste options (one per line, e.g. `Pool\nBar\nRestaurant`)
+- "Δημιουργία" creates all options in one batch
 
----
+**Default seeded groups per category** (see `scripts/seed-extra-fields.js`):
 
-## 6. Content
+- **Movies:** country (49), award_oscar (12), award_bafta (7), award_golden_globe (7), award_cannes (7), attributes (12)
+- **Series:** country (49), streaming (6), attributes (6)
+- **Books:** language (6), publication (8)
+- **Food:** cuisine (13), attributes (12), delivery_provider (3), source (4)
+- **Bars:** type (10), attributes (12), source (3)
+- **Hotels:** type (5), amenities_facilities (7), amenities_room (7), amenities_extra (5), availability_provider (3)
+- **Recipes:** unit (11), level (3), nutrition (7), common_ingredient (10)
+- **Theater/Events:** availability (3)
 
-### 6A. Collections ✅
-Collections are the **dynamic sections** that appear on:
-- Home page feed (carousels, themed cards)
-- Category page headers (themed cards at top)
-- Category page sections (carousels within category)
-
-**Two collection types:**
-
-**Card** (>10 items):
-- Appears as a themed card in category page or home
-- Shows: icon/logo + title + description
-
-**Carousel** (4-10 items):
-- Horizontal scroll section with item cards
-- Shows title + horizontal scroll of poster cards
-
-**Collections List:**
-- Filter by category tabs
-- Sub-filter: Card | Carousel
-- Drag & drop to reorder (determines display order on frontend)
-- Each collection: logo/icon + title + subtitle + Active toggle + Edit link
-- **Live mobile preview** panel on the right showing how it looks on device
-
-**Create Collection flow:**
-Step 1: Choose type — Card or Carousel (with visual preview of each)
-Step 2: Fill details: Title, subtitle, icon, category, position, items search, valid dates, active toggle
-
-### 6B. Activities ✅
-Nearby activities associated with venues/hotels.
-
-**Activities List:**
-- Category tabs: Αθλητικές | Εκπαιδευτικές | Ψυχαγωγικές | Αξιοθέατα
-- Type filter chips: ALL | ΣΚΙ | MOUNTAIN BIKE | RAFTING | ΟΡΕΙΒΑΣΙΑ | ΠΕΖΟΠΟΡΙΑ
-- Table: Type, Name, Location (Google Maps), Info (Website/Facebook/Instagram), Published, Edit
-- Header buttons: "New Activity" + "New Category/Type"
-
-**New Category/Type form:**
-- Radio toggle: Category or Type
-- If Type selected → Category dropdown + Title + Image upload area
-- If Category selected → Title only
-- Save / Cancel
-
-### 6C. Filters ✅
-Two-purpose tool for managing platform filters:
-
-**1. Explorer (left panel):**
-- Category tabs at top (all 9 categories)
-- All attributes for the selected category shown as filter dropdowns/checkboxes
-- Shows count of matching suggestions per value
-- Result box: total matching count + visual indicator for Card (>10) or Carousel (4-10)
-- Purpose: admin filters content to decide how to organize collections
-
-**2. Frontend Filter Config (right panel):**
-- Table of all available attributes per category
-- Two toggle columns: "Quick Filter" (chip visible on category page) + "Bottom Sheet" (inside ⊞ Φίλτρα panel)
-- Badge counts for active quick filters and bottom sheet filters
-- Live preview showing how the filter row will look on the frontend
-- "Save Configuration" button
-
-Available attributes vary per category (genre, platform, region, price, duration, etc.).
-
-### 6D. Movies Tonight ✅
-Admin manually marks which movies are showing on TV tonight.
-
-**Features built:**
-- "Today" section with count badge + table of movies
-- "This week" section with count badge + table of movies
-- Inline editing: click "Επεξεργασία" → row becomes editable (title input, channel dropdown, date picker, time picker) with Save/Cancel
-- Remove button per row
-- "New Movie" form card: Title, Channel (dropdown: MEGA, ΕΡΤ1, ΕΡΤ2, ΕΡΤ3, ANT1, ALPHA, STAR, ΣΚΑΪ, OPEN), Date, Time
-- "Edit Channels" button placeholder
+API: `/api/admin/extra-fields` (GET, POST) + `/api/admin/extra-fields/[id]` (PATCH, DELETE)
 
 ---
 
-## 7. Reviews ✅
+## 6. Data Quality ✅ [NEW]
 
-List of all user ratings and reviews across the platform.
-Admin can: approve, reject, flag, delete reviews.
-Shows: unresolved count on Overview dashboard (red badge).
+`/admin/data-quality` — Triage page for items without subcategory.
 
-Table: Item, User, Rating (★), Review text, Date, Status (Resolved/Unresolved), Actions.
+**Why it exists:**
+After running auto-mapping on legacy data, ~48 items couldn't be cleanly assigned. This page lets admin manually resolve them.
+
+**Categories of NULL items:**
+- 24 "bars" that aren't actually bars (παγωτατζίδικα, escape rooms, παιδότοποι)
+- 11 books with rare tags (μηχανική, αρχιτεκτονική, μαθηματικά)
+- 6 food with placeholder data ("33") or unmapped cuisines
+- Plus events/hotels/series with bad/missing tags
+
+**Features:**
+- Items grouped by category with icons + counts
+- Per-row: shows item + **the original tag/cuisine/type that triggered NULL**
+- Inline subcategory dropdown OR "+ Νέα subcategory..." that opens inline form
+- Auto-fills suggested name from the original tag (e.g. "μαθηματικά" → "Μαθηματικά")
+- Items disappear from list once assigned/deleted
+- Per-category hints (e.g. "Πολλά απ' αυτά δεν είναι bars")
+- Delete button for items that should not exist at all
+
+API: `/api/admin/items` (PATCH, DELETE)
 
 ---
 
-## 8. Users ✅
+## 7. Users ✅
 
-List of all registered users.
-Columns: Avatar, Name, Email, Handle, Role, Suggestions count, Reviews count, Joined date, Status, Edit link.
+`/admin/users` — List with search, sort, pagination.
 
-Admin can:
-- View user profile
-- Change role (user / moderator / admin)
-- Suspend/ban user
-- See user's suggestions and reviews
+**Columns:** Avatar, Name + level badge, Email, Suggestions count, Ratings count, Last login, Registered, Verified status
+
+**Filters:**
+- Sort: Recent registered, Old registered, Most suggestions, Recent login
+- Search: name, email, handle (debounced)
+
+**Badge system based on user level:**
+- Level 0-1: NEW (zinc)
+- Level 2-3: VERIFIED (emerald)
+- Level 4-6: EXPERT (purple)
+- Level 7-9: GOLD (amber)
+- Level 10+: PLATINUM (blue)
 
 ---
 
-## 9. Settings ⏳
+## 8. Reviews ✅
 
-Platform-wide settings (skeleton page exists):
-- Site name, description, logo
-- Email configuration
+Manages user comments. Comments include vote tracking (▲/▼) and report system.
+
+### Reviews List (`/admin/reviews`)
+
+**4 stats cards (clickable for filter):**
+- Total Reviews
+- Last 24h
+- 🔴 **Reported** — urgent indicator (animated pulse) when > 0
+- ⚫ **Hidden**
+
+**Filter modes:** All / Reported / Hidden (toggle pills)
+
+**5 sort options:**
+- Πιο πρόσφατα / Παλαιότερα
+- Περισσότερα reports
+- Πιο controversial (most downvoted)
+- Πιο popular (most upvoted)
+
+**Table columns:**
+- Comment body (truncated, line-through if hidden)
+- Author + handle
+- On (suggestion link with category icon)
+- **Votes**: ▲ X / ▼ Y with net score (+5 / -3)
+- **Reports**: badge (red ≥3, lighter for 1-2)
+- Posted (relative time)
+- Actions: Hide/Show toggle, Delete
+
+Visual indicators:
+- Red-tinted row if has reports
+- Grey-tinted row if hidden
+- "HIDDEN" badge
+
+### Review Detail (`/admin/reviews/[id]`)
+
+**3-column layout:**
+
+**Left (2 cols):**
+- The Comment card (with line-through if hidden, hidden reason banner)
+- **Votes panel**: big numbers for upvotes / downvotes / net score
+- **Reports section** (NEW):
+  - Each report: reason chip, description, reporter, date, resolved status
+  - Per-report actions: ✓ Keep, Hide
+  - Bulk: "Mark all as kept"
+  - Empty state with 🎉 if none
+- The suggestion context (poster, title, reflection, rating)
+- All comments on the same suggestion (with current highlighted)
+
+**Right (1 col):**
+- Author card (avatar, verified, **"Repeat offender" badge if >2 flagged comments**)
+- Stats: email, suggestions, total comments, **flagged comments** (red highlight)
+- Other comments by author with hidden/reports indicators (pattern detection)
+
+**Actions:**
+- Hide dialog with categorized reasons (Προσβλητικό, Spam, Παραπληροφόρηση, Παρενόχληση, Άλλο) + custom
+- Big red Delete button → confirms → redirects to list
+
+API: `/api/admin/comments` (PATCH for hide/unhide, DELETE) + `/api/admin/comment-reports/[id]` (PATCH)
+
+---
+
+## 9. Content (Pending real data)
+
+### 9A. Collections ⏳
+**UI:** Mock built — list with category filter, drag-reorder, type sub-filter (Card/Carousel), live mobile preview panel.
+**Pending:** DB schema (`home_sections` table per CLAUDE.md §19), real data wiring.
+
+### 9B. Activities ⏳
+Nearby activities for hotels (CLAUDE.md §11: admin-managed only).
+**UI:** Mock built — list with category tabs (Αθλητικές/Εκπαιδευτικές/Ψυχαγωγικές/Αξιοθέατα), type filter chips.
+**Pending:** Schema enhancement on `nearby_activities` table, real data wiring.
+
+### 9C. Filters ⏳
+Two-purpose explorer + frontend filter config.
+**UI:** Mock built.
+**Pending:** Schema for `filter_configs` (per-category quick filter visibility config).
+
+### 9D. Movies Tonight ⏳
+TV listings curation.
+**UI:** Mock built — Today/This week sections, inline edit, channel dropdown.
+**Pending:** New `movies_tonight` table.
+
+---
+
+## 10. Settings ⏳
+
+Placeholder. To include:
+- Site name/description/logo
+- Email config
 - Notification settings
 - API keys (TMDB, Google Places, etc.)
 - Maintenance mode
 
 ---
 
-## 10. Technical Implementation
+## 11. Database Schema (managed via this admin)
 
-### Route Structure
-```
-app/admin/
-├── layout.tsx              (sidebar + main content area)
-├── page.tsx                (Overview)
-├── categories/
-│   ├── page.tsx            (Categories list)
-│   └── [slug]/page.tsx     (Category drill-down)
-├── suggestions/
-│   ├── page.tsx            (Suggestions list)
-│   └── [id]/page.tsx       (Edit suggestion)
-├── extra-fields/page.tsx
-├── content/
-│   ├── collections/page.tsx
-│   ├── activities/
-│   │   ├── page.tsx
-│   │   └── new-category-type/page.tsx
-│   ├── filters/page.tsx
-│   └── movies-tonight/page.tsx
-├── reviews/page.tsx
-├── users/page.tsx
-└── settings/page.tsx
-```
+### Tables created during this work:
 
-### Key Components
+**`subcategories`**
+```sql
+id uuid PK, category text, name text, slug text, description_seo text,
+display_order int, is_published boolean, created_at timestamptz
 ```
-components/admin/
-├── AdminSidebar.tsx              (fixed sidebar navigation)
-├── OverviewDashboard.tsx         (stats + quick actions)
-├── CategoriesTable.tsx           (categories list)
-├── CategoryDetail.tsx            (category drill-down)
-├── SuggestionsTable.tsx          (suggestions list)
-├── SuggestionEditor.tsx          (full editor — ~1200 lines, category-aware)
-├── ExtraFieldsTable.tsx          (extra fields management)
-├── CollectionsPanel.tsx          (collections + live preview)
-├── ActivitiesTable.tsx           (activities list)
-├── ActivityCategoryTypeForm.tsx  (new category/type form)
-├── MoviesTonightTable.tsx        (movies tonight CRUD)
-├── ReviewsTable.tsx              (reviews moderation)
-└── UsersTable.tsx                (users management)
+Currently 88 subcategories across 9 categories.
+
+**`regions`** (2-level hierarchy: Region → Area)
+```sql
+id uuid PK, name text, slug text, parent_id uuid, display_order int
+```
+Seeded with 78 Greek regions/areas.
+
+**`extra_field_options`**
+```sql
+id uuid PK, category text, field_group text, value text, label text,
+display_order int, is_published boolean, icon text, metadata jsonb,
+UNIQUE(category, field_group, value)
+```
+295+ options seeded.
+
+**`comment_votes`** + counter columns on `comments`
+```sql
+comment_votes (user_id, comment_id, vote int CHECK IN(-1,1), PRIMARY KEY(user_id, comment_id))
+comments.vote_up int, comments.vote_down int  -- maintained by trigger
 ```
 
-### Design Decisions
-- **Desktop-first**: Full-width layout, no mobile constraints
-- **No FAB, no bottom nav** — sidebar navigation only
-- **Category-aware Media**: `getMediaConfig(category)` returns different tabs and modes per category
-- **Country autocomplete**: HTML `<datalist>` with 48 Greek-named countries — no external library needed
-- **Actor avatars**: Auto-fetch from IMDB API (future), manual override via avatar circle hover
-- **Awards by organization**: Predefined categories per award type (Oscar, BAFTA, Golden Globe, Cannes)
-- **Recipe duration**: Split into prep time + cooking time, each with hours + minutes
-- **Subcategory = tag**: Stored as metadata attribute, not a separate table. Dropdown dynamically populated based on selected category
-
-### Route Protection
-```typescript
-// All /admin routes check:
-// 1. User is authenticated
-// 2. public.users.role === 'admin' || role === 'moderator'
-// Redirect to / if not authorized
+**`comment_reports`** + counter on `comments`
+```sql
+comment_reports (id, comment_id, reporter_id, reason, description,
+                 resolved boolean, resolution_action text, resolved_at, created_at)
+comments.report_count int  -- maintained by trigger (only counts unresolved)
+comments.is_hidden boolean, comments.hidden_reason text, comments.hidden_at timestamptz
 ```
 
-### Pending Work
-1. **Settings page** — awaiting Figma design reference
-2. **Real data layer** — connect all tables to Supabase (currently mock data)
-3. **Database schema updates** — awards structure (type + category + year), recipe duration (prep_hours, prep_minutes, cook_hours, cook_minutes), actor avatars, filter_configs table
-4. **API integrations** — IMDB for actor avatars, auto-fetch during enrichment
+### Columns added to existing tables:
+- `items.subcategory_id` (FK to subcategories)
+- `item_food.region_id`, `item_bars.region_id`, `item_hotels.region_id`, `item_theater.region_id`, `item_events.region_id`
+
+### Triggers (PostgreSQL):
+- `sync_comment_vote_counts()` — keeps `comments.vote_up/vote_down` in sync with `comment_votes`
+- `sync_comment_report_counts()` — keeps `comments.report_count` in sync with unresolved `comment_reports`
 
 ---
 
-*Admin panel gives full control over platform content without touching code.*
-*Everything visible on the frontend can be managed from here.*
+## 12. Scripts (one-shot data ops)
+
+Located in `/scripts/`:
+
+| Script | Purpose | Status |
+|---|---|---|
+| `assign-subcategories.js` | Initial mass-assignment of subcategories from legacy genre/cuisine/type fields | ✅ Done (1894/1942 items resolved) |
+| `seed-regions.js` | Seed 78 Greek regions/areas | ✅ Done |
+| `audit-data.js` | Report NULL subcategories + extension table coverage + missing critical fields | Active tool |
+| `fix-subcategories.js` | Strict re-mapping with --apply flag | ✅ Run (37 reassignments + new subcategories) |
+| `seed-extra-fields.js` | Seed 290+ option rows from hardcoded SuggestionEditor arrays | ✅ Done |
+
+SQL migrations in `/scripts/sql/`:
+- `001-create-subcategories-regions.sql`
+- `002-create-extra-field-options.sql`
+- `003-comments-votes-reports.sql`
+
+---
+
+## 13. API Routes (all use service-role key, server-side only)
+
+```
+/api/admin/suggestions           PUT     (save item + suggestion + ext table)
+/api/admin/items                 PATCH, DELETE  (single item update/delete)
+/api/admin/subcategories         GET, POST     (list, create)
+/api/admin/subcategories/[id]    PATCH, DELETE (rename, reorder, toggle, delete)
+/api/admin/extra-fields          GET, POST     (list, create option)
+/api/admin/extra-fields/[id]     PATCH, DELETE (rename, reorder, toggle, delete)
+/api/admin/comments              PATCH, DELETE (hide/unhide, delete)
+/api/admin/comment-reports/[id]  PATCH         (resolve report)
+```
+
+---
+
+## 14. Architecture Decisions
+
+**Server vs client component split:**
+Pages that need write actions split into server (initial data fetch via `createAdminClient` service-role) + client (interactivity, paginated re-fetch via `createBrowserClient` anon-key). Service-role key never touches browser.
+
+**RLS strategy:**
+- `subcategories`, `regions`, `extra_field_options`: public read (frontend reads them for filters/dropdowns)
+- `comment_votes`, `comment_reports`: users can only see/insert their own
+- All admin writes go through `/api/admin/*` routes using service-role
+
+**Foreign key disambiguation:**
+After adding `comment_votes` (which also FK's to users), the implicit `users!inner` join became ambiguous. Explicit aliases now used: `users!comments_user_id_fkey(...)`.
+
+**Counter denormalization via triggers:**
+`comments.vote_up/vote_down/report_count` are maintained by Postgres triggers on the source-of-truth tables (`comment_votes`, `comment_reports`). Single read on `comments` gives all stats; no aggregation queries needed.
+
+**Default fallback pattern:**
+SuggestionEditor's hardcoded option arrays were kept as fallbacks. If DB has no entries for a `field_group`, the hardcoded list is used. This makes the admin's database-driven workflow non-blocking.
+
+**Greek transliteration:**
+Custom map (`α→a`, `β→v`, etc.) used for slug generation across subcategories, regions, extra-field tech keys.
+
+---
+
+## 15. Pending Work
+
+### Critical (next priorities)
+1. **Content: Collections** — DB schema + real data wiring for home feed sections
+2. **Content: Activities** — Schema enhancement + real data
+3. **Settings page** — actual implementation
+
+### Less critical
+4. **Content: Filters** — `filter_configs` schema and UI wiring
+5. **Content: Movies Tonight** — schema + real data
+6. **Categories — New** — admin can already manage subcategories via category detail; new top-level category is rare/schema-level
+7. **Suggestions — New** — admin-created suggestions (rare; users normally submit)
+
+### Cross-cutting
+- **Re-enable production auth check** in `app/admin/layout.tsx` (currently `DEV_BYPASS_AUTH = true` in dev)
+- **Image enrichment APIs** (CLAUDE.md §16): TMDB, Google Books, Google Places, Ticketmaster — currently 100% of items have only one image (poster OR backdrop), need both
+- **Geocoding** for 386 venues (food/bars/hotels) without lat/lng
+- **Google Books API** for 839 books missing pages
+
+### Known data quality issues (manual review)
+- 24 "bars" miscategorized in source data (παγωτατζίδικα, escape rooms, παιδότοποι, soccer academies)
+- 11 books with single-of-a-kind exotic tags
+- 6 food with "33" placeholder cuisine
+- 3 events untagged
+- 2 hotels with bad data ("bbbb", empty)
+- 2 series with only generic tag
+
+All visible and manageable from `/admin/data-quality`.
+
+---
+
+*Admin gives full control over content, categorization, and moderation. Frontend reads filters/options/structure from the same DB the admin writes to — no code changes needed for content updates.*
