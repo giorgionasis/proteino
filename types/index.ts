@@ -41,6 +41,14 @@ export interface Item {
   slug: string;
   description_seo: string | null;
   cover_url: string | null;
+  /** Portrait 2:3 — movies/series/books. Optional because legacy items
+   *  may only have cover_url. */
+  poster_url?: string | null;
+  /** Landscape 16:9 — venues / detail-page hero. Same optional caveat. */
+  backdrop_url?: string | null;
+  /** Subcategory id — present when an item has been mapped to its
+   *  taxonomy (genre/cuisine/type). Null on legacy migrated rows. */
+  subcategory_id?: string | null;
   avg_rating: number;
   rating_count: number;
   suggestion_count: number;
@@ -145,7 +153,7 @@ export interface SearchAnalysis {
   query: string;
 }
 
-export type SearchPillType = "VIBE" | "TYPE" | "LOC";
+export type SearchPillType = "VIBE" | "TYPE" | "LOC" | "CATEGORY";
 
 export interface SearchPill {
   type: SearchPillType;

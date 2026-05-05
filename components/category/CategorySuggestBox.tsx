@@ -29,7 +29,7 @@ export function CategorySuggestBox() {
         </p>
 
         <button
-          onClick={openSuggestion}
+          onClick={() => openSuggestion()}
           className="w-full flex items-center justify-center rounded-[8px] active:opacity-80 transition-opacity"
           style={{
             height: 64,

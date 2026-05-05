@@ -1,10 +1,116 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-05 (session 12)
+Last updated: 2026-05-05 (session 13 — search overhaul + AI integration plan)
+
+---
+
+## 0. WHERE WE LEFT OFF (read first when resuming)
+
+**Current state:**
+- ✅ Submission flow with confidence tiers, TMDB enrichment, light-theme Published, real DuplicateScreen with verification, profile real data + edit/delete
+- ✅ Search overhaul shipped end-to-end: real DB-backed `/api/search`, confidence tiers, removable pills (incl. CATEGORY), seasonal prompts, history with settle-debounce, FEATURED hero, no-match chips → category picker → mini-chat escalation, error state + 8s timeout, aria-live, address-text fallback for sub-regions, people-search via actor/director/writer columns, latent-intent log (migration 013) + diacritic-insensitive title (migration 014) — both APPLIED to live DB
+- ✅ Geocoding: 411/424 venues geocoded (97% of those with addresses). Save Location button on admin extension forms.
+- ✅ Region taxonomy fixes: Filters Explorer tab restored, MoviePicker autoFocus race fixed, keyboard-shortcut clutter removed from admin tables.
+
+**Decision locked but not yet built (Phase A — start here next session):**
+- Anthropic Claude Haiku 4.5 integration in **Search + Submission**. Architecture documented in AI.md §12. Cost projections: ~$3.5K/mo at 100K DAU + 3 searches + 30K submissions, ~3% of projected revenue. Awaiting `ANTHROPIC_API_KEY` (user buying credits as Individual plan).
+
+**Two future systems mapped but not started (Phases B + C):**
+- Phase B: pgvector recommendations + nightly batch (5 days)
+- Phase C: Notification dispatcher with hook-driven loops (6 days)
+
+See §3 for the full ordered roadmap.
 
 ---
 
 ## 1. COMPLETED
+
+### Session 13 — Search overhaul + audit fixes ✅ (2026-05-05)
+
+**Search backend rewrite** (`app/api/search/route.ts`)
+- Replaced 3-item mock with real ranked Postgres query (~2k items corpus)
+- Intent extraction: Greek+Latin category keywords, Greek transliterations (μπέργκερ, σούσι, πίτσα, μπρανς, μιούζικαλ), accent-folded regex tests via `foldGreek()` helper
+- Region resolver: pre-fetches all regions (small table) and folds diacritics on both sides — "αθηνα"/"αθήνα"/"ΑΘΗΝΑ" all match "Αθήνα Κέντρο"
+- Title query: ilike on new generated `items.title_normalized` column (migration 014) for accent-insensitive matching, with graceful fallback to plain title ilike when migration not yet applied
+- Confidence tiers: `tierFromScores(best, runnerUp)` → high (≥500 + gap ≥100) / medium (≥300) / low; drives FEATURED hero card vs. ranked list vs. clarification chips
+- Cross-column search: `actors::text ilike` + director ilike + writer ilike (Joomla K2 pattern, no LLM) — `scorsese`/`tarantino`/actor surnames now find their films across `item_movies`/`item_series`/`item_books`
+- Address-text venue fallback: when region resolves to nothing OR has 0 region_id matches, JS-filter the per-category venue pool by `foldGreek(address).includes(token)` — catches Athens neighborhoods like "Χαλάνδρι"/"Παγκράτι" that don't have their own region rows
+- Stopword-filtered location tokens: `μπαρ`/`καφέ`/`hotel` etc. NEVER treated as address fragments — kills the leak where "γαλάτσι μπαρ" returned Kerkyra venues
+- Honest empty state: when user explicitly specified a location AND zero matches found, returns 0 items + `region_fallback_used: true` instead of falling back to global popular (which was the leak)
+- Latent-intent log: every no-match search inserts into `public.search_log` (migration 013); DB trigger `trg_fanout_search_matches` fires `search_match` notifications when matching items publish later
+
+**Search hook + UI** (`hooks/useSearch.ts`, `components/search/SearchOverlay.tsx`)
+- Confidence tier + featured + user hits + fallback suggestions surfaced from API
+- Tappable removable pills (VIBE / TYPE / LOC / **CATEGORY** new); CATEGORY pill X sets `no_category_filter=1` on re-run; other pills strip via `looseStrip()` (escaped + diacritic-folded)
+- Debounce timer leak fixed: cleared on text-empty, on removePill, on unmount via `cancelInflight()`
+- 350ms input debounce + 8s `AbortSignal.timeout` per request → distinct "error" state with retry button (separate from "no_match")
+- History dedup case + accent insensitive (`Anora`/`anora`/`αθήνα`/`αθηνα` collapse to one); 1.5s settle-debounced persist instead of every keystroke
+- Empty state: history rail + 3 seasonal prompts (`constants/searchPrompts.ts`)
+- FEATURED hero card on high-confidence single-item match
+- No-match chips: `Διαφορετική κατηγορία` opens a 9-chip category picker (uses `pickCategory(slug)` hook method); `Πρότεινέ το πρώτος` closes search and opens suggestion overlay with the query pre-filled via `useOverlay.openSuggestion(prefill)`
+- Mini-chat auto-escalates after 2 failed chip narrows
+- aria-live="polite" + aria-busy on results; real progress signal (0→30→70→100) instead of `Math.random()`
+- Result count + per-section labels: `"✓ Βρήκα ακριβώς αυτό · 1 αποτέλεσμα"`, `"Άλλα αποτελέσματα · 12"`, `🎬 Ταινίες · 5` per group
+- Mixed-category grouping: when results span 2+ categories, render grouped by category with per-group count + "+N ακόμα" link, capped at 5 per group
+- Honest region-ghost banner: amber `"Λίγα στη συγκεκριμένη περιοχή. Δείχνω δημοφιλέστερα συνολικά."` when fallback fired; LOC pill suppressed when it would lie
+- X clear button inside textarea
+- Dead files deleted: `SearchResults.tsx`, `SearchPill.tsx`, `SmartSearch.tsx` (never imported)
+
+**Confidence tiers in submission** (`app/api/ai/match`, `hooks/useSubmission.ts`, `components/submission/SuggestionOverlay.tsx`)
+- Server `computeTier(best, runnerUp)`: high (≥100 exact + gap ≥20) / medium (60-80) / low (<60 OR runner-up within 20pts)
+- Each alternative carries its full TMDB payload (`match_data`) so picking one needs zero round-trips
+- High → auto-lock; medium → `<MatchConfirmCard>` "Νομίζω είναι X. Σωστό;" with Ναι/Όχι pills (NO lock, fixes the lock+ask contradiction); low → no-lock alternatives carousel "Ποιο εννοείς;"
+- New hook methods: `confirmMatch()` promotes medium → high lock, `rejectMatch()` demotes to low + shows alternatives, `chooseAlternative(idx)` picks from low-tier carousel and locks
+- Auto-unlock when matched title is removed from the textarea (case+accent insensitive substring check on `analysis.title` AND `tried_candidate`)
+- Preflight duplicate check fires the moment we lock (any path) — `useEffect` watching `state==="match_found"`. If duplicate, jumps straight to `<DuplicateScreen>` without making the user click Verify
+- `dismissAndReject()` adds the matched item to a session-scoped rejection set so AI doesn't re-suggest it on next keystroke (kills the duplicate-screen loop)
+- Local quality coach: `useSubmission` runs `assessQuality()` on every keystroke (independent of AI), surfaces fresh `quality` field that the panel reads. Lock no longer freezes coaching.
+- Quality coach itself rewritten: 8 coaching dimensions (length / why / emotion / scene / character / plot / polish / celebrate) with rotating phrasings keyed off `floor(len/10) % pool.length` — feels alive instead of stuck
+
+**TMDB enrichment fixes** (`app/api/ai/match/route.ts`, `app/api/suggestions/route.ts`)
+- Genres + countries + language now extracted from TMDB detail call
+- Subcategory mapping via stable TMDB genre IDs (878=Sci-Fi, 18=Drama, etc.) — locale-independent
+- Silent insert failure killed: dropped the unknown `directors` (plural) column from extension table inserts; surfaces errors via `console.error` instead of swallowing
+- Existing-item enrichment: when a re-suggestion hits an item missing extension data, backfills it from the fresh TMDB payload (also fills subcategory_id if null)
+- Lowercase candidate extraction: stopword-aware token-runs catch "i just watched dune" → "dune" candidate. Bilingual title extraction with `\p{Lu}`/`\p{L}` Unicode property classes
+- Backfilled Anora's missing `item_movies` row + `subcategory_id`
+
+**DuplicateScreen redesign** (`components/submission/SuggestionOverlay.tsx`)
+- Verification flow: shows item card (poster + title + year + suggester/own-flag) → asks "Είναι αυτή η πρόταση που εννοείς;" with Ναι/Όχι pills
+- Ναι → context-aware CTAs: own → [Δες την πρότασή σου, Πρότεινε κάτι άλλο]; other → [★ Βαθμολόγησέ το, Δες παρόμοια, Πρότεινε κάτι άλλο]
+- Όχι → blacklists this match for the session, drops the lock, returns to typing — preserves the textarea content
+
+**PreviewScreen + PublishedScreen polish**
+- Cast row: horizontal scroll of circular avatars + names (up to 6) using TMDB `cast[].avatar` URLs
+- PublishedScreen: light theme (was dark), animated coral checkmark with halo glow, item card centerpiece (poster + title + stars + reflection in coral-bordered blockquote), hook-moments cards (`weeklyCount` / `categoryAudienceCount` / `myFollowersCount`), AchievementProgress milestone, "Επόμενο βήμα" CTA pair (🔥 Πρότεινε ακόμα μία / 🎬 Δες παρόμοια)
+- IntelligencePanel: prominent coral "✓ Κλειδωμένο · CATEGORY · TITLE" banner when locked (replaces the small MATCH chip that was easy to miss)
+
+**Profile real data + edit/delete** (`/profile/[handle]/...`)
+- Suggestions index: real per-category groups + counts + 3 most-recent cover thumbnails (server component aggregating from `suggestions` join `items`)
+- Per-category suggestions list: real data with poster, title, rating, reflection, date + `<RowMenu>` (View/Edit/Delete) on each row
+- Reviews: real `ratings` join `items`, per-row delete with confirm
+- Bookmarks (was already real): added `<RowMenu>` for explicit Remove action
+- New API endpoints: `DELETE /api/suggestions/[id]`, `PATCH /api/suggestions/[id]`, `DELETE /api/ratings/[id]` (owner-only, RLS-aware)
+- `<EditSuggestionModal>` preloads reflection + rating, posts PATCH on save
+- `<ConfirmDeleteDialog>` (coral trash icon, danger-confirm)
+- `<DeleteSuccessDialog>` (matches user's Figma success-state mockup): coral-50 circle + coral-700 trash icon, "Επιτυχής διαγραφή" headline, contextual subtitle, auto-dismiss after 1.8s
+- Bookmarks tile added to profile GeneralStats (3-cell layout: ΠΡΟΤΑΣΕΙΣ / ΑΞΙΟΛΟΓΗΣΕΙΣ / ΑΓΑΠΗΜΕΝΑ — own profile only, RLS hides others')
+
+**Admin panel polish**
+- Save Location button on AddressMapSection (food/bars/hotels/theater extension forms): explicit save endpoint `/api/admin/items/[id]/location` writes ONLY address+lat+lng. Drag-pin no longer bleeds into global Save. Snapshot tracking + dirty flag + "↺ Επαναφορά" + "✓ Αποθηκεύτηκε" success state.
+- Removed keyboard shortcut hint chips above SuggestionsTable + ReviewsTable (visual decluttering — shortcuts still active via `useListKeyboard`)
+- Filters Explorer tab restored as second view alongside "Frontend Config" — real-data per-subcategory + per-region item counts with Card/Carousel recommendations (>10 → Card, 4-10 → Carousel, <4 → don't display). Endpoint: `/api/admin/filters/counts?category=X`
+- MoviePicker autoFocus race fixed (single search input, click-outside detection — was an inner `autoFocus` input stealing focus from the trigger and triggering its onBlur close timer)
+- TMDB API key wired in `.env.local`, validated against live API
+
+**Geocoding + venue location wiring**
+- 3-script geocoder pipeline: v1 (raw address → Nominatim, $200K), v2 (with region context — failed because most rows had `region_id=null`), v3 (fragment-based: walks comma-separated address fragments back-to-front + adds ", Greece") — recovered 196/209 v1 failures
+- Final: **411/424 venues geocoded** (97% of those with addresses); 13 still-failed are addresses too vague even for fragment extraction; 46 had no address at all (mostly theater rows from earlier data fix)
+- `scripts/geocode-venues-v3.js` (the working one), v1/v2 obsolete
+
+**Two new SQL migrations applied to live DB:**
+- `scripts/sql/013-search-log.sql` — `public.search_log` table + `trg_fanout_search_matches` trigger + `public.search_log_normalize(text)` function. Hook-driven loop: no-match queries → notification when matching item lands later. Lives in `public` (not `analytics` — Supabase PostgREST exposure + permissions made the original analytics path bumpy).
+- `scripts/sql/014-items-title-normalized.sql` — `items.title_normalized text generated stored` column with btree index. Greek-accent-stripped + lowercased copy of title. Search route uses it for accent-insensitive title matching.
 
 ### Phase 1 — User-action persistence ✅ (session 12)
 
@@ -409,29 +515,121 @@ Still on legacy layout (Priority 1 remaining): Series, Food, Bars, Hotels, Recip
 
 ## 3. WHAT NEEDS TO BE BUILT NEXT (in order)
 
-### Priority 0 — Confidence-tiered conversational match (AGREED, not yet built — pick this up next session)
+### Phase A — Anthropic Claude Haiku integration (LOCKED, awaiting API key)
 
-The TMDB scoring system from session-12 already labels matches as exact / prefix / substring / fuzzy. Time to surface that to the user instead of always auto-locking. Locked decision:
+User is buying credits as Individual plan. Once `ANTHROPIC_API_KEY` lands in `.env.local`, this is the next session's work. Full architecture documented in **AI.md §12**.
 
-**Three tiers based on TMDB `scoreTitleMatch` result:**
+**Why this is Priority 1:**
+The regex-based extraction has hit its ceiling. Real user-reported failures that ONLY LLM solves:
+- `νολαν` → 0 (Greek transliteration of Nolan)
+- `leonardo di caprio` (with space) → 0 (DB stores "Leonardo DiCaprio" as one word)
+- `γαλάτσι μπαρ` → silent fall-through (sub-region not in regions table, no clarifying question)
+- `ωραία ταινία` reflection → generic regex tip vs. semantic "Πες ποια σκηνή σε άγγιξε"
+- Mini-chat is theatrical — same regex search wrapped in chat UI
 
-| Tier | Score | UX |
+**Cost projection (locked):**
+- Per-call: ~$0.0005 search / ~$0.004 submission with prompt caching
+- At 100K DAU + 3 searches/day + 30K submissions/month: **~$3,500/month** (~3% of projected revenue)
+- At 1K DAU starting point: ~$30/month
+- Self-hosted analysis (rejected for now): worse Greek quality, 3-6 weeks setup, not worth it pre-50K DAU
+
+**Build plan (4 days, sequential):**
+
+**Day 1 — Foundation**
+- `lib/ai/anthropic.ts` implementing existing `AIService` interface (mock is the contract — drop-in swap)
+- `lib/ai/index.ts` updated to pick implementation by env var presence (`ANTHROPIC_API_KEY` → Anthropic, else Mock)
+- Anthropic SDK (`npm install @anthropic-ai/sdk`)
+- System prompt files in `lib/ai/prompts/` — one per task: searchIntent, submissionMatch, qualityCoach, conversation
+- Prompt caching enabled by default (`cache_control: { type: "ephemeral" }` on system blocks)
+
+**Day 2 — Search intent extraction (highest UX impact)**
+- `/api/search` calls Haiku to extract `{ category, actors, directors, location, vibe, time, ambiguity_level }` from user query
+- Replaces the regex-based extraction. Falls back to current regex if Anthropic call fails (graceful degradation).
+- DB query uses structured filters (actors[] jsonb path, region_id, etc.) instead of ilike-on-title
+- Solves: `νολαν`, `leonardo di caprio`, `films by Coppola starring De Niro`
+
+**Day 3 — Submission match upgrade**
+- Haiku reads full reflection text, extracts `{ title, category, year_hint, actor_hint, director_hint, mood, confidence }`
+- TMDB / Books / Places confirms via existing enrichment helpers
+- Better confidence calibration than heuristic scoring
+- All categories (not just movies/series) get LLM-grade extraction
+
+**Day 4 — Quality coach + conversational fallback + cost dashboard**
+- Quality coach (`useSubmission` calls): replaces `lib/ai/quality.ts` regex with Haiku semantic understanding
+- Real coaching dimensions: WHY / SPECIFIC / EMOTIONAL / ACTIONABLE with contextual next-prompt
+- Conversational fallback: real LLM in the no-match mini-chat instead of theatrical regex
+- Admin cost dashboard at `/admin/ai-usage` — daily token spend, top expensive queries, rate-limit indicator
+
+**Decision points already locked:**
+1. ✅ Individual plan + pre-paid credits
+2. ✅ Set $30/month soft cap as initial budget alert
+3. ⏳ Order: search-intent first (biggest UX impact)
+4. ⏳ Caching: Postgres-based per-query cache table for hot queries (cheap, bypasses Anthropic for repeats)
+
+### Phase B — Recommendations (pgvector + nightly batch + LLM rerank)
+
+**3-layer architecture, ~5 days:**
+
+**Layer 1: Embeddings**
+- Each item → `embedding vector(1536)` from title + plot + tags + actors + reviews via OpenAI text-embedding-3-small ($0.02/1M tokens) or Anthropic alternative
+- Each user → `embedding vector(1536)` from their last 30-day activity (bookmarks, ratings, suggestions)
+- Items column already provisioned in schema; users column too
+
+**Layer 2: Offline batch (Supabase Edge Function + cron, runs at 04:00)**
+- Recompute item embeddings for items with new activity in last 24h
+- Recompute user embeddings from rolling 7-day activity window
+- For each active user → pgvector top-50 cosine-similarity search → save to `analytics.precomputed_recs`
+- Home page reads from `precomputed_recs` for sub-100ms personalized feed (no LLM at request time)
+
+**Layer 3: LLM reranking (Haiku, on-demand)**
+- For high-value moments (home hero, "Tailored for You" rail), rerank top-50 candidates → top-5 with 1-line reasoning
+- "Επειδή σου άρεσε X, αυτό έχει την ίδια vibe" — explanation visible in UI
+- ~$0.001 per rerank, 1-2 reranks/user/day → ~$0.06/user/month
+
+### Phase C — Notification dispatcher with hook-driven loops
+
+**Already saved as memory** ([feedback_hook_driven_mentality.md](.../memory/)). 6 days work. Pure event-matching, no LLM at runtime.
+
+**Already shipped (the prototypes):**
+- `notify_bookmarkers_of_airing` trigger (migration 011 — movies tonight) ✅
+- `trg_fanout_search_matches` trigger (migration 013 — search log) ✅
+
+**Loops to build (each ~1 day):**
+
+| Trigger | Signal | Notification |
 |---|---|---|
-| **High** | 100 (exact title match) | Auto-lock as today. Pill: *"🔒 Βρήκα: Κονκλάβιο (2024) ✓"* |
-| **Medium** | 60–80 (substring/prefix match) | Lock + show subtle *"Όχι αυτό; →"* link → expands alternatives. Microcopy: *"Νομίζω είναι Κονκλάβιο. Σωστό;"* |
-| **Low** | < 60 OR competing runner-up within 20pts | Don't auto-lock. Show 2-3 alternative cards (poster + title + year). User picks. Microcopy: *"Βρήκα μερικά. Ποιο εννοείς;"* |
+| TMDB new-season webhook | bookmarks of series | "Σύντομα: Severance S3" |
+| Cron: dormant 14d | activity log + follows | "5 νέες προτάσεις από φίλους σου" |
+| Bookmarked event date passed | event_dates + bookmark | "Πώς ήταν το χθεσινό concert; Βαθμολόγησε" |
+| Streak threshold hit | last_suggestion_at + cron | "6 εβδομάδες σερί — μη σπάσεις" |
+| Friend rated my bookmark | rating insert + bookmark on same item | "@George βαθμολόγησε το X (στα bookmarks σου)" |
+| Anniversary of suggestion | suggestion.published_at + cron | "Πριν 1 χρόνο πρότεινες X — N άνθρωποι το βαθμολόγησαν" |
 
-**Implementation order:**
-1. Compute the tier server-side from the score, return in `matchData.confidence_tier`. Data is already in the response (`alternatives` field already populated).
-2. Add `<MatchAlternatives>` mini-component (3 small cards: thumbnail + title + year, tappable). Renders below the IntelligencePanel when tier ≠ high, or when user taps "Όχι αυτό".
-3. Tapping an alternative → swap `analysis` to that candidate's data → state stays `match_found` with the new match. No new API calls (alternatives carry their own `match` payload server-side already).
-4. The unlock "↺ Άλλαξε" button stays as the manual escape hatch.
+### Sequencing rationale
 
-Self-contained ~45 min work. No schema or new endpoints.
+A first because:
+- It's interactive — the user feels the change immediately
+- It unblocks several search/submission failures that no amount of regex fixes
+- Smallest scope (4 days)
+- Lowest risk (drop-in via AIService interface; graceful fallback to regex)
 
-### Priority 1 — Search overhaul (after confidence tiers)
+B second because:
+- Recommendations need a content corpus to be meaningful (we have 1900+ items now — enough)
+- Builds on Phase A (Haiku for reranking already integrated)
+- Needs offline infra (Supabase Edge Functions) — fresh complexity layer
 
-`/api/search` returns 3 hardcoded items per the audit. The "AI-driven search" pillar in CLAUDE.md is theatrical. Bigger initiative — comparable in scope to all of submission Pass 1+2 combined. After confidence tiers ship, full pivot to search.
+C last because:
+- Most loops need historical user activity to be meaningful (90+ days of platform usage)
+- Cheapest cost-wise but biggest "feels alive" payoff
+- Pattern is established (we have 2 working triggers already); scaling to more is straightforward
+
+### Older priorities (still relevant, deferred behind Phase A/B/C)
+
+**Detail Pages Figma Alignment (2 of 9 done)** — Series, Food, Bars, Hotels, Recipes, Theater, Events still on legacy InfoCell. Defer until after Phase A.
+
+**Region backfill via reverse geocoding** — bigger fix for the venue-location problem. Use existing 411 lat/lng + Nominatim reverse → admin levels → match against regions table → backfill `region_id`. Can be done independently or as part of Phase B prep.
+
+**Submission-flow auth state cleanup, onboarding flow, achievement celebration animation, etc.** — same priority as before, just queued behind A/B/C.
 
 ### Priority 2 — Detail Pages Figma Alignment (2 of 9 done)
 Done: BookDetail, MovieDetail. Fix remaining 7 (Series, Food, Bars, Hotels, Recipes, Theater, Events) to:

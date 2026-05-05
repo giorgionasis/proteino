@@ -338,14 +338,8 @@ export function ReviewsTable({ stats }: Props) {
         </div>
       </div>
 
-      {/* Keyboard hint */}
-      <div className="flex items-center gap-3 mb-3 text-[11px] text-zinc-400">
-        <span><Kbd>↑↓</Kbd> or <Kbd>J/K</Kbd> navigate</span>
-        <span><Kbd>↵</Kbd> open</span>
-        <span><Kbd>H</Kbd> hide/show</span>
-        <span><Kbd>D</Kbd> delete</span>
-        <span><Kbd>/</Kbd> search</span>
-      </div>
+      {/* Keyboard hint chips removed for visual decluttering — shortcuts
+          still active via useListKeyboard for power users. */}
 
       {/* Table */}
       <div className="border border-zinc-200 rounded-lg overflow-hidden bg-white">

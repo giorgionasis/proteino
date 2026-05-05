@@ -28,6 +28,14 @@ function PencilIcon() {
   );
 }
 
+function BookmarkIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M3.5 2.5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v11.5l-4.5-3-4.5 3V2.5Z" stroke="#71717A" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function PlusCircleIcon() {
   return (
     <svg width="19" height="19" viewBox="0 0 19 19" fill="none" aria-hidden>
@@ -200,6 +208,7 @@ export function UserProfile({
   bio,
   suggestionCount = 0,
   ratingCount     = 0,
+  bookmarkCount   = 0,
   followersCount  = 0,
   followingCount  = 0,
   level           = 1,
@@ -212,6 +221,7 @@ export function UserProfile({
   bio?:            string;
   suggestionCount?: number;
   ratingCount?:    number;
+  bookmarkCount?:  number;
   followersCount?: number;
   followingCount?: number;
   level?:          number;
@@ -330,28 +340,40 @@ export function UserProfile({
       {/* ── 3. GeneralStats ─────────────────────────────────── */}
       <div className="px-5 mt-4">
         <div
-          className="flex items-center justify-between rounded-lg border border-zinc-200"
-          style={{ padding: "12px 24px" }}
+          className="flex items-stretch justify-between rounded-lg border border-zinc-200"
+          style={{ padding: "12px 16px" }}
         >
           {/* Suggestions — taps → suggestions overview */}
-          <Link href={`/profile/${handle}/suggestions`} className="flex flex-col items-center gap-4 active:opacity-70 transition-opacity">
+          <Link href={`/profile/${handle}/suggestions`} className="flex-1 flex flex-col items-center gap-4 active:opacity-70 transition-opacity">
             <div className="flex flex-col items-center gap-3">
               <PencilIcon />
-              <span className="text-base font-medium text-zinc-500 tracking-[0.6%] uppercase">ΠΡΟΤΑΣΕΙΣ</span>
+              <span className="text-[13px] font-medium text-zinc-500 tracking-[0.6%] uppercase">ΠΡΟΤΑΣΕΙΣ</span>
             </div>
-            <span className="text-[26px] font-bold text-zinc-800 leading-none">{suggestionCount}</span>
+            <span className="text-[24px] font-bold text-zinc-800 leading-none">{suggestionCount}</span>
           </Link>
 
           {/* Vertical divider */}
-          <div className="w-px bg-zinc-200" style={{ height: 83 }} />
+          <div className="w-px bg-zinc-200 mx-1" />
 
           {/* Reviews — taps → reviews overview */}
-          <Link href={`/profile/${handle}/reviews`} className="flex flex-col items-center gap-4 active:opacity-70 transition-opacity">
+          <Link href={`/profile/${handle}/reviews`} className="flex-1 flex flex-col items-center gap-4 active:opacity-70 transition-opacity">
             <div className="flex flex-col items-center gap-3">
               <StarIcon size={15} />
-              <span className="text-base font-medium text-zinc-500 tracking-[0.6%] uppercase">ΑΞΙΟΛΟΓΗΣΕΙΣ</span>
+              <span className="text-[13px] font-medium text-zinc-500 tracking-[0.6%] uppercase">ΑΞΙΟΛΟΓΗΣΕΙΣ</span>
             </div>
             <span className="text-[24px] font-bold text-zinc-800 leading-none">{ratingCount}</span>
+          </Link>
+
+          {/* Vertical divider */}
+          <div className="w-px bg-zinc-200 mx-1" />
+
+          {/* Bookmarks — own profile only (RLS blocks others) */}
+          <Link href={`/profile/${handle}/bookmarks`} className="flex-1 flex flex-col items-center gap-4 active:opacity-70 transition-opacity">
+            <div className="flex flex-col items-center gap-3">
+              <BookmarkIcon size={15} />
+              <span className="text-[13px] font-medium text-zinc-500 tracking-[0.6%] uppercase">ΑΓΑΠΗΜΕΝΑ</span>
+            </div>
+            <span className="text-[24px] font-bold text-zinc-800 leading-none">{bookmarkCount}</span>
           </Link>
         </div>
       </div>
@@ -439,7 +461,7 @@ export function UserProfile({
             Βοήθησε και άλλους χρήστες να <br />ανακαλύψουν νέες προτάσεις
           </p>
           <button
-            onClick={openSuggestion}
+            onClick={() => openSuggestion()}
             className="w-full flex items-center justify-center gap-2 rounded-lg active:opacity-80 transition-opacity"
             style={{
               backgroundColor: "#27272A",

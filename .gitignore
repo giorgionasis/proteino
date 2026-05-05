@@ -28,8 +28,11 @@ yarn-error.log*
 # local env files
 .env*.local
 
-# claude local settings (contains API tokens)
-.claude/settings.local.json
+# claude local settings + agent state (contains API tokens, memory, transcripts)
+.claude/
+
+# local screenshots / scratch
+Screenshot*.png
 
 # supabase temp
 supabase/.temp/

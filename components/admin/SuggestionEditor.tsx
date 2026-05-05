@@ -571,7 +571,7 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
       </div>
 
       {/* ExtraFields */}
-      <ExtraFieldsSection ref={extFieldsRef} category={category} extData={extData} regions={regions} extraOptions={extraOptions} />
+      <ExtraFieldsSection ref={extFieldsRef} itemId={item.id} category={category} extData={extData} regions={regions} extraOptions={extraOptions} />
     </div>
   );
 }
@@ -584,17 +584,20 @@ function formatDate(iso: string): string {
 
 /* ─────────────── ExtraFields Router ─────────────── */
 
-const ExtraFieldsSection = forwardRef<ExtFieldsHandle, { category: string; extData: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
-  function ExtraFieldsSection({ category, extData, regions, extraOptions }, ref) {
+const ExtraFieldsSection = forwardRef<
+  ExtFieldsHandle,
+  { itemId: string; category: string; extData: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }
+>(
+  function ExtraFieldsSection({ itemId, category, extData, regions, extraOptions }, ref) {
     switch (category) {
       case "movies": return <MovieExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
       case "books": return <BookExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
       case "series": return <SeriesExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
-      case "food": return <FoodExtraFields ref={ref} data={extData} regions={regions} extraOptions={extraOptions} />;
-      case "bars": return <BarsExtraFields ref={ref} data={extData} regions={regions} extraOptions={extraOptions} />;
-      case "hotels": return <HotelExtraFields ref={ref} data={extData} regions={regions} extraOptions={extraOptions} />;
+      case "food": return <FoodExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} />;
+      case "bars": return <BarsExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} />;
+      case "hotels": return <HotelExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} />;
       case "recipes": return <RecipeExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
-      case "theater": case "events": return <TheaterExtraFields ref={ref} data={extData} regions={regions} extraOptions={extraOptions} />;
+      case "theater": case "events": return <TheaterExtraFields ref={ref} itemId={itemId} category={category} data={extData} regions={regions} extraOptions={extraOptions} />;
       default: return null;
     }
   }
@@ -1024,8 +1027,9 @@ function SeriesExtraFields({ data, extraOptions }, ref) {
 
 /* ─────────────── FOOD / RESTAURANT ─────────────── */
 
-const FoodExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
-function FoodExtraFields({ data, regions, extraOptions }, ref) {
+const FoodExtraFields = forwardRef<ExtFieldsHandle, { itemId: string; data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
+function FoodExtraFields({ itemId, data, regions, extraOptions }, ref) {
+  const LOCATION_CATEGORY = "food";
   const [address, setAddress] = useState(data.address ?? "");
   const [telephone, setTelephone] = useState(data.telephone ?? "");
   const [lat, setLat] = useState(data.lat?.toString() ?? "");
@@ -1047,10 +1051,10 @@ function FoodExtraFields({ data, regions, extraOptions }, ref) {
   useImperativeHandle(ref, () => ({
     getData() {
       return {
-        address: address || null,
+        // address / lat / lng are owned by the location-save button (see
+        // AddressMapSection). Excluded here so accidental pin drags don't
+        // get persisted on the next global Save.
         telephone: telephone || null,
-        lat: lat ? parseFloat(lat) : null,
-        lng: lng ? parseFloat(lng) : null,
         cuisine: cuisine || null,
         type: type || null,
         region_id: regionId || null,
@@ -1066,6 +1070,8 @@ function FoodExtraFields({ data, regions, extraOptions }, ref) {
       <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-6">ExtraFields</h2>
 
       <AddressMapSection
+        itemId={itemId}
+        category={LOCATION_CATEGORY}
         address={address}
         setAddress={setAddress}
         lat={lat}
@@ -1120,8 +1126,9 @@ function FoodExtraFields({ data, regions, extraOptions }, ref) {
 
 /* ─────────────── BARS / CAFES ─────────────── */
 
-const BarsExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
-function BarsExtraFields({ data, regions, extraOptions }, ref) {
+const BarsExtraFields = forwardRef<ExtFieldsHandle, { itemId: string; data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
+function BarsExtraFields({ itemId, data, regions, extraOptions }, ref) {
+  const LOCATION_CATEGORY = "bars";
   const [address, setAddress] = useState(data.address ?? "");
   const [telephone, setTelephone] = useState(data.telephone ?? "");
   const [lat, setLat] = useState(data.lat?.toString() ?? "");
@@ -1139,10 +1146,10 @@ function BarsExtraFields({ data, regions, extraOptions }, ref) {
   useImperativeHandle(ref, () => ({
     getData() {
       return {
-        address: address || null,
+        // address / lat / lng are owned by the location-save button (see
+        // AddressMapSection). Excluded here so accidental pin drags don't
+        // get persisted on the next global Save.
         telephone: telephone || null,
-        lat: lat ? parseFloat(lat) : null,
-        lng: lng ? parseFloat(lng) : null,
         type: type || null,
         region_id: regionId || null,
         plot: plot || null,
@@ -1156,6 +1163,8 @@ function BarsExtraFields({ data, regions, extraOptions }, ref) {
       <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-6">ExtraFields</h2>
 
       <AddressMapSection
+        itemId={itemId}
+        category={LOCATION_CATEGORY}
         address={address}
         setAddress={setAddress}
         lat={lat}
@@ -1213,8 +1222,9 @@ function BarsExtraFields({ data, regions, extraOptions }, ref) {
 
 /* ─────────────── HOTELS ─────────────── */
 
-const HotelExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
-function HotelExtraFields({ data, regions, extraOptions }, ref) {
+const HotelExtraFields = forwardRef<ExtFieldsHandle, { itemId: string; data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
+function HotelExtraFields({ itemId, data, regions, extraOptions }, ref) {
+  const LOCATION_CATEGORY = "hotels";
   const initLinks = Array.isArray(data.availability_links) ? data.availability_links : [{ url: "" }];
   const [availabilities, setAvailabilities] = useState(initLinks.length ? initLinks : [{ url: "" }]);
   const [address, setAddress] = useState(data.address ?? "");
@@ -1233,10 +1243,10 @@ function HotelExtraFields({ data, regions, extraOptions }, ref) {
   useImperativeHandle(ref, () => ({
     getData() {
       return {
-        address: address || null,
+        // address / lat / lng are owned by the location-save button (see
+        // AddressMapSection). Excluded here so accidental pin drags don't
+        // get persisted on the next global Save.
         telephone: telephone || null,
-        lat: lat ? parseFloat(lat) : null,
-        lng: lng ? parseFloat(lng) : null,
         type: type || null,
         price_range: priceRange || null,
         region_id: regionId || null,
@@ -1251,6 +1261,8 @@ function HotelExtraFields({ data, regions, extraOptions }, ref) {
       <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-6">ExtraFields</h2>
 
       <AddressMapSection
+        itemId={itemId}
+        category={LOCATION_CATEGORY}
         address={address}
         setAddress={setAddress}
         lat={lat}
@@ -1541,8 +1553,8 @@ function RecipeExtraFields({ data, extraOptions }, ref) {
 
 /* ─────────────── THEATER / EVENTS ─────────────── */
 
-const TheaterExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
-function TheaterExtraFields({ data, regions, extraOptions }, ref) {
+const TheaterExtraFields = forwardRef<ExtFieldsHandle, { itemId: string; category: string; data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
+function TheaterExtraFields({ itemId, category, data, regions, extraOptions }, ref) {
   const [eventType, setEventType] = useState<"single" | "tour">("single");
   const [adsActive, setAdsActive] = useState(false);
   const initDates = Array.isArray(data.dates) ? data.dates : [
@@ -1574,9 +1586,7 @@ function TheaterExtraFields({ data, regions, extraOptions }, ref) {
         director: director || null,
         year: year ? parseInt(year) : null,
         name_place: namePlace || null,
-        address: address || null,
-        lat: lat ? parseFloat(lat) : null,
-        lng: lng ? parseFloat(lng) : null,
+        // address / lat / lng owned by AddressMapSection's location-save (see comment in food).
         ticket_url: ticketUrl || null,
         price: price || null,
         availability: availability || null,
@@ -1615,6 +1625,8 @@ function TheaterExtraFields({ data, regions, extraOptions }, ref) {
         {/* Map */}
         <AddressMapSection
           showPlace
+          itemId={itemId}
+          category={category}
           address={address}
           setAddress={setAddress}
           lat={lat}
@@ -1776,6 +1788,13 @@ function RegionSelect({ regionId, setRegionId, parentRegions, childRegions }: {
 interface AddressMapSectionProps {
   showPlace?: boolean;
   showActions?: boolean;
+  /** Required to enable the explicit "Αποθήκευση τοποθεσίας" button.
+   *  When passed, accidental pin drags don't bleed into the global Save —
+   *  location is its own commit, separate from the rest of the form. */
+  itemId?: string;
+  /** Venue category — drives which extension table the location-save endpoint
+   *  writes to. Required alongside itemId. */
+  category?: string;
   address?: string;
   setAddress?: (v: string) => void;
   lat?: string;
@@ -1784,10 +1803,77 @@ interface AddressMapSectionProps {
   setLng?: (v: string) => void;
 }
 
-function AddressMapSection({ showPlace, showActions, address = "", setAddress, lat = "", setLat, lng = "", setLng }: AddressMapSectionProps) {
+function AddressMapSection({
+  showPlace,
+  showActions,
+  itemId,
+  category,
+  address = "",
+  setAddress,
+  lat = "",
+  setLat,
+  lng = "",
+  setLng,
+}: AddressMapSectionProps) {
   const wired = !!(setAddress && setLat && setLng);
   const numLat = lat ? parseFloat(lat) : null;
   const numLng = lng ? parseFloat(lng) : null;
+
+  // Snapshot: what the location was last persisted to. The explicit save
+  // button below is the only path that updates this. The dirty flag is
+  // computed against this snapshot, not against the original mount values
+  // — so multiple saves work in sequence.
+  const initialSnap = useRef({ address, lat, lng });
+  const [snap, setSnap] = useState(initialSnap.current);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const locationDirty =
+    address.trim() !== (snap.address ?? "").trim() ||
+    lat.trim() !== (snap.lat ?? "").trim() ||
+    lng.trim() !== (snap.lng ?? "").trim();
+
+  const canSaveLocation = !!itemId && !!category && wired && locationDirty && saveStatus !== "saving";
+
+  const handleSaveLocation = async () => {
+    if (!canSaveLocation) return;
+    setSaveStatus("saving");
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/admin/items/${itemId}/location`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category,
+          address: address || null,
+          lat: lat ? parseFloat(lat) : null,
+          lng: lng ? parseFloat(lng) : null,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setSaveError(body.error || `Σφάλμα (${res.status})`);
+        setSaveStatus("error");
+        return;
+      }
+      setSnap({ address, lat, lng });
+      setSaveStatus("saved");
+      // Auto-clear the "saved" hint after 2.5s
+      setTimeout(() => setSaveStatus((s) => (s === "saved" ? "idle" : s)), 2500);
+    } catch (e) {
+      setSaveError((e as Error).message);
+      setSaveStatus("error");
+    }
+  };
+
+  const handleRevert = () => {
+    if (!locationDirty) return;
+    setAddress?.(snap.address ?? "");
+    setLat?.(snap.lat ?? "");
+    setLng?.(snap.lng ?? "");
+    setSaveStatus("idle");
+    setSaveError(null);
+  };
 
   return (
     <div className="mb-6">
@@ -1844,6 +1930,41 @@ function AddressMapSection({ showPlace, showActions, address = "", setAddress, l
       ) : (
         <div className="w-full h-[300px] bg-zinc-100 rounded-lg flex items-center justify-center text-zinc-400 text-sm">
           (αυτή η ενότητα δεν είναι ακόμη wired)
+        </div>
+      )}
+
+      {/* Explicit location-save bar. Disabled until pin/address actually
+          changes — accidental drags don't bleed into the global form save. */}
+      {!!itemId && !!category && wired && (
+        <div className="flex items-center gap-3 mt-4">
+          <button
+            onClick={handleSaveLocation}
+            disabled={!canSaveLocation}
+            className={`px-5 py-2 text-sm font-semibold rounded-lg transition-colors ${
+              canSaveLocation
+                ? "bg-zinc-900 text-white hover:bg-zinc-800"
+                : "bg-zinc-100 text-zinc-400 cursor-not-allowed"
+            }`}
+          >
+            {saveStatus === "saving" ? "Αποθήκευση..." : "Αποθήκευση τοποθεσίας"}
+          </button>
+          {locationDirty && saveStatus !== "saving" && (
+            <button
+              onClick={handleRevert}
+              className="px-3 py-2 text-sm text-zinc-500 active:text-zinc-700 transition-colors"
+            >
+              ↺ Επαναφορά
+            </button>
+          )}
+          {saveStatus === "saved" && (
+            <span className="text-xs font-semibold text-emerald-600">✓ Αποθηκεύτηκε</span>
+          )}
+          {saveStatus === "error" && saveError && (
+            <span className="text-xs font-medium text-red-600">{saveError}</span>
+          )}
+          {!locationDirty && saveStatus === "idle" && (
+            <span className="text-xs text-zinc-400">Καμία αλλαγή στην τοποθεσία</span>
+          )}
         </div>
       )}
 

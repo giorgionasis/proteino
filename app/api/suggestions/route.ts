@@ -21,6 +21,107 @@ function slugify(text: string): string {
     .replace(/^-|-$/g, "");
 }
 
+/**
+ * TMDB genre ID → our subcategory slug. We key by numeric ID, not name,
+ * because TMDB returns genre names in whatever locale we ask for (we ask
+ * for el-GR for the user-facing flow) — IDs are stable across locales.
+ *
+ * Some TMDB genres don't have a direct match in our taxonomy; we pick the
+ * nearest neighbour. When TMDB returns several, we walk in order and take
+ * the first that maps — typically the most descriptive (Drama, Comedy)
+ * over the catch-alls (Family, Music).
+ *
+ * Reference: https://developer.themoviedb.org/reference/genre-movie-list
+ */
+const TMDB_GENRE_TO_SLUG: Record<"movies" | "series", Record<number, string>> = {
+  movies: {
+    28:    "drasi",        // Action
+    12:    "drasi",        // Adventure
+    16:    "animation",    // Animation
+    35:    "komodia",      // Comedy
+    80:    "thriler",      // Crime
+    99:    "ntokimanter",  // Documentary
+    18:    "drama",        // Drama
+    10751: "drama",        // Family
+    14:    "sci-fi",       // Fantasy
+    36:    "viografiki",   // History
+    27:    "horror",       // Horror
+    10402: "mousikal",     // Music
+    9648:  "thriler",      // Mystery
+    10749: "romantiki",    // Romance
+    878:   "sci-fi",       // Science Fiction
+    10770: "drama",        // TV Movie
+    53:    "thriler",      // Thriller
+    10752: "drasi",        // War
+    37:    "drasi",        // Western
+  },
+  series: {
+    10759: "drasi",        // Action & Adventure
+    16:    "animation",    // Animation
+    35:    "komodia",      // Comedy
+    80:    "crime",        // Crime
+    99:    "ntokimanter",  // Documentary
+    18:    "drama",        // Drama
+    10751: "drama",        // Family
+    10762: "animation",    // Kids
+    9648:  "thriler",      // Mystery
+    10763: "ntokimanter",  // News
+    10764: "ntokimanter",  // Reality
+    10765: "sci-fi",       // Sci-Fi & Fantasy
+    10766: "drama",        // Soap
+    10767: "ntokimanter",  // Talk
+    10768: "drasi",        // War & Politics
+    37:    "drasi",        // Western
+  },
+};
+
+/** Resolve subcategory_id from TMDB genre IDs for a given category. */
+async function resolveSubcategoryId(
+  admin: ReturnType<typeof createAdminClient>,
+  category: "movies" | "series",
+  genreIds: number[],
+): Promise<string | null> {
+  if (!genreIds || genreIds.length === 0) return null;
+  const map = TMDB_GENRE_TO_SLUG[category];
+  for (const id of genreIds) {
+    const slug = map[id];
+    if (!slug) continue;
+    const { data } = await admin
+      .from("subcategories")
+      .select("id")
+      .eq("category", category)
+      .eq("slug", slug)
+      .maybeSingle();
+    if (data) return (data as any).id;
+  }
+  return null;
+}
+
+/** Build the item_movies / item_series payload from ai_match_data. */
+function buildVideoExtPayload(
+  itemId: string,
+  category: "movies" | "series",
+  md: Record<string, any>,
+): Record<string, any> {
+  const actors = Array.isArray(md.cast)
+    ? md.cast.map((c: any) => ({ name: c?.name ?? "", avatar: c?.avatar ?? null }))
+    : [];
+  const payload: Record<string, any> = {
+    item_id: itemId,
+    director: typeof md.director === "string" ? md.director : null,
+    actors: actors.length > 0 ? actors : null,
+    plot: typeof md.plot === "string" ? md.plot : null,
+    country: typeof md.country === "string" ? md.country : null,
+    language: typeof md.language === "string" ? md.language : null,
+    trailer_url: null,
+  };
+  if (category === "movies") {
+    payload.duration_min = typeof md.runtime === "number" ? md.runtime : null;
+  }
+  if (md.year) payload.release_date = `${md.year}-01-01`;
+  return payload;
+}
+
 interface SubmitBody {
   category: CategorySlug;
   title: string;
@@ -83,12 +184,18 @@ export async function POST(req: NextRequest) {
 
   const { data: existingItem } = await admin
     .from("items")
-    .select("id, slug, title")
+    .select("id, slug, title, subcategory_id")
     .eq("slug", fullSlug)
     .maybeSingle();
 
   let itemId: string;
   let itemSlug: string;
+
+  // Pull rich metadata out of ai_match_data (TMDB / Books / Places shape).
+  const md = (body.ai_match_data ?? {}) as Record<string, any>;
+  const tmdbGenreIds: number[] = Array.isArray(md.genre_ids)
+    ? md.genre_ids.filter((n: any): n is number => typeof n === "number")
+    : [];
 
   if (existingItem) {
     itemId = (existingItem as any).id;
@@ -115,6 +222,33 @@ export async function POST(req: NextRequest) {
         { status: 409 }
       );
     }
+
+    // Existing item with no suggestions yet (e.g. legacy MySQL row, or
+    // created earlier by a flow that bailed). Backfill anything missing
+    // from the fresh TMDB payload — extension row, subcategory_id — so
+    // the admin/detail surfaces aren't half-empty.
+    if ((category === "movies" || category === "series") && md.tmdb_id) {
+      const extTable = category === "movies" ? "item_movies" : "item_series";
+      const { data: existingExt } = await admin
+        .from(extTable)
+        .select("item_id")
+        .eq("item_id", itemId)
+        .maybeSingle();
+      if (!existingExt) {
+        const { error: extErr } = await (admin.from(extTable) as any)
+          .insert(buildVideoExtPayload(itemId, category, md));
+        if (extErr) console.error(`[suggestions] enrich ${extTable} for existing ${itemId}:`, extErr.message);
+      }
+      if (!(existingItem as any).subcategory_id) {
+        const subId = await resolveSubcategoryId(admin, category, tmdbGenreIds);
+        if (subId) {
+          const { error: subErr } = await (admin.from("items") as any)
+            .update({ subcategory_id: subId })
+            .eq("id", itemId);
+          if (subErr) console.error(`[suggestions] subcategory backfill for existing ${itemId}:`, subErr.message);
+        }
+      }
+    }
   } else {
     // Create new item — start with a unique slug suffix loop in case of
     // case-insensitive collisions or whitespace variations.
@@ -131,18 +265,23 @@ export async function POST(req: NextRequest) {
     }
     itemSlug = `${category}/${candidate}`;
 
-    // Pull rich metadata out of ai_match_data (TMDB / Books / Places shape).
-    // Anything missing is null — admin can fill it later via the editor.
-    const md = (body.ai_match_data ?? {}) as Record<string, any>;
     const posterUrl = typeof md.poster_url === "string" ? md.poster_url : null;
     const backdropUrl = typeof md.backdrop_url === "string" ? md.backdrop_url : null;
     const coverUrl = body.cover_url ?? posterUrl ?? backdropUrl ?? null;
+
+    // Resolve subcategory_id from TMDB genres. Best-effort — null when no
+    // genre matches our taxonomy (admin can pick later).
+    const subcategoryId =
+      category === "movies" || category === "series"
+        ? await resolveSubcategoryId(admin, category, tmdbGenreIds)
+        : null;
 
     const { data: newItem, error: itemErr } = await (admin.from("items") as any)
       .insert({
         title,
         slug: itemSlug,
         category,
+        subcategory_id: subcategoryId,
         cover_url: coverUrl,
         poster_url: posterUrl,
         backdrop_url: backdropUrl,
@@ -169,32 +308,13 @@ export async function POST(req: NextRequest) {
     itemId = (newItem as any).id;
     itemSlug = (newItem as any).slug;
 
-    // Insert the category extension row with whatever metadata we have.
-    // Best-effort — if this fails we don't roll back the item, the admin
-    // editor can fill the gaps later.
+    // Extension row. Best-effort — failures are logged, not fatal: the
+    // suggestion still publishes, admin editor can fill gaps later.
     if (category === "movies" || category === "series") {
-      const directors = md.director ? [{ name: md.director }] : [];
-      const actors = Array.isArray(md.cast)
-        ? md.cast.map((c: any) => ({ name: c.name, avatar: c.avatar ?? null }))
-        : [];
-      const extPayload: Record<string, any> = {
-        item_id: itemId,
-        director: typeof md.director === "string" ? md.director : null,
-        directors: directors.length > 0 ? directors : null,
-        actors: actors.length > 0 ? actors : null,
-        plot: typeof md.plot === "string" ? md.plot : null,
-        country: null,
-        language: null,
-        trailer_url: null,
-      };
-      if (category === "movies") {
-        extPayload.duration_min = typeof md.runtime === "number" ? md.runtime : null;
-        if (md.year) extPayload.release_date = `${md.year}-01-01`;
-      } else {
-        if (md.year) extPayload.release_date = `${md.year}-01-01`;
-      }
       const extTable = category === "movies" ? "item_movies" : "item_series";
-      await (admin.from(extTable) as any).insert(extPayload);
+      const { error: extErr } = await (admin.from(extTable) as any)
+        .insert(buildVideoExtPayload(itemId, category, md));
+      if (extErr) console.error(`[suggestions] insert ${extTable} for new ${itemId}:`, extErr.message);
     }
   }
 

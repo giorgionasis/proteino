@@ -46,48 +46,106 @@ function detectCandidateCategory(text: string): CategorySlug {
 }
 
 /**
+ * Common articles, pronouns, descriptors, and "watched/loved" type verbs
+ * that are noise in title extraction. The lowercase fallback strips these
+ * to surface the actual title nouns.
+ */
+const STOPWORDS = new Set([
+  // English articles / pronouns / fillers
+  "i","a","an","the","this","that","those","these","my","your","his","her","our","their",
+  "just","very","really","only","also","quite","rather","kinda","still","again",
+  "is","was","were","are","be","been","being","have","has","had","do","does","did",
+  "and","or","but","so","with","of","to","for","from","by","in","on","at","as",
+  "it","its","they","them","we","us","you",
+  // English descriptors that aren't titles
+  "great","good","bad","nice","amazing","brilliant","stunning","lovely","awesome","perfect","cool","best",
+  "watched","saw","read","listened","loved","liked","hated","enjoyed","saw",
+  "movie","movies","film","films","book","books","series","show","shows","novel",
+  "yesterday","today","tonight","night","last","week","weekend",
+  // Greek articles / pronouns / fillers
+  "ένα","ένας","μια","μία","ο","η","το","τον","την","του","της","τα","τους","τις","οι","τι","ότι","πως",
+  "και","ή","αλλά","όμως","σε","από","για","με","χωρίς","όπως","ως","εκεί","εδώ",
+  "αυτό","αυτή","αυτός","εμένα","εσένα","μου","σου","τους","εμείς","εσείς",
+  "είναι","ήταν","έχω","έχει","είχα","είδα","διάβασα","άκουσα","παρακολούθησα","έπιασα","ξανάδα","έβαλα",
+  "πολύ","λίγο","ωραία","καλή","καλό","κακό","τέλεια","τέλειο","υπέροχη","υπέροχο","εξαιρετική","εξαιρετικό",
+  "γιατί","επειδή","διότι","όταν","αν","μήπως","χθες","σήμερα","απόψε","χθες",
+  "ταινία","ταινίες","βιβλίο","βιβλία","σειρά","σειρές","επεισόδιο",
+]);
+
+/**
  * Returns ranked candidate titles to try against TMDB. Best signal first:
  *   1. Anything in quotes (highest confidence)
  *   2. Sequences of consecutive capital-starting words ("Dune Part Two",
  *      "Anora", "Mikey Madison" — all proper-noun phrases). Earlier in
  *      the text ranks higher (people usually mention the title before
  *      the actors).
- *   3. Last resort: first 5 words of the text.
+ *   3. Lowercase fallback — runs of consecutive non-stopword tokens (3+
+ *      chars). Catches lowercase typing like "i just watched dune a great
+ *      movie" → "dune". TMDB itself is case-insensitive so once we have
+ *      the bare token, the search works fine.
+ *   4. Last resort: first 5 words of the text.
  *
- * The route tries each in order and returns on the first TMDB hit. This
- * fixes the "Anora last night" greedy-extraction bug where we'd glue
- * lowercase trailing words onto the title and TMDB would return 0 hits.
+ * The route tries each in order and returns the best-scored TMDB hit.
  */
 function extractCandidateTitles(text: string): string[] {
   const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (s: string) => {
+    const trimmed = s.trim();
+    if (!trimmed || trimmed.length < 2) return;
+    if (seen.has(trimmed.toLowerCase())) return;
+    seen.add(trimmed.toLowerCase());
+    out.push(trimmed.length > 60 ? trimmed.slice(0, 60) : trimmed);
+  };
 
   // 1. Quoted phrase
   const quoted = text.match(/["«„''']([^"»"'']{2,80})["»"'']/);
-  if (quoted) out.push(quoted[1].trim());
+  if (quoted) push(quoted[1]);
 
   // 2. Proper-noun phrases — every word in the phrase must start with an
   // uppercase letter (any script: Latin, Greek, Cyrillic, …). We use
   // Unicode property classes \p{Lu} + \p{L} because JS's \b and \w are
   // ASCII-only and would never fire on Greek input.
-  // Built via constructor to keep the TS literal-regex target unchanged.
   const propRe = new RegExp(
     "\\p{Lu}[\\p{L}\\d'\\-]*(?:\\s+\\p{Lu}[\\p{L}\\d'\\-]*)*",
     "gu"
   );
-  const seen = new Set<string>();
   let m: RegExpExecArray | null;
-  while ((m = propRe.exec(text)) !== null) {
-    const phrase = m[0].trim();
-    if (phrase.length < 2) continue;       // skip "I" etc.
-    if (seen.has(phrase)) continue;
-    seen.add(phrase);
-    out.push(phrase);
-  }
+  while ((m = propRe.exec(text)) !== null) push(m[0]);
 
-  // 3. Final fallback: first 5 words of the text
+  // 3. Lowercase fallback — group runs of consecutive non-stopword tokens.
+  // Tokens shorter than 3 chars or in the stopword list act as separators.
+  // For "i just watched dune a great movie" this yields just ["dune"].
+  const tokens = text.toLowerCase().split(/\s+/).filter(Boolean);
+  let run: string[] = [];
+  const flushRun = () => {
+    if (run.length > 0) {
+      push(run.join(" "));
+      // If the run has 2+ tokens, also try the longest single token alone
+      // (often the head noun is the actual title — "the matrix" vs "matrix").
+      if (run.length > 1) {
+        const longest = run.slice().sort((a, b) => b.length - a.length)[0];
+        if (longest.length >= 4) push(longest);
+      }
+    }
+    run = [];
+  };
+  for (const t of tokens) {
+    // Strip surrounding punctuation
+    const punctRe = new RegExp("^[^\\p{L}\\d]+|[^\\p{L}\\d]+$", "gu");
+    const tok = t.replace(punctRe, "");
+    if (!tok || tok.length < 3 || STOPWORDS.has(tok)) {
+      flushRun();
+      continue;
+    }
+    run.push(tok);
+  }
+  flushRun();
+
+  // 4. Final fallback: first 5 words of the text
   if (out.length === 0) {
     const words = text.trim().split(/\s+/).slice(0, 5).join(" ");
-    if (words) out.push(words.length > 60 ? words.slice(0, 60) : words);
+    if (words) push(words);
   }
 
   return out;
@@ -106,6 +164,14 @@ interface TmdbMatch {
   plot: string | null;
   director: string | null;
   cast: Array<{ name: string; character: string | null; avatar: string | null }>;
+  /** Localized TMDB genre names — display only, do not map by these (locale-dependent). */
+  genres: string[];
+  /** Stable TMDB genre IDs — locale-independent, the right key for taxonomy mapping. */
+  genre_ids: number[];
+  /** Comma-joined production country names (Greek-localized via TMDB i18n). */
+  country: string | null;
+  /** ISO 639-1 code, e.g. "en", "el", "fr". */
+  language: string | null;
 }
 
 async function tmdbMatch(category: "movies" | "series", title: string): Promise<TmdbMatch | null> {
@@ -146,6 +212,10 @@ async function tmdbMatch(category: "movies" | "series", title: string): Promise<
       plot: top.overview ?? null,
       director: null,
       cast: [],
+      genres: [],
+      genre_ids: Array.isArray(top.genre_ids) ? top.genre_ids : [],
+      country: null,
+      language: top.original_language ?? null,
     };
   }
   const detail = await detailRes.json();
@@ -168,6 +238,19 @@ async function tmdbMatch(category: "movies" | "series", title: string): Promise<
       ? (detail.runtime ?? null)
       : (Array.isArray(detail.episode_run_time) ? detail.episode_run_time[0] : null);
 
+  const genreObjs: Array<{ id?: number; name?: string }> = Array.isArray(detail.genres) ? detail.genres : [];
+  const genres: string[] = genreObjs.map((g) => g?.name).filter((n): n is string => typeof n === "string");
+  const genre_ids: number[] = genreObjs.map((g) => g?.id).filter((id): id is number => typeof id === "number");
+
+  const countryNames: string[] = Array.isArray(detail.production_countries)
+    ? detail.production_countries
+        .map((c: any) => c?.name)
+        .filter((n: any): n is string => typeof n === "string")
+    : Array.isArray(detail.origin_country)
+      ? detail.origin_country
+      : [];
+  const country = countryNames.length > 0 ? countryNames.join(", ") : null;
+
   return {
     id: detail.id,
     title: detail.title ?? detail.name ?? top.title ?? top.name ?? title,
@@ -179,6 +262,10 @@ async function tmdbMatch(category: "movies" | "series", title: string): Promise<
     plot: detail.overview ?? null,
     director,
     cast,
+    genres,
+    genre_ids,
+    country,
+    language: detail.original_language ?? null,
   };
 }
 
@@ -197,6 +284,26 @@ function scoreTitleMatch(candidate: string, title: string): number {
   if (t.includes(c)) return 60;
   if (c.includes(t)) return 50;
   return 20; // TMDB picked it via its own fuzzy matching
+}
+
+/**
+ * Confidence tier the UI uses to decide whether to auto-lock or surface
+ * alternatives. Two signals fold in:
+ *   - Best score: how cleanly the top candidate's title matches what the
+ *     user typed.
+ *   - Runner-up gap: when the second best is within 20 points the choice
+ *     is genuinely ambiguous (e.g. two TMDB hits both scoring 100). We
+ *     downgrade to "low" so the user picks.
+ *
+ * High   → auto-lock as before.
+ * Medium → lock but offer "Όχι αυτό; →" escape hatch.
+ * Low    → don't lock; show alternative cards.
+ */
+function computeTier(best: number, runnerUp: number | null): "high" | "medium" | "low" {
+  if (runnerUp !== null && best - runnerUp < 20) return "low";
+  if (best >= 100) return "high";
+  if (best >= 60) return "medium";
+  return "low";
 }
 
 function parseYear(date: string | null | undefined): number | null {
@@ -254,13 +361,44 @@ export async function GET(req: NextRequest) {
     if (ranked.length > 0) {
       const best = ranked[0];
       const m = best.match;
+      const runnerUpScore = ranked[1]?.score ?? null;
+      const tier = computeTier(best.score, runnerUpScore);
+
+      // Build a self-contained payload for each alternative so the client
+      // can swap analysis on tap with no extra round-trip. Each entry
+      // carries the same shape as the top match — once picked it just
+      // becomes the new top.
+      const buildPayload = (r: { candidate: string; match: TmdbMatch; score: number }) => ({
+        source: "tmdb" as const,
+        tmdb_id: r.match.id,
+        poster_url: r.match.poster_url,
+        backdrop_url: r.match.backdrop_url,
+        year: r.match.year,
+        runtime: r.match.runtime,
+        plot: r.match.plot,
+        director: r.match.director,
+        cast: r.match.cast,
+        genres: r.match.genres,
+        genre_ids: r.match.genre_ids,
+        country: r.match.country,
+        language: r.match.language,
+        tried_candidate: r.candidate,
+      });
+
+      const tierMessage =
+        tier === "low"
+          ? "Βρήκα μερικά. Ποιο εννοείς;"
+          : tier === "medium"
+            ? `Νομίζω είναι ${m.title}. Σωστό;`
+            : `Βρήκα: ${m.title}${m.year ? ` (${m.year})` : ""}`;
+
       const out: SubmissionAnalysis = {
         matched: true,
         title: m.title,
         category: m.category as CategorySlug,
-        confidence: 0.95,
+        confidence: tier === "high" ? 0.95 : tier === "medium" ? 0.7 : 0.45,
         progress: 100,
-        message: quality.tip ?? `Βρήκα: ${m.title}${m.year ? ` (${m.year})` : ""}`,
+        message: quality.tip ?? tierMessage,
         matchData: {
           source: "tmdb",
           tmdb_id: m.id,
@@ -271,11 +409,20 @@ export async function GET(req: NextRequest) {
           plot: m.plot,
           director: m.director,
           cast: m.cast,
+          genres: m.genres,
+          genre_ids: m.genre_ids,
+          country: m.country,
+          language: m.language,
           tried_candidate: best.candidate,
+          confidence_tier: tier,
+          best_score: best.score,
           alternatives: ranked.slice(1, 3).map((r) => ({
-            candidate: r.candidate,
             title: r.match.title,
+            year: r.match.year,
+            poster_url: r.match.poster_url,
             score: r.score,
+            category: r.match.category as CategorySlug,
+            match_data: buildPayload(r),
           })),
         },
         quality,

@@ -726,8 +726,28 @@ function MoviePicker({ value, label, cover, onPick }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [open]);
 
+  // Single-input pattern. Earlier we had a separate `autoFocus`-ed input
+  // inside the dropdown which stole focus from the trigger and immediately
+  // triggered the trigger's onBlur close timer — bug surfaced when a user
+  // tried to type and the dropdown disappeared instantly. The trigger IS
+  // the search input now; the dropdown is just the result list.
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Click-outside to close. Using mousedown so it fires before any link/
+  // button onClick inside the dropdown.
+  useEffect(() => {
+    if (!open) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       {value ? (
         <button
           onClick={() => setOpen(true)}
@@ -741,27 +761,15 @@ function MoviePicker({ value, label, cover, onPick }: {
         <input
           type="text"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
           placeholder="🔍 Αναζήτηση ταινίας..."
           className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400"
         />
       )}
 
       {open && (
-        <div
-          className="absolute left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-lg shadow-lg max-h-72 overflow-y-auto z-20"
-          onMouseDown={(e) => e.preventDefault()}
-        >
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Αναζήτηση..."
-            autoFocus
-            className="w-full px-3 py-2 border-b border-zinc-100 text-sm focus:outline-none"
-          />
+        <div className="absolute left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-lg shadow-lg max-h-72 overflow-y-auto z-20">
           {loading && <div className="px-3 py-2 text-xs text-zinc-500">Αναζήτηση...</div>}
           {!loading && results.length === 0 && (
             <div className="px-3 py-2 text-xs text-zinc-500">Καμία ταινία.</div>
@@ -769,7 +777,8 @@ function MoviePicker({ value, label, cover, onPick }: {
           {results.map((m) => (
             <button
               key={m.id}
-              onClick={() => { onPick(m); setOpen(false); }}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onPick(m); setOpen(false); setQuery(""); }}
               className="w-full flex items-center gap-2 px-3 py-2 hover:bg-zinc-50 text-left"
             >
               {m.cover_url

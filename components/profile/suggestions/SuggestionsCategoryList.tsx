@@ -1,9 +1,20 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 
-/* ── Category icon (bookmark-style) ──────────────────────────── */
+interface Group {
+  slug: string;
+  label: string;
+  count: number;
+  covers: string[];
+  overflow: number;
+}
+
+interface Props {
+  handle: string;
+  groups: Group[];
+  total: number;
+}
 
 function CategoryIcon() {
   return (
@@ -20,87 +31,32 @@ function CategoryIcon() {
   );
 }
 
-/* ── Data ─────────────────────────────────────────────────────── */
-
-interface Category {
-  name: string;
-  slug: string;
-  count: number;
-  images: string[];
-  overflow?: number;
-}
-
-const CATEGORIES: Category[] = [
-  {
-    name: "Βιβλία",
-    slug: "vivlia",
-    count: 10,
-    images: [
-      "/figma-assets/profile/book-akoi.png",
-      "/figma-assets/profile/book-ptisi.png",
-      "/figma-assets/profile/book-kapetanmixalis.png",
-    ],
-    overflow: 4,
-  },
-  {
-    name: "Ταινίες",
-    slug: "tainies",
-    count: 6,
-    images: [
-      "/figma-assets/profile/movie-bladerunner.png",
-      "/figma-assets/profile/movie-oppenheimer.png",
-      "/figma-assets/profile/movie-prestige.png",
-    ],
-  },
-  {
-    name: "Φαγητό",
-    slug: "fagito",
-    count: 3,
-    images: [
-      "/figma-assets/profile/food-1.png",
-      "/figma-assets/profile/food-2.png",
-      "/figma-assets/profile/food-3.png",
-    ],
-  },
-  {
-    name: "Συνταγές",
-    slug: "syntages",
-    count: 2,
-    images: [
-      "/figma-assets/profile/recipe-redvelvet.png",
-      "/figma-assets/profile/recipe-carrotcake.png",
-    ],
-  },
-];
-
-const TOTAL = 16;
-
-/* ── Stacked covers ───────────────────────────────────────────── */
-
-function StackedCovers({ images, overflow }: { images: string[]; overflow?: number }) {
+function StackedCovers({ covers, overflow }: { covers: string[]; overflow: number }) {
+  if (covers.length === 0 && overflow === 0) return null;
   return (
-    <div className="flex items-center" style={{ gap: -10 }}>
-      {images.map((src, i) => (
+    <div className="flex items-center">
+      {covers.map((src, i) => (
         <div
           key={i}
-          className="w-[50px] h-[50px] rounded-full overflow-hidden shrink-0"
+          className="w-[50px] h-[50px] rounded-full overflow-hidden shrink-0 bg-zinc-100"
           style={{
             marginLeft: i === 0 ? 0 : -10,
             border: "2px solid #FFFFFF",
             zIndex: i,
           }}
         >
-          <Image src={src} alt="" width={50} height={50} className="w-full h-full object-cover" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt="" className="w-full h-full object-cover" />
         </div>
       ))}
-      {overflow && overflow > 0 && (
+      {overflow > 0 && (
         <div
           className="w-[50px] h-[50px] rounded-full shrink-0 flex items-center justify-center"
           style={{
-            marginLeft: -10,
+            marginLeft: covers.length > 0 ? -10 : 0,
             backgroundColor: "#3F3F46",
             border: "2px solid #FFFFFF",
-            zIndex: images.length,
+            zIndex: covers.length,
           }}
         >
           <span className="text-sm font-semibold text-[#FAFAFA]">+{overflow}</span>
@@ -110,34 +66,43 @@ function StackedCovers({ images, overflow }: { images: string[]; overflow?: numb
   );
 }
 
-/* ── Category row ─────────────────────────────────────────────── */
-
-function CategoryRow({ category, handle }: { category: Category; handle: string }) {
+function CategoryRow({ group, handle }: { group: Group; handle: string }) {
   return (
     <Link
-      href={`/profile/${handle}/suggestions/${category.slug}`}
+      href={`/profile/${handle}/suggestions/${group.slug}`}
       className="flex flex-col gap-5 py-5 px-3 active:bg-zinc-50 transition-colors"
     >
       <div className="flex items-start justify-between">
-        <div className="flex flex-col gap-5">
-          <span className="text-[24px] font-bold text-[#27272A] leading-[130%]">{category.name}</span>
-          <span className="text-lg font-semibold text-[#52525B] leading-[130%]">
-            {category.count} προτάσεις
+        <div className="flex flex-col gap-3">
+          <span className="text-[24px] font-bold text-[#27272A] leading-[130%]">{group.label}</span>
+          <span className="text-base font-semibold text-[#52525B] leading-[130%]">
+            {group.count} {group.count === 1 ? "πρόταση" : "προτάσεις"}
           </span>
         </div>
         <CategoryIcon />
       </div>
-      <StackedCovers images={category.images} overflow={category.overflow} />
+      <StackedCovers covers={group.covers} overflow={group.overflow} />
     </Link>
   );
 }
 
-/* ── Main component ───────────────────────────────────────────── */
+function EmptyState({ handle }: { handle: string }) {
+  return (
+    <div className="px-6 py-16 text-center">
+      <p className="text-5xl mb-4">📭</p>
+      <h2 className="text-lg font-bold text-zinc-800 mb-1">Καμία πρόταση ακόμα</h2>
+      <p className="text-sm text-zinc-500 leading-relaxed mb-6">
+        Όταν ο/η <span className="font-semibold">@{handle}</span> προτείνει κάτι, θα εμφανιστεί εδώ.
+      </p>
+    </div>
+  );
+}
 
-export function SuggestionsCategoryList({ handle }: { handle: string }) {
+export function SuggestionsCategoryList({ handle, groups, total }: Props) {
+  if (groups.length === 0) return <EmptyState handle={handle} />;
+
   return (
     <div className="bg-white">
-      {/* Stats pill */}
       <div className="mx-6 mt-6 mb-2">
         <div
           className="flex items-center gap-2.5 rounded-[8px] px-4 py-4"
@@ -147,18 +112,17 @@ export function SuggestionsCategoryList({ handle }: { handle: string }) {
             className="font-bold text-[#27272A] leading-none"
             style={{ fontSize: 52, lineHeight: "37px" }}
           >
-            {TOTAL}
+            {total}
           </span>
           <span className="text-base text-[#3F3F46] leading-snug" style={{ fontWeight: 500 }}>
-            αγαπημένες σε <strong className="font-bold">{CATEGORIES.length} κατηγορίες</strong>
+            προτάσεις σε <strong className="font-bold">{groups.length} {groups.length === 1 ? "κατηγορία" : "κατηγορίες"}</strong>
           </span>
         </div>
       </div>
 
-      {/* Category list */}
       <div className="mx-6 flex flex-col divide-y divide-[#E4E4E7]">
-        {CATEGORIES.map((cat) => (
-          <CategoryRow key={cat.slug} category={cat} handle={handle} />
+        {groups.map((g) => (
+          <CategoryRow key={g.slug} group={g} handle={handle} />
         ))}
       </div>
     </div>

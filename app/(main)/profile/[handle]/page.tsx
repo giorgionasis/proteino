@@ -55,14 +55,20 @@ export default async function ProfilePage({ params }: Props) {
 
   // Fetch follower/following counts + viewer-specific follow state in one round-trip
   const meId = (await authClient.auth.getUser()).data.user?.id ?? null;
-  const [{ count: followerCount }, { count: followingCount }, followRow] = await Promise.all([
+  const isOwner = params.handle === ownerHandle;
+  const [{ count: followerCount }, { count: followingCount }, followRow, bookmarksRes] = await Promise.all([
     db.from("follows").select("id", { count: "exact", head: true }).eq("following_id", profileData.id),
     db.from("follows").select("id", { count: "exact", head: true }).eq("follower_id", profileData.id),
     meId && meId !== profileData.id
       ? db.from("follows").select("id").eq("follower_id", meId).eq("following_id", profileData.id).maybeSingle()
       : Promise.resolve({ data: null }),
+    // Bookmarks are private (RLS) so only fetch the count when viewing own profile.
+    isOwner
+      ? db.from("bookmarks").select("id", { count: "exact", head: true }).eq("user_id", profileData.id)
+      : Promise.resolve({ count: 0 }),
   ]);
   const initialFollowing = !!(followRow as any)?.data;
+  const bookmarkCount = (bookmarksRes as any)?.count ?? 0;
 
   // Fetch user's suggestions with items to find the highest-rated one
   const { data: userSuggestions } = (await (db.from("suggestions") as any)
@@ -99,7 +105,7 @@ export default async function ProfilePage({ params }: Props) {
     }
   }
 
-  if (params.handle === ownerHandle) {
+  if (isOwner) {
     let sessionAvatarUrl: string | null = null;
     let sessionDisplayName: string | null = null;
 
@@ -120,6 +126,7 @@ export default async function ProfilePage({ params }: Props) {
         bio={profileData.bio ?? undefined}
         suggestionCount={profileData.suggestion_count ?? 0}
         ratingCount={profileData.rating_count ?? 0}
+        bookmarkCount={bookmarkCount}
         level={profileData.level ?? 1}
         followersCount={followerCount ?? 0}
         followingCount={followingCount ?? 0}

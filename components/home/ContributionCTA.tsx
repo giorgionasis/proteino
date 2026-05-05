@@ -40,7 +40,7 @@ export function ContributionCTA({ username }: ContributionCTAProps) {
 
         {/* CTA button */}
         <button
-          onClick={openSuggestion}
+          onClick={() => openSuggestion()}
           className="w-full rounded-sm bg-zinc-950 text-[22px] font-bold text-zinc-50 py-6 active:bg-zinc-800 transition-colors"
         >
           Προτείνω

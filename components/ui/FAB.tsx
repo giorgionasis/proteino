@@ -17,7 +17,7 @@ export function FAB({ className }: { className?: string }) {
       style={{ bottom: "calc(64px + env(safe-area-inset-bottom, 0px) + 16px)", height: 56 }}
     >
       <button
-        onClick={openSuggestion}
+        onClick={() => openSuggestion()}
         aria-label="Νέα πρόταση"
         className={cn(
           "absolute right-4 bottom-0 pointer-events-auto",

@@ -2,6 +2,8 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
+**Last meaningful update:** 2026-05-05 (session 13 — search overhaul shipped, AI integration plan locked, recommendation + notification architectures documented)
+
 ---
 
 ## 1. Project Overview
@@ -56,10 +58,21 @@ interface AIService {
 // lib/ai/anthropic.ts — future implementation
 ```
 
-### Recommendation System
-- **Offline (nightly batch):** Compute embeddings, update user profiles, pre-compute personalized recommendations
-- **Online (real-time):** Serve pre-computed recs, fast vector search for queries, log new activity
-- Uses `pgvector` extension in Supabase — already provisioned
+### Recommendation System (3-layer architecture — locked in session 13)
+- **Layer 1 — Embeddings:** every item + user has `embedding vector(1536)`. Items embedded from title + plot + tags + actors + reviews; users from rolling 30-day activity (bookmarks, ratings, suggestions, follows). Embedding provider TBD (OpenAI text-embedding-3-small at $0.02/1M tokens is the leading candidate).
+- **Layer 2 — Offline batch:** Supabase Edge Function with cron at 04:00 daily. Recompute item embeddings for items with new activity (last 24h), recompute user embeddings, then for each active user run pgvector cosine-similarity top-50 → save to `analytics.precomputed_recs`. Home page reads from this in <100ms with no LLM at request time.
+- **Layer 3 — LLM reranking (Haiku, on-demand):** for high-value moments (home hero, "Tailored for You" rail), Haiku reranks the 50 candidates → top-5 with 1-line reasoning ("Επειδή σου άρεσε X, αυτό έχει την ίδια vibe"). ~$0.001 per rerank, 1-2/user/day.
+- **"Training":** the system gets smarter via RAG (context injected at runtime) + nightly embedding refresh. We do NOT fine-tune the LLM. See AI.md §12.1 for the rationale.
+- Uses `pgvector` extension in Supabase — already provisioned (column exists on items + users).
+- **Build order:** Phase B in PROGRESS.md §3 — comes AFTER Phase A (Anthropic in search + submission). 5 days estimated.
+
+### Notification Dispatcher (hook-driven loops — locked in session 13)
+- **Principle:** every passive user signal (bookmark, rating, follow, suggestion, search_log entry, location, last_login_at) × time-or-event trigger = personal moment. The platform "remembered" the user. See [memory file](.claude/projects/.../memory/feedback_hook_driven_mentality.md) for the full design principle + idea catalog.
+- **Architecture:** Postgres triggers + Supabase Edge Function crons. No LLM at runtime — pure event matching. Notifications inserted into `public.notifications` table, read by `/notifications` page.
+- **Already shipped (the prototypes):**
+  - `notify_bookmarkers_of_airing` (migration 011 — bookmarked movie airs tonight on TV)
+  - `trg_fanout_search_matches` (migration 013 — searched X but not in DB → notifies when matching item lands later)
+- **Loops to build (each ~1 day):** TMDB new-season webhook for bookmarked series, dormant 14-day comeback, bookmarked event passed → rate prompt, streak protection, friend rated my bookmark, suggestion anniversary. See PROGRESS.md §3 Phase C.
 
 ---
 
@@ -270,8 +283,8 @@ analytics.search_log          -- search queries for improvement
 
 ### Theme
 - **Base:** Light theme throughout — white background, zinc text scale, coral accent
-- **Exception:** Dark theme ONLY for Syncing + Published + Achievement unlock screens
-- **AI flows (Search + Suggestion):** Light theme — same design system, NOT dark
+- **Exception:** Dark theme ONLY for the Syncing screen (brief takeover during AI enrichment)
+- **AI flows (Search + Suggestion + Published):** Light theme — same design system. (Earlier spec had Published in dark; it's been moved to light for better hierarchy + breathing room.)
 - **Primary accent:** Coral `#FE6F5E` — verified from Figma (replaces old `#D85A30`)
 - **Gradient:** `#FE6F5E` → `#FF9980` (buttons, progress bars, FAB shadow)
 
@@ -505,8 +518,12 @@ Every screen must have a next action. Examples:
 |---|---|---|
 | Items table | Hybrid base + extensions | Cross-category AI + structured data |
 | Database | Single Supabase + 2 schemas | Simple now, extractable later |
-| AI provider | Abstracted (mock now) | No access yet, swappable |
-| Recommendations | Vector + LLM hybrid | Speed + explainability |
+| AI provider | Anthropic Claude Haiku 4.5 | Greek quality + cost + speed; locked session 13 (see AI.md §12) |
+| Self-hosted AI? | No, until 50K+ DAU | Greek quality drop on 7-13B open models, 3-6w setup, eng cost |
+| Fine-tune LLM? | Never | RAG > fine-tune for diverse tasks; Anthropic doesn't offer it on Individual plan anyway |
+| Anthropic plan | Individual + pay-per-use credits | $20 starter, $30/mo soft cap |
+| Recommendations | Vector + LLM hybrid (3 layers) | Embeddings = "training" via user activity; precomputed_recs nightly; Haiku reranks on-demand |
+| AI cost as % of revenue (target) | 3-5% | At 100K DAU: ~$3.5K cost vs ~€122K revenue projected |
 | Theme | Light + coral accent | Content-heavy screens need light |
 | Dark theme | Syncing + Published + Achievement only | AI flows stay light |
 | Levels | Suggestion count only | Simple, transparent, no confusion |

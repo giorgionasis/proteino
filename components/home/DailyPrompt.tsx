@@ -20,7 +20,7 @@ export function DailyPrompt({ username }: DailyPromptProps) {
           Ανακάλυψες κάτι καλό τελευταία;
         </p>
         <button
-          onClick={openSuggestion}
+          onClick={() => openSuggestion()}
           className="bg-coral-600 text-white text-sm font-semibold px-6 py-2.5 rounded-full active:bg-coral-700 transition-colors"
         >
           Προτείνω
