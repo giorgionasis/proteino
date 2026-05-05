@@ -1,11 +1,22 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { RegisterForm } from "@/components/auth/RegisterForm";
 import { AuthHeader } from "@/components/auth/AuthHeader";
 import { AuthTrustBadge } from "@/components/auth/AuthTrustBadge";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Εγγραφή — Proteino" };
 
-export default function RegisterPage() {
+export default async function RegisterPage() {
+  // Real session validation — see comment in /login page.
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    try {
+      const sb = createClient();
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.user) redirect("/");
+    } catch { /* network error — render form so the user isn't blocked */ }
+  }
+
   return (
     <div className="bg-white min-h-screen">
       <AuthHeader closeHref="/" />

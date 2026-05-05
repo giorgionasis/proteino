@@ -1,13 +1,26 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { AuthHeader } from "@/components/auth/AuthHeader";
 import { AuthTrustBadge } from "@/components/auth/AuthTrustBadge";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Σύνδεση — Proteino" };
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  // Real session validation — only redirect if the cookie actually decodes
+  // to a valid session. Avoids the trap where a stale cookie (present but
+  // expired) would otherwise bounce the user to /, leaving them unable to
+  // reach the login form to re-authenticate.
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    try {
+      const sb = createClient();
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.user) redirect("/");
+    } catch { /* network error — render form so the user isn't blocked */ }
+  }
+
   return (
     <div className="bg-white min-h-screen">
       <AuthHeader closeHref="/" />

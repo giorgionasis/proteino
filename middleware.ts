@@ -34,10 +34,13 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL("/login?redirect=" + encodeURIComponent(pathname), request.url));
     }
 
-    // Redirect authenticated users away from auth pages
-    if (loggedIn && (pathname === "/login" || pathname === "/register")) {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
+    // NOTE: We deliberately do NOT redirect logged-in users away from
+    // /login or /register here. Middleware can only detect cookie
+    // presence, not JWT validity — so a stale/expired cookie would
+    // create a redirect trap (user can never reach the login form to
+    // re-authenticate). The login/register pages do their own
+    // server-side session validation and redirect when the session
+    // actually decodes.
 
     return NextResponse.next();
   } catch (err) {
