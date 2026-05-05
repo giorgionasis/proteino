@@ -53,11 +53,16 @@ export default async function ProfilePage({ params }: Props) {
 
   if (!profileData) notFound();
 
-  // Fetch follower/following counts
-  const [{ count: followerCount }, { count: followingCount }] = await Promise.all([
+  // Fetch follower/following counts + viewer-specific follow state in one round-trip
+  const meId = (await authClient.auth.getUser()).data.user?.id ?? null;
+  const [{ count: followerCount }, { count: followingCount }, followRow] = await Promise.all([
     db.from("follows").select("id", { count: "exact", head: true }).eq("following_id", profileData.id),
     db.from("follows").select("id", { count: "exact", head: true }).eq("follower_id", profileData.id),
+    meId && meId !== profileData.id
+      ? db.from("follows").select("id").eq("follower_id", meId).eq("following_id", profileData.id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
+  const initialFollowing = !!(followRow as any)?.data;
 
   // Fetch user's suggestions with items to find the highest-rated one
   const { data: userSuggestions } = (await (db.from("suggestions") as any)
@@ -136,6 +141,8 @@ export default async function ProfilePage({ params }: Props) {
       followerCount={followerCount ?? 0}
       followingCount={followingCount ?? 0}
       topSuggestion={topSuggestion}
+      targetUserId={profileData.id}
+      initialFollowing={initialFollowing}
     />
   );
 }

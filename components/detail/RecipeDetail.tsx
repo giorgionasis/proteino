@@ -8,6 +8,9 @@ import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { InnerHeader } from "@/components/layout/Header";
 import { useBookmark } from "@/hooks/useBookmark";
+import { useRating } from "@/hooks/useRating";
+import { CommentComposer } from "@/components/detail/CommentComposer";
+import { CommentThread } from "@/components/detail/CommentThread";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -39,7 +42,8 @@ function formatDate(iso: string): string {
 export function RecipeDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
   const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "recipes", data.isBookmarked);
-  const [userRating, setUserRating] = useState(0);
+  const [userRating, setUserRating] = useState(data.userRating ?? 0);
+  const { save: saveRating, busy: ratingBusy, savedScore } = useRating(data.item.id, data.userRating);
   const [checkedIngredients, setCheckedIngredients] = useState<Set<number>>(new Set());
 
   const { item, extension: ext, suggestions } = data;
@@ -295,7 +299,14 @@ export function RecipeDetail({ data }: { data: ItemDetailData }) {
       </div>
 
       {/* Community */}
-      <CommunitySection ratings={ratingDistribution} communityRating={avgRating} reviews={reviews} userRating={userRating} setUserRating={setUserRating} question="Με πόσα αστέρια θα βαθμολογούσες τη συνταγή;" />
+      <CommunitySection ratings={ratingDistribution} communityRating={avgRating} reviews={reviews} userRating={userRating} setUserRating={setUserRating} saveRating={saveRating} ratingBusy={ratingBusy} savedScore={savedScore} question="Με πόσα αστέρια θα βαθμολογούσες τη συνταγή;" />
+
+      {data.suggestions[0] && (
+        <div className="px-6 flex flex-col gap-4">
+          <CommentComposer suggestionId={data.suggestions[0].id} />
+          <CommentThread suggestionId={data.suggestions[0].id} />
+        </div>
+      )}
 
     </div>
   );
@@ -336,12 +347,15 @@ function InfoCell({ label, value }: { label: string; value: string }) {
 
 interface ReviewItem { id: string; name: string; badge: "Verified"|"Expert"|"Platinum"|"Gold"; color: string; rating: number; date: string; text: string; likes: number; dislikes: number; userData?: any; }
 
-function CommunitySection({ ratings, communityRating, reviews, userRating, setUserRating, question }: {
+function CommunitySection({ ratings, communityRating, reviews, userRating, setUserRating, saveRating, ratingBusy, savedScore, question }: {
   ratings: { stars: number; pct: number }[];
   communityRating: number;
   reviews: ReviewItem[];
   userRating: number;
   setUserRating: (n: number) => void;
+  saveRating: (score: number) => void;
+  ratingBusy: boolean;
+  savedScore: number | null;
   question: string;
 }) {
   return (
@@ -376,8 +390,12 @@ function CommunitySection({ ratings, communityRating, reviews, userRating, setUs
             ))}
           </div>
           {userRating > 0 && (
-            <button className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity">
-              Αποθήκευσε βαθμολογία
+            <button
+              onClick={() => saveRating(userRating)}
+              disabled={ratingBusy || userRating === savedScore}
+              className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
+            >
+              {ratingBusy ? "Αποθήκευση..." : savedScore === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
             </button>
           )}
         </div>

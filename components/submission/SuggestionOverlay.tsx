@@ -4,7 +4,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Camera, Link2, List, Mic, X } from "lucide-react";
 import { OverlayHeader } from "@/components/layout/Header";
 import { useSubmission } from "@/hooks/useSubmission";
+import { AchievementProgress } from "@/components/submission/AchievementProgress";
 import { cn } from "@/lib/utils/cn";
+import Link from "next/link";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -210,10 +212,12 @@ function PublishedScreen({
   title,
   onDismiss,
   onShareLink,
+  newSuggestionCount,
 }: {
-  title:       string;
-  onDismiss:   () => void;
-  onShareLink: () => void;
+  title:              string;
+  onDismiss:          () => void;
+  onShareLink:        () => void;
+  newSuggestionCount: number | null;
 }) {
   return (
     <div className="flex flex-col h-full min-h-screen bg-zinc-950">
@@ -239,6 +243,9 @@ function PublishedScreen({
             {" "}is now live in the ecosystem.
           </p>
         </div>
+        {typeof newSuggestionCount === "number" && newSuggestionCount > 0 && (
+          <AchievementProgress suggestionCount={newSuggestionCount} />
+        )}
       </div>
       <div className="px-5 pb-10 pt-4 flex gap-3">
         <button onClick={onDismiss} className="flex-1 h-13 rounded-card bg-zinc-800 text-white text-sm font-bold tracking-widest uppercase active:bg-zinc-700 transition-colors">
@@ -252,6 +259,106 @@ function PublishedScreen({
   );
 }
 
+// ── Duplicate screen (HOOKS.md §8) ────────────────────────────────────────────
+
+function DuplicateScreen({
+  kind,
+  suggester,
+  itemSlug,
+  suggestionId,
+  onTryAgain,
+  onClose,
+}: {
+  kind:         "own" | "other";
+  suggester:    { handle: string; display_name: string } | null;
+  itemSlug:     string;
+  suggestionId: string;
+  onTryAgain:   () => void;
+  onClose:      () => void;
+}) {
+  return (
+    <div className="flex flex-col h-full min-h-screen bg-white">
+      <div className="flex items-center justify-end h-14 px-5 border-b border-zinc-200">
+        <button onClick={onClose} aria-label="Κλείσιμο"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors">
+          <X size={16} strokeWidth={2.5} className="text-zinc-700" />
+        </button>
+      </div>
+      <div className="flex-1 flex flex-col items-center justify-center px-8 gap-6 text-center">
+        <div className="text-5xl">{kind === "own" ? "😄" : "👀"}</div>
+        <h1 className="text-2xl font-bold text-zinc-800 leading-tight">
+          {kind === "own"
+            ? "Το έχεις ήδη προτείνει εσύ!"
+            : "Έχει ήδη προταθεί!"}
+        </h1>
+        {kind === "other" && suggester && (
+          <p className="text-sm text-zinc-500 leading-relaxed">
+            Από τον/την <span className="font-semibold text-zinc-700">@{suggester.handle}</span>
+          </p>
+        )}
+      </div>
+      <div className="px-5 pb-10 pt-4 space-y-3 border-t border-zinc-100">
+        {kind === "own" && itemSlug && (
+          <Link
+            href={`/${itemSlug}`}
+            onClick={onClose}
+            className="block w-full h-13 rounded-card bg-coral-600 text-white text-sm font-bold tracking-widest uppercase active:bg-coral-700 transition-colors flex items-center justify-center"
+          >
+            Δες την πρότασή σου
+          </Link>
+        )}
+        {kind === "other" && itemSlug && (
+          <Link
+            href={`/${itemSlug}`}
+            onClick={onClose}
+            className="block w-full h-13 rounded-card bg-coral-600 text-white text-sm font-bold tracking-widest uppercase active:bg-coral-700 transition-colors flex items-center justify-center"
+          >
+            ★ Βαθμολόγησέ το
+          </Link>
+        )}
+        <button onClick={onTryAgain} className="w-full h-13 rounded-card bg-zinc-100 text-zinc-700 text-sm font-bold tracking-widest uppercase active:bg-zinc-200 transition-colors">
+          ✏ Πρότεινε κάτι άλλο
+        </button>
+      </div>
+      {/* suggestionId reserved for follow-up wiring (open-comment-thread, etc.) */}
+      <span className="hidden">{suggestionId}</span>
+    </div>
+  );
+}
+
+// ── Error screen ──────────────────────────────────────────────────────────────
+
+function ErrorScreen({
+  message,
+  onRetry,
+  onClose,
+}: {
+  message: string;
+  onRetry: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="flex flex-col h-full min-h-screen bg-white">
+      <div className="flex items-center justify-end h-14 px-5 border-b border-zinc-200">
+        <button onClick={onClose} aria-label="Κλείσιμο"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors">
+          <X size={16} strokeWidth={2.5} className="text-zinc-700" />
+        </button>
+      </div>
+      <div className="flex-1 flex flex-col items-center justify-center px-8 gap-6 text-center">
+        <div className="text-5xl">⚠️</div>
+        <h1 className="text-xl font-bold text-zinc-800">Κάτι πήγε στραβά</h1>
+        <p className="text-sm text-zinc-500 leading-relaxed">{message}</p>
+      </div>
+      <div className="px-5 pb-10 pt-4 border-t border-zinc-100">
+        <button onClick={onRetry} className="w-full h-13 rounded-card bg-coral-600 text-white text-sm font-bold tracking-widest uppercase active:bg-coral-700 transition-colors">
+          Δοκίμασε ξανά
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface SuggestionOverlayProps {
@@ -259,7 +366,18 @@ interface SuggestionOverlayProps {
 }
 
 export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
-  const { state: hookState, text, analysis, setText, verify, publish, reset } = useSubmission();
+  const {
+    state: hookState,
+    text,
+    analysis,
+    newSuggestionCount,
+    duplicate,
+    errorMessage,
+    setText,
+    verify,
+    publish,
+    reset,
+  } = useSubmission();
   const [progress, setProgress] = useState(0);
   const [msgIndex, setMsgIndex] = useState(0);
 
@@ -356,6 +474,30 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
         title={matchTitle ?? "Your Recommendation"}
         onDismiss={handleDismiss}
         onShareLink={handleShareLink}
+        newSuggestionCount={newSuggestionCount}
+      />
+    );
+  }
+
+  if (hookState === "duplicate" && duplicate) {
+    return (
+      <DuplicateScreen
+        kind={duplicate.kind}
+        suggester={duplicate.suggester}
+        itemSlug={duplicate.item_slug}
+        suggestionId={duplicate.suggestion_id}
+        onTryAgain={() => reset()}
+        onClose={handleDismiss}
+      />
+    );
+  }
+
+  if (hookState === "error") {
+    return (
+      <ErrorScreen
+        message={errorMessage ?? "Δοκίμασε ξανά."}
+        onRetry={() => reset()}
+        onClose={handleDismiss}
       />
     );
   }

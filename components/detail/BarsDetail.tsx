@@ -8,6 +8,9 @@ import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { ItemGalleryViewer, type GalleryImage } from "@/components/detail/ItemGalleryViewer";
 import { useBookmark } from "@/hooks/useBookmark";
+import { useRating } from "@/hooks/useRating";
+import { CommentComposer } from "@/components/detail/CommentComposer";
+import { CommentThread } from "@/components/detail/CommentThread";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -45,7 +48,8 @@ const BADGE_STYLE: Record<"Expert" | "Platinum" | "Gold" | "Verified", string> =
 export function BarsDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
   const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "bars", data.isBookmarked);
-  const [userRating, setUserRating] = useState(0);
+  const [userRating, setUserRating] = useState(data.userRating ?? 0);
+  const { save: saveRating, busy: ratingBusy, savedScore } = useRating(data.item.id, data.userRating);
 
   const { item, extension: ext, suggestions } = data;
 
@@ -197,11 +201,22 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
               ))}
             </div>
             {userRating > 0 && (
-              <button className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity">
-                Αποθήκευσε βαθμολογία
+              <button
+                onClick={() => saveRating(userRating)}
+                disabled={ratingBusy || userRating === savedScore}
+                className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
+              >
+                {ratingBusy ? "Αποθήκευση..." : savedScore === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
               </button>
             )}
           </div>
+
+          {data.suggestions[0] && (
+            <div className="flex flex-col gap-4">
+              <CommentComposer suggestionId={data.suggestions[0].id} />
+              <CommentThread suggestionId={data.suggestions[0].id} />
+            </div>
+          )}
 
           {reviews.length > 0 && (
             <div className="flex gap-5 overflow-x-auto no-scrollbar py-2.5 pl-6 w-full">

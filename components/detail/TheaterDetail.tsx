@@ -8,6 +8,9 @@ import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { InnerHeader } from "@/components/layout/Header";
 import { useBookmark } from "@/hooks/useBookmark";
+import { useRating } from "@/hooks/useRating";
+import { CommentComposer } from "@/components/detail/CommentComposer";
+import { CommentThread } from "@/components/detail/CommentThread";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -53,7 +56,8 @@ export function TheaterDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
   const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "theater", data.isBookmarked);
   const [plotExpanded, setPlotExpanded] = useState(false);
-  const [userRating, setUserRating] = useState(0);
+  const [userRating, setUserRating] = useState(data.userRating ?? 0);
+  const { save: saveRating, busy: ratingBusy, savedScore } = useRating(data.item.id, data.userRating);
 
   const { item, extension: ext, suggestions } = data;
 
@@ -223,7 +227,14 @@ export function TheaterDetail({ data }: { data: ItemDetailData }) {
       </div>
 
       {/* Community */}
-      <CommunitySection ratings={ratingDistribution} communityRating={avgRating} reviews={reviews} userRating={userRating} setUserRating={setUserRating} question="Με πόσα αστέρια θα βαθμολογούσες την παράσταση;" />
+      <CommunitySection ratings={ratingDistribution} communityRating={avgRating} reviews={reviews} userRating={userRating} setUserRating={setUserRating} saveRating={saveRating} ratingBusy={ratingBusy} savedScore={savedScore} question="Με πόσα αστέρια θα βαθμολογούσες την παράσταση;" />
+
+      {data.suggestions[0] && (
+        <div className="px-6 flex flex-col gap-4">
+          <CommentComposer suggestionId={data.suggestions[0].id} />
+          <CommentThread suggestionId={data.suggestions[0].id} />
+        </div>
+      )}
     </div>
   );
 }
@@ -271,9 +282,10 @@ function InfoCell({ label, value }: { label: string; value: string }) {
 
 interface ReviewItem { id: string; name: string; badge: "Verified"|"Expert"|"Platinum"|"Gold"; color: string; rating: number; date: string; text: string; likes: number; dislikes: number; userData?: any; }
 
-function CommunitySection({ ratings, communityRating, reviews, userRating, setUserRating, question }: {
+function CommunitySection({ ratings, communityRating, reviews, userRating, setUserRating, saveRating, ratingBusy, savedScore, question }: {
   ratings: { stars: number; pct: number }[]; communityRating: number; reviews: ReviewItem[];
   userRating: number; setUserRating: (n: number) => void; question: string;
+  saveRating: (score: number) => void; ratingBusy: boolean; savedScore: number | null;
 }) {
   return (
     <div className="mt-8 py-8 flex flex-col items-center gap-[42px]" style={{ background: "linear-gradient(180deg,#fff 0%,#F2F2F7 10%,#F7F7FA 91%,#fff 100%)" }}>
@@ -301,7 +313,7 @@ function CommunitySection({ ratings, communityRating, reviews, userRating, setUs
           <div className="flex items-center gap-3">
             {[1,2,3,4,5].map(s => <button key={s} onClick={() => setUserRating(s)}><StarIcon size={34} filled={s <= userRating} /></button>)}
           </div>
-          {userRating > 0 && <button className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity">Αποθήκευσε βαθμολογία</button>}
+          {userRating > 0 && <button onClick={() => saveRating(userRating)} disabled={ratingBusy || userRating === savedScore} className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50">{ratingBusy ? "Αποθήκευση..." : savedScore === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}</button>}
         </div>
       </div>
       {reviews.length > 0 && (

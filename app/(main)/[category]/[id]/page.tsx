@@ -33,6 +33,8 @@ export type ItemDetailData = {
   nearbyActivities?: NearbyActivity[];
   /** True if the current user has bookmarked this item. False for guests. */
   isBookmarked: boolean;
+  /** Current user's rating of this item, or null if they haven't rated / aren't logged in. */
+  userRating: number | null;
 };
 
 const EXT_TABLE: Record<string, string> = {
@@ -89,18 +91,18 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     nearbyActivities = await fetchNearbyActivities(sb, ext.lat, ext.lng, 50, 12);
   }
 
-  // Initial bookmark state for the current user
+  // Initial bookmark + rating state for the current user
   let isBookmarked = false;
+  let userRating: number | null = null;
   try {
     const { data: { user } } = await sb.auth.getUser();
     if (user) {
-      const { data: bm } = await sb
-        .from("bookmarks")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("item_id", item.id)
-        .maybeSingle();
-      isBookmarked = !!bm;
+      const [bmRes, rRes] = await Promise.all([
+        sb.from("bookmarks").select("id").eq("user_id", user.id).eq("item_id", item.id).maybeSingle(),
+        sb.from("ratings").select("score").eq("user_id", user.id).eq("item_id", item.id).maybeSingle(),
+      ]);
+      isBookmarked = !!bmRes.data;
+      userRating = (rRes.data as any)?.score ?? null;
     }
   } catch { /* not logged in or network error */ }
 
@@ -127,6 +129,7 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     }),
     nearbyActivities,
     isBookmarked,
+    userRating,
   };
 }
 

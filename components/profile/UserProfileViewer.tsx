@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { FollowersPopupCentered } from "@/components/profile/FollowersPopupCentered";
 import { AvatarImage } from "@/components/ui/AvatarImage";
+import { useFollow } from "@/hooks/useFollow";
 
 /* ── Icons ──────────────────────────────────────────────────── */
 
@@ -151,6 +152,10 @@ interface UserProfileViewerProps {
   followerCount: number;
   followingCount: number;
   topSuggestion?: TopSuggestionData | null;
+  /** UUID of the user being viewed — required for follow persistence. */
+  targetUserId: string;
+  /** Whether the current viewer already follows this user (server-fetched). */
+  initialFollowing: boolean;
 }
 
 export function UserProfileViewer({
@@ -162,8 +167,10 @@ export function UserProfileViewer({
   followerCount,
   followingCount,
   topSuggestion,
+  targetUserId,
+  initialFollowing,
 }: UserProfileViewerProps) {
-  const [following, setFollowing] = useState(false);
+  const { following, toggle: toggleFollow, busy: followBusy } = useFollow(targetUserId, initialFollowing);
   const [popupTab, setPopupTab] = useState<"followers" | "following" | null>(null);
 
   return (
@@ -177,8 +184,9 @@ export function UserProfileViewer({
         {/* Follow button row (centered, 56px tall container) */}
         <div className="flex justify-center items-center" style={{ height: 56 }}>
           <button
-            onClick={() => setFollowing((f) => !f)}
-            className="flex items-center justify-center gap-2 rounded-full active:opacity-80 transition-all"
+            onClick={toggleFollow}
+            disabled={followBusy}
+            className="flex items-center justify-center gap-2 rounded-full active:opacity-80 transition-all disabled:opacity-60"
             style={{
               width: 220,
               height: 48,

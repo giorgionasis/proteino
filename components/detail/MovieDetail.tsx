@@ -10,6 +10,9 @@ import { CarouselPortrait, type PortraitItem } from "@/components/recommendation
 import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { useBookmark } from "@/hooks/useBookmark";
+import { useRating } from "@/hooks/useRating";
+import { CommentComposer } from "@/components/detail/CommentComposer";
+import { CommentThread } from "@/components/detail/CommentThread";
 import { safeImageUrl } from "@/lib/image-url";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
@@ -79,7 +82,8 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
   const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "movies", data.isBookmarked);
   const [watched,      setWatched]      = useState<"seen" | "want" | null>(null);
-  const [userRating,   setUserRating]   = useState(0);
+  const [userRating,   setUserRating]   = useState(data.userRating ?? 0);
+  const { save: saveRating, busy: ratingBusy, savedScore } = useRating(data.item.id, data.userRating);
   const [plotExpanded, setPlotExpanded] = useState(false);
   const [openAwardType, setOpenAwardType] = useState<string | null>(null);
   const { item, extension: ext, suggestions, related } = data;
@@ -567,12 +571,23 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
               ))}
             </div>
             {userRating > 0 && (
-              <button className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity">
-                Αποθήκευσε βαθμολογία
+              <button
+                onClick={() => saveRating(userRating)}
+                disabled={ratingBusy || userRating === savedScore}
+                className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
+              >
+                {ratingBusy ? "Αποθήκευση..." : savedScore === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
               </button>
             )}
           </div>
         </div>
+
+        {data.suggestions[0] && (
+          <div className="flex flex-col gap-4">
+            <CommentComposer suggestionId={data.suggestions[0].id} />
+            <CommentThread suggestionId={data.suggestions[0].id} />
+          </div>
+        )}
 
         {/* Reviews carousel + load more */}
         {reviews.length > 0 && (
