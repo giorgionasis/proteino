@@ -1,10 +1,66 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-05 (session 11)
+Last updated: 2026-05-05 (session 12)
 
 ---
 
 ## 1. COMPLETED
+
+### Phase 1 — User-action persistence ✅ (session 12)
+
+The audit's biggest CRITICAL gap: every engagement UI on the user side existed but none persisted. Closed in 5 routes:
+
+- **`POST /api/suggestions`** — replaces `useSubmission.publish()`'s `setTimeout(1000)`. Resolves item by slug, creates if missing, rejects duplicates with `kind: own/other` so the overlay can render HOOKS.md §8 CTAs. Real SHA-256 `content_hash`. Bumps `users.suggestion_count` + `last_suggestion_at`.
+- **`POST /api/ratings`** — upsert on `(user_id, item_id)`. Recomputes `items.avg_rating + rating_count` from source-of-truth scores. `GET` prefills the star UI on revisit.
+- **`POST /api/comments`** — auth + length validation + parent-on-same-suggestion check. Returns joined user so callers can append without re-fetch. `GET` filters out `is_hidden=true` rows.
+- **`POST /api/follows`** — idempotent via upsert; rejects self-follow. `DELETE` + `GET` for unfollow / state check.
+- **`POST /api/reports`** — comment-report flow against migration 003. Validates reason against the 5-value enum. Idempotent: same user reporting same comment with same reason returns `already_reported`.
+
+Consumer wiring:
+- `useSubmission.publish()` → POST `/api/suggestions` with duplicate handling. New overlay states `duplicate` + `error`. `<DuplicateScreen>` renders HOOKS.md §8 ("Το έχεις ήδη προτείνει εσύ" / "Έχει ήδη προταθεί από @X") with rate/follow CTAs.
+- `useRating` hook + 9 detail components: server fetches `userRating` parallel with `isBookmarked`; pre-fills stars; "Αποθήκευσε βαθμολογία" button now persists. 5 components needed prop-threading through their `<CommunitySection>` sub-component.
+- `<CommentComposer>` (new) wired below each detail page's rating block, attached to `data.suggestions[0]?.id`.
+- `<CommentThread>` (new) renders existing comments via `GET /api/comments` with kebab-menu Report flow.
+- `useFollow` hook + `<UserProfileViewer>`: replaces local-state toggle with real persistence. Server fetches `initialFollowing` only when viewer ≠ target.
+
+### Submission flow — best-in-class polish ✅ (session 12)
+
+After Phase 1, a focused pass to make the user-side submission feel great:
+
+**Live AI quality coach** (`lib/ai/quality.ts`)
+- Real-time text analysis: length, "γιατί/why" markers, emotional language, specificity, sentence count
+- Returns `{score, label, tip, badge}` — drives the IntelligencePanel: tip becomes the message, colored badge replaces the bare progress %
+- Color shifts zinc → yellow → emerald → coral as the user writes (poor → fair → good → excellent)
+- Same shape real AI will populate later — swap implementation, UI unchanged
+
+**Real TMDB matching** (`app/api/ai/match`)
+- New server endpoint the mock calls instead of doing local heuristics
+- Bilingual title extraction via `\p{Lu}` / `\p{L}` Unicode property classes — `\b` is ASCII-only and was failing silently on Greek input
+- Multiple candidate titles tried **concurrently** against TMDB; each result scored vs the candidate (exact=100, prefix/suffix=80, substring=60, fuzzy=20); highest wins
+- Stops Greek opening verbs like "Είδα" from fuzzy-matching unrelated movies and beating the real title
+- Returns canonical title (Greek-localized when TMDB has it), year, director, full cast with avatars, plot, runtime, poster, backdrop — all rendered in `PreviewScreen`
+- When TMDB returns nothing, refuses to pretend — shows "Δεν βρήκα τον τίτλο" instead of shipping garbage to the DB
+- `/api/suggestions` now writes the full TMDB metadata into `items` + `item_movies`/`item_series` extension tables on first publish, so the admin's suggestion editor sees director/cast/plot/year already populated
+
+**Mandatory rating + full reflection + editable match**
+- Share button disabled until rating > 0 — CLAUDE.md §11 "every suggestion has an embedded rating from the suggester" now enforced
+- PreviewScreen shows the entire reflection (was truncated to 80 chars; user wrote 500, saw 80)
+- "↺ Άλλαξε" button next to the LOCKED badge resets to typing so AI can re-match. Locked match also no longer blocks textarea editing — user keeps adding "γιατί το προτείνω" while the match stays put.
+
+**Preflight duplicate check** (`app/api/suggestions/check`)
+- GET hit by `useSubmission.verify()` between syncing and preview. If the matched item already has a suggestion, route to DuplicateScreen immediately — saves the user from writing a 200-char reflection POST would reject anyway.
+- Race-condition safe: POST still catches duplicates that slip past.
+
+**Hook moments + share link** (HOOKS.md §2B)
+- `POST /api/suggestions` returns `weekly_count` / `category_audience_count` / `my_followers_count` alongside the new suggestion count
+- `PublishedScreen` renders up to 3 cards: "Είσαι ο Νος που πρότεινε αυτή την εβδομάδα 🔥", "X άνθρωποι ενδιαφέρονται για αυτή την κατηγορία", "X χρήστες σε ακολουθούν — θα το δουν στο feed τους". Zero-counts suppressed.
+- Share Link wired to `navigator.share()` on mobile + clipboard fallback on desktop with "✓ Αντιγράφηκε" toast
+- "Δες την πρότασή σου →" deeplink to the new item's detail page
+- Removed the dark syncing-screen flash between Share and Published (was redundant — enrichment happened during Verify→Preview)
+
+### Auth fixes ✅ (session 12)
+- **Login redirect trap** — middleware was redirecting `/login → /` based on cookie *presence* alone (deliberate; can't validate JWT at Edge cold-start). With a stale cookie, layout treated the user as guest (header showed "Σύνδεση") but middleware bounced any click on Σύνδεση back home — infinite trap. Fix: dropped the redirect from middleware; `/login` and `/register` pages do their own real `auth.getSession()` validation and redirect only when the cookie actually decodes.
+- **YOU-tab avatar mismatch** — layout was reading avatar only from `auth.users.user_metadata` (Google OAuth path). Users migrated from MySQL have their avatar in `public.users.avatar_url` but not in auth metadata, so YOU-tab showed a generic person icon while the profile page showed initials. Fix: layout now falls back to `public.users` (id then email lookup), and `<BottomNav>` uses the same `<AvatarImage>` component the profile page does — so both surfaces show the same colored-initials block when no real photo exists.
 
 ### Auth Flow ✅ (session 1-3)
 - Supabase Auth with Google OAuth, email/password, session persistence
@@ -353,38 +409,73 @@ Still on legacy layout (Priority 1 remaining): Series, Food, Bars, Hotels, Recip
 
 ## 3. WHAT NEEDS TO BE BUILT NEXT (in order)
 
-### Priority 1 — Detail Pages Figma Alignment (2 of 9 done)
+### Priority 0 — Confidence-tiered conversational match (AGREED, not yet built — pick this up next session)
+
+The TMDB scoring system from session-12 already labels matches as exact / prefix / substring / fuzzy. Time to surface that to the user instead of always auto-locking. Locked decision:
+
+**Three tiers based on TMDB `scoreTitleMatch` result:**
+
+| Tier | Score | UX |
+|---|---|---|
+| **High** | 100 (exact title match) | Auto-lock as today. Pill: *"🔒 Βρήκα: Κονκλάβιο (2024) ✓"* |
+| **Medium** | 60–80 (substring/prefix match) | Lock + show subtle *"Όχι αυτό; →"* link → expands alternatives. Microcopy: *"Νομίζω είναι Κονκλάβιο. Σωστό;"* |
+| **Low** | < 60 OR competing runner-up within 20pts | Don't auto-lock. Show 2-3 alternative cards (poster + title + year). User picks. Microcopy: *"Βρήκα μερικά. Ποιο εννοείς;"* |
+
+**Implementation order:**
+1. Compute the tier server-side from the score, return in `matchData.confidence_tier`. Data is already in the response (`alternatives` field already populated).
+2. Add `<MatchAlternatives>` mini-component (3 small cards: thumbnail + title + year, tappable). Renders below the IntelligencePanel when tier ≠ high, or when user taps "Όχι αυτό".
+3. Tapping an alternative → swap `analysis` to that candidate's data → state stays `match_found` with the new match. No new API calls (alternatives carry their own `match` payload server-side already).
+4. The unlock "↺ Άλλαξε" button stays as the manual escape hatch.
+
+Self-contained ~45 min work. No schema or new endpoints.
+
+### Priority 1 — Search overhaul (after confidence tiers)
+
+`/api/search` returns 3 hardcoded items per the audit. The "AI-driven search" pillar in CLAUDE.md is theatrical. Bigger initiative — comparable in scope to all of submission Pass 1+2 combined. After confidence tiers ship, full pivot to search.
+
+### Priority 2 — Detail Pages Figma Alignment (2 of 9 done)
 Done: BookDetail, MovieDetail. Fix remaining 7 (Series, Food, Bars, Hotels, Recipes, Theater, Events) to:
 - Match Figma layout (read full spec via `get_figma_data` before writing code)
 - Show suggester prominently above item info (not buried in reviews)
 - Read from extension tables (data now clean and queryable)
 - Use `safeImageUrl()` already wired at the data-layer boundary
 
-### Priority 1.5 — User-action persistence (NEW — surfaced in session-11 audit)
-Submission, rating, comment, follow, report all have UIs but **none persist to DB**:
-- `useSubmission.publish()` does `setTimeout(1000)` — never INSERTs
-- Detail page rating UI ("Με πόσα αστέρια θα βαθμολογούσες την ταινία;") has no Save handler
-- Reviews carousel re-renders existing suggestions as "reviews" — no comment composer
-- Profile page READS follower counts but no follow button anywhere
-- The entire engagement layer is theatrical until this is wired
-
-### Priority 2 — Guest vs Registered Auth State
+### Priority 3 — Guest vs Registered Auth State
 - Replace hardcoded `IS_REGISTERED` with real Supabase session check
 - Bottom nav YOU tab: guest sees value-prop page, registered sees profile
 - Conditional header (bell icon only for registered)
 - FAB visibility based on auth state
 
-### Priority 3 — Onboarding Flow (4 steps)
+### Priority 4 — Onboarding Flow (4 steps)
 1. Welcome — show value
 2. Interests — select 2+ categories
 3. Your Feed (REWARD) — personalized content based on selections
 4. Follow suggestions — skippable
 
-### Priority 4 — AI Service (Real)
-- Replace `MockAIService` with real Anthropic/OpenAI calls
-- Wire `useSubmission` to real item identification
-- Wire `useSearch` to real natural language search
-- External enrichment: TMDB, Google Books, Google Places
+### Priority 5 — AI Service (Real Anthropic)
+- Mock `analyzeSubmission` already calls server-side `/api/ai/match` which uses TMDB. Quality coaching uses local heuristics (`lib/ai/quality.ts`).
+- Real swap: build `lib/ai/anthropic.ts` implementing the same `AIService` interface; wire via `getAIService()` in `lib/ai/index.ts` based on `ANTHROPIC_API_KEY`.
+- Anthropic adds value mainly for: (a) better quality coaching beyond keyword heuristics, (b) `analyzeSearchQuery` / pill extraction (search work).
+- TMDB integration is already real — no longer needs to wait for AI swap.
+
+### Priority 6 — Other-category enrichment
+TMDB is wired for movies/series. The same architecture (`/api/ai/match` route → external API → enrich `items` + extension table) needs:
+- **Books** — Google Books (free, no key for low volume)
+- **Food / Bars / Hotels** — Google Places (already wired for admin; expose for user-side flow)
+- **Theater / Events** — Ticketmaster (free tier)
+
+Currently those categories accept the heuristic candidate without external verification (same as the old mock).
+
+### Priority 7 — Polish backlog (numbered audit items 8-14)
+- Cast avatars in PreviewScreen (TMDB returns avatar URLs; we store them but don't show in match preview)
+- Trailer button (TMDB `/videos` endpoint)
+- LIMIT on category page queries
+- Drop `embedding` from detail page SELECT
+- Search empty state CTA "Πρόσθεσέ το πρώτος →" (depends on search overhaul)
+- Variable home feed shuffle per session
+- Add `poster_url`/`backdrop_url` migration SQL (live DB has them; fresh deploys would break per DEPLOY.md §2 without it)
+- Achievement unlock celebration animation (HOOKS.md §3)
+- Undo toast after publish
 
 ### Priority 5 — Gamification Layer
 - Achievement popups after suggestions

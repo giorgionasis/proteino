@@ -329,13 +329,23 @@ Badge-red:   #C51501  (notification dot)
 4. Follow suggested users — skippable, based on shared interests
 
 ### AI Submission Flow ✅
-6 states:
-1. **Empty** — "Describe, scan, or paste..." + 4 input modes (Scan/Link/List/Voice) + AI panel: "I'm listening"
-2. **Typing** — Real-time AI analysis, progress 0→100%, "LISTENING LIVE" indicator
-3. **Match Found** — "LOCKED" state, input disabled, "MATCH: [ITEM] ([CATEGORY])", Verify button activates
-4. **Syncing** — Dark screen, animated ring, step-by-step checklist (category identified ✓, match confirmed ✓, enriching...)
-5. **Preview** — "ENRICHED MATCH" badge, reflection quote, star rating (embedded in suggestion), SHARE / EDIT
-6. **Published** — Dark celebration screen, animated checkmark, "PUBLISHED", dismiss/share link
+8 states (post session-12 — `useSubmission` adds `duplicate` + `error`):
+1. **Empty** — "Πες μας τι σου άρεσε. Ακούω." + 4 input modes (Scan/Link/List/Voice — buttons exist, not yet wired) + AI panel
+2. **Typing** — Real-time AI analysis. IntelligencePanel shows live quality coaching ("Πες γιατί το προτείνεις") + colored badge (poor/fair/good/excellent). Server-side `/api/ai/match` hits TMDB for movies/series.
+3. **Match Found** — "LOCKED" badge + "↺ Άλλαξε" reset link. Textarea **stays editable** so user adds their reflection. AI no longer re-analyzes. MATCH pill shows TMDB-canonical title.
+4. **Syncing** — Dark screen, animated ring. ALSO does preflight duplicate check via `/api/suggestions/check`; routes to Duplicate state directly if matched item already has a suggestion.
+5. **Preview** — Real TMDB poster/backdrop hero, title with year, director + first 3 cast, **mandatory** star rating, full reflection (no truncation), SHARE / EDIT. Share button shows inline "Δημοσίευση..." while POSTing — no syncing-screen flash.
+6. **Published** — Dark celebration screen with: animated checkmark, hook moments (HOOKS.md §2B — "Είσαι ο Νος αυτή την εβδομάδα", "X ενδιαφέρονται για κατηγορία", "X σε ακολουθούν"), `<AchievementProgress>` block, "Δες την πρότασή σου →" deeplink, Κλείσιμο + Share Link buttons (`navigator.share()` + clipboard fallback)
+7. **Duplicate** — HOOKS.md §8 — "Το έχεις ήδη προτείνει εσύ! 😄" / "Έχει ήδη προταθεί από @X" with rate/follow CTAs and "✏ Πρότεινε κάτι άλλο" reset
+8. **Error** — Network/server failure. "Κάτι πήγε στραβά" + retry
+
+### Confidence-tiered conversational match (PENDING — agreed for next session)
+TMDB `scoreTitleMatch` already labels matches 0-100. Surface tier-aware UX:
+- **High** (100, exact): auto-lock as today
+- **Medium** (60-80, substring/prefix): lock + "Όχι αυτό; →" link → expands alternatives
+- **Low** (<60 OR competing runner-up): no auto-lock, show 2-3 candidate cards, user picks
+
+`matchData.alternatives` is already in the API response (top 2 next-ranked candidates with their full TMDB payload). Frontend just needs `<MatchAlternatives>` component + tier-aware microcopy. ~45 min self-contained work.
 
 ### AI Smart Search Flow ✅
 5 states:

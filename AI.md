@@ -826,15 +826,30 @@ When in doubt: AI should be visible, fast, and never block the user.*
 ---
 
 ## 11. Metadata Enrichment APIs
-> ✅ SHIPPED (session 10) — Admin-side. End-to-end submission-flow integration still pending wiring into `useSubmission` SYNCING state.
+> ✅ SHIPPED (session 12) — Admin-side AND user-facing for movies/series via TMDB. Other categories (books / food / bars / hotels / theater / events) follow the same architecture; not yet wired for user-side.
 
-**What exists today:**
+**Admin-side (session 10):**
 - `/api/admin/enrich` endpoint dispatches by category and returns up to 8 candidates (poster/backdrop URLs + title/subtitle/description)
 - "✨ Auto-fetch cover" button in `SuggestionEditor` opens a modal with a grid of candidates → click to apply
 - All three APIs degrade gracefully if env keys missing (returns `{ candidates: [], reason }`)
 - `scripts/bulk-enrich.js` walks items missing covers, calls the endpoint, picks the first candidate, updates `poster_url` + `backdrop_url` + `cover_url`
 
-**Still pending:** Wiring enrichment into the user-facing submission flow (after AI locks an item, fetch rich metadata during the SYNCING phase — user sees "Εμπλουτίζουμε τα στοιχεία...")
+**User-side (session 12) — movies/series via TMDB:**
+- `/api/ai/match?text=...` is the public match endpoint. Used by the (still-named) `MockAIService.analyzeSubmission` instead of pure local heuristics.
+- Extracts candidate titles via `\p{Lu}` + `\p{L}` Unicode property classes (handles Greek + Latin), tries each against TMDB concurrently, scores results by string similarity to the candidate, picks the highest score. Stops Greek opening verbs ("Είδα") from beating real titles via TMDB's fuzzy matching.
+- Returns canonical title (Greek-localized when TMDB has it), year, director, full cast with avatars, plot, runtime, poster, backdrop. PreviewScreen renders all of it.
+- When TMDB returns nothing, refuses to pretend — shows "Δεν βρήκα τον τίτλο" instead of shipping garbage to the DB.
+- `/api/suggestions` writes the full TMDB metadata into `items` (poster_url, backdrop_url, description_seo, metadata.tmdb_id) + `item_movies`/`item_series` (director, directors[], actors[] with avatars, plot, release_date, duration_min) on first publish. Admin's existing suggestion editor reads these columns, so a user submission appears in `/admin/suggestions` with full metadata, no admin work needed.
+
+**Quality coaching (session 12):**
+- `lib/ai/quality.ts::assessQuality(text)` returns `{score 0-100, label poor|fair|good|excellent, tip, badge}`
+- Real-time text analysis: length, "γιατί/why" markers, emotional language, specificity, sentence count
+- Drives the ProteínoIntelligence panel: tip becomes message, colored badge replaces bare progress %
+- Same shape real Anthropic Claude will populate later — swap implementation, UI doesn't change
+
+**Still pending:**
+- **Books** via Google Books, **Food/Bars/Hotels** via Google Places, **Theater/Events** via Ticketmaster — same `/api/ai/match` architecture, just need the per-category branches
+- Real Anthropic Claude integration: `lib/ai/anthropic.ts` implementing the same `AIService` interface. Mock+TMDB hybrid is good enough for dev; swap when going to production scale.
 
 ### API Map
 
