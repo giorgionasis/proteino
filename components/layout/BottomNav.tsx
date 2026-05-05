@@ -5,8 +5,16 @@ import { usePathname } from "next/navigation";
 import { Home, Search, User } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useOverlay } from "@/hooks/useOverlay";
+import { AvatarImage } from "@/components/ui/AvatarImage";
 
-export function BottomNav({ avatarUrl }: { avatarUrl?: string | null }) {
+interface BottomNavProps {
+  avatarUrl?: string | null;
+  /** Used for the initials fallback when avatarUrl is null (mirrors the
+   *  profile page's <AvatarImage> behavior so YOU tab + profile match). */
+  displayName?: string | null;
+}
+
+export function BottomNav({ avatarUrl, displayName }: BottomNavProps) {
   const pathname = usePathname();
   const { openSearch } = useOverlay();
 
@@ -55,7 +63,7 @@ export function BottomNav({ avatarUrl }: { avatarUrl?: string | null }) {
         <NavItem
           href="/you"
           label="YOU"
-          icon={avatarUrl ? (
+          icon={(avatarUrl || displayName) ? (
             <div
               className="rounded-full overflow-hidden shrink-0"
               style={{
@@ -64,8 +72,12 @@ export function BottomNav({ avatarUrl }: { avatarUrl?: string | null }) {
                 outlineOffset: 1,
               }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+              <AvatarImage
+                url={avatarUrl}
+                name={displayName}
+                size={24}
+                className="rounded-full"
+              />
             </div>
           ) : (
             <User size={22} strokeWidth={isYou ? 2.5 : 1.5} />
