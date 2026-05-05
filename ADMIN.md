@@ -367,13 +367,13 @@ Original schema used `nearby_activities (item_id FK)` — every new hotel would 
 - `/admin/content/activities` — list with category tab + type filter chips + search
 - Inline publish toggle, edit, delete
 - Empty state explains the value: "Πρόσθεσε δραστηριότητες για να εμφανίζονται στις σελίδες ξενοδοχείων κοντά τους"
-- `/admin/content/activities/[id]` (and `/new`) — full editor with cascading category→type select, lat/lng with Google Maps verification link, publish toggle, social links, image URL
+- `/admin/content/activities/[id]` (and `/new`) — full editor with cascading category→type select, lat/lng with `<MapPicker>` (click-to-pick + drag-marker, Nominatim address search), Google Maps verification link, publish toggle, social links, `<ImageUploader>` (drag-drop, validation, Supabase Storage)
 - `/admin/content/activities/taxonomy` — full CRUD for the categories/types taxonomy with inline edit (blur to save), publish toggle, delete with safety check
 
-**Pending:**
-- Frontend hotel-side proximity query (next pass — render activities within X km on hotel detail pages)
-- Map picker for lat/lng (Leaflet or Google Maps embed)
-- Image upload via Supabase Storage (URL-only for now)
+**Frontend:**
+- `lib/activities.ts::nearbyActivities()` — Haversine proximity query (bounding-box DB pre-filter + JS exact filter + sort by distance)
+- `app/(main)/[category]/[id]/page.tsx` attaches `nearbyActivities` for hotels with lat/lng
+- `HotelDetail`'s "Κοντινές Δραστηριότητες" section renders cards with type icon + name + Greek-formatted distance ("1.2 χλμ" / "350 μ"), linking out to website or Google Maps
 
 API: `/api/admin/activities` (CRUD) + `/api/admin/activity-categories` (CRUD) + `/api/admin/activity-types` (CRUD).
 
@@ -400,9 +400,7 @@ Filter rows on category pages were hardcoded in `constants/filters.ts`. Marketin
 - `lib/category-filters.ts` provides `fetchCategoryFilterConfig(sb, category)` which builds a `CategoryFilters` shape compatible with the existing `CategoryPageShell` prop
 - `app/(main)/[category]/page.tsx` fetches DB config and passes as prop; falls back to constant if DB has no rows (transitional safety)
 
-**Pending (v2):**
-- Editing filter `widget` type and `options` array via UI (currently options for dropdowns/cards must be edited via DB)
-- Adding new filter rows from UI (admin can only configure existing seeded filters today)
+**v2 shipped (session 10):** Admin can add brand-new filter rows from the UI (filter_id slug + label + widget type + placeholder); inline modal options editor for `segmented`, `platform-cards`, `icon-cards`, `checkboxes` widgets — add/remove/reorder `{id, label}` pairs.
 
 ### 9D. Movies Tonight ✅
 TV listings curation. Curated airings of movies on Greek TV, surfaced on the home page.
@@ -428,20 +426,36 @@ UNIQUE(item_id, channel, air_date, air_time)
 - Renders only when there are airings (no empty state for users)
 - Appears for both guest + registered, after CategoryTiles
 
-API: `/api/admin/movies-tonight` (CRUD) + `/api/admin/movies-tonight/items` (movie autocomplete).
+API: `/api/admin/movies-tonight` (CRUD) + `/api/admin/movies-tonight/items` (movie autocomplete) + `/api/admin/movies-tonight/bulk` (paste-import preview/commit).
 
-**Pending:** Bulk import (paste TV schedule); reminder notifications for items the user bookmarked.
+**Bulk import (shipped):** Paste textarea with format `Title | Channel | YYYY-MM-DD | HH:MM` → POST `/bulk` returns matched/unmatched (case-insensitive exact + contains fallback) → PUT commits with `onConflict ignoreDuplicates`. Modal preview shows matches (with cover) + unmatched titles separately.
+
+**Bookmark reminders (shipped):** DB trigger `notify_bookmarkers_of_airing` (`011-movies-tonight-reminders.sql`) — on insert into `movies_tonight` (when `is_published = true`), creates one `notifications` row per user who bookmarked the movie. Payload includes `item_id`, `movie_title`, `channel`, `air_date`, `air_time`, `airing_id` for type-aware UI rendering.
 
 ---
 
-## 10. Settings ⏳
+## 10. Settings ✅
 
-Placeholder. To include:
-- Site name/description/logo
-- Email config
-- Notification settings
-- API keys (TMDB, Google Places, etc.)
-- Maintenance mode
+`/admin/settings` — key/value config consumed across the app, editable without redeploy.
+
+**Schema (`scripts/sql/010-app-settings.sql`):**
+```sql
+app_settings (key text PRIMARY KEY, value jsonb, description text, updated_at timestamptz)
+```
+Default keys seeded: `site_name`, `site_tagline`, `maintenance_mode`, `maintenance_message`.
+
+**Admin UX (`<SettingsManager>`):**
+- **Maintenance mode** — toggle + message; when on, every page renders `<MaintenanceBanner>` from `app/(main)/layout.tsx`
+- **Site identity** — site name + tagline
+- **Custom keys** — advanced section to add/edit any other key/value pair (jsonb)
+
+**Frontend consumption:**
+- `lib/app-settings.ts::fetchAppSettings(sb)` — cached read with safe defaults; never throws
+- `<MaintenanceBanner>` rendered site-wide when `maintenance_mode = true`
+
+API: `/api/admin/settings` (GET, PATCH bulk).
+
+**Not yet covered (future iterations):** email config, notification toggles, API key management UI (today via env vars).
 
 ---
 

@@ -826,10 +826,15 @@ When in doubt: AI should be visible, fast, and never block the user.*
 ---
 
 ## 11. Metadata Enrichment APIs
-> ⏳ PENDING — Not yet implemented. Build during Priority 7 (AI Service + Real Data).
+> ✅ SHIPPED (session 10) — Admin-side. End-to-end submission-flow integration still pending wiring into `useSubmission` SYNCING state.
 
-After AI matches and locks an item (LOCKED state), fetch rich metadata
-during the SYNCING phase — user sees "Εμπλουτίζουμε τα στοιχεία..."
+**What exists today:**
+- `/api/admin/enrich` endpoint dispatches by category and returns up to 8 candidates (poster/backdrop URLs + title/subtitle/description)
+- "✨ Auto-fetch cover" button in `SuggestionEditor` opens a modal with a grid of candidates → click to apply
+- All three APIs degrade gracefully if env keys missing (returns `{ candidates: [], reason }`)
+- `scripts/bulk-enrich.js` walks items missing covers, calls the endpoint, picks the first candidate, updates `poster_url` + `backdrop_url` + `cover_url`
+
+**Still pending:** Wiring enrichment into the user-facing submission flow (after AI locks an item, fetch rich metadata during the SYNCING phase — user sees "Εμπλουτίζουμε τα στοιχεία...")
 
 ### API Map
 

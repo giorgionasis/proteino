@@ -650,7 +650,7 @@ This is a **mobile-first web app**, not a native app. Runs in mobile browsers (i
 ---
 
 ## 16. Metadata Enrichment
-> ⏳ PENDING — Not yet implemented. Will be built during Priority 7 (AI Service).
+> ✅ SHIPPED admin-side (session 10) — `/api/admin/enrich` + "✨ Auto-fetch cover" button in SuggestionEditor + `scripts/bulk-enrich.js`. User-facing submission-flow SYNCING integration still pending.
 
 During the SYNCING phase of the submission flow, after AI locks an item,
 fetch rich metadata from external APIs. See AI.md Section 11 for full code.

@@ -344,10 +344,10 @@ Still on legacy layout (Priority 1 remaining): Series, Food, Bars, Hotels, Recip
 - Remaining 7 (Series, Food, Bars, Hotels, Recipes, Theater, Events) still on legacy `<InfoCell>` layout
 
 ### Collections — follow-ups
-- Image upload (currently URL-only) → wire Supabase Storage
-- Frontend `/collections/[alias]` page (Card collections link there but page doesn't exist yet)
-- Extension-field filters beyond tags (e.g. `item_movies.channel = 'Netflix'`)
-- Migrate existing hardcoded home carousels into seed collections, then remove the hardcoded fallback in `app/(main)/page.tsx`
+- ~~Image upload (currently URL-only) → wire Supabase Storage~~ ✅ done — `<ImageUploader>` wired in `CollectionEditor`
+- ~~Frontend `/collections/[alias]` page (Card collections link there but page doesn't exist yet)~~ ✅ done — `app/(main)/collections/[alias]/page.tsx`
+- ~~Extension-field filters beyond tags (e.g. `item_movies.channel = 'Netflix'`)~~ ✅ done — `collections.filters` jsonb + `<CollectionEditor>` "Φίλτρα πεδίων (advanced)"
+- Migrate existing hardcoded home carousels into seed collections, then remove the hardcoded fallback in `app/(main)/page.tsx` (still pending)
 
 ---
 
