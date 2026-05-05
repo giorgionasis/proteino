@@ -1,6 +1,6 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-04 (session 10)
+Last updated: 2026-05-05 (session 11)
 
 ---
 
@@ -118,6 +118,42 @@ Last updated: 2026-05-04 (session 10)
 - Reviews: moderation table with actions
 - Users: management table with role, status
 - See `ADMIN.md` for full specification
+
+### Tier 1 admin velocity tools ✅ (session 11)
+Following the deep audit of admin daily-friction points, shipped 7 high-impact / low-effort improvements:
+
+1. **Cmd+K command palette** (`<CommandPalette>`, `/api/admin/search`) — global jump-to-anything across suggestions/users/collections/activities/reviews. ⌘K toggles, ↑↓ navigate, Enter opens, Esc closes. Empty state shows recent jumps (localStorage) + 6 quick-create actions. Sidebar pill (`🔍 Search · ⌘K`) advertises the shortcut.
+
+2. **Sidebar live counters** (`/api/admin/counters` + AdminSidebar polling) — red badge on Suggestions for unpublished, red on Reviews for reported, amber on Data Quality for items missing subcategory/cover. 60s polling + re-fetch on every route change so actions immediately reflect.
+
+3. **Queue navigation in SuggestionEditor** (`/api/admin/suggestions/queue`) — when admin opens a suggestion via the list with `?queue=unpublished` or `?queue=all`, editor shows `← 5/47 →` position counter, prev/next arrow buttons, and `Save & next` primary action. Keyboard: `←/→` for prev/next, `⌘↵`/`Ctrl↵` for save & next.
+
+4. **Unsaved-changes guard** (`hooks/useUnsavedGuard.ts`) — browser `beforeunload` blocks tab close/reload while form is dirty. `confirmIfDirty()` helper for in-app navigation. Wired into SuggestionEditor (with field-by-field snapshot diff), CollectionEditor, ActivityEditor (with stringified-form snapshot). Save button disabled when not dirty. Visible "● Unsaved" amber indicator.
+
+5. **List keyboard shortcuts** (`hooks/useListKeyboard.ts`) — `J/K` or `↑↓` navigate rows, `Enter` opens, `/` focuses search, `Esc` blurs. SuggestionsTable: `P` toggles publish optimistically. ReviewsTable: `H` hide/show, `D` delete. Active row gets a zinc highlight + ring. Discoverability hint row above each table.
+
+6. **"Open as user" button** (`<OpenAsUserButton>`) — wired into SuggestionEditor (deeplinks to `/{category}/{slug}`), CollectionEditor (only for Card type → `/collections/{alias}`), and ReviewEditor (labeled "See in context" → linked suggestion).
+
+7. **Half-built routes cleanup** — built `/admin/suggestions/new` (real form + `/api/admin/suggestions/create` that atomically inserts item + suggestion + redirects to full editor); deleted dead `/admin/categories/new` and `/admin/extra-fields/new` routes plus their orphan components (CategoryForm.tsx, ExtraFieldForm.tsx, ExtraFieldsTable.tsx).
+
+### MovieDetail rebuilt against Figma 8095-24269 ✅ (session 11)
+Per audit finding that 8 of 9 detail components are on the legacy InfoCell layout instead of the Figma designs:
+- **Awards** — full accordion grouped by type (ΟΣΚΑΡ / BAFTA / Χρυσές Σφαίρες / Cannes / Venice). Most-decorated type expanded by default. Each row: generic laurel-wreath SVG `<AwardBadge>` (renders any category dynamically — no per-image asset needed) + Greek translation (40+ entries: Best Picture → "Καλύτερης Ταινίας", Best Actor → "Α' Ανδρικού", etc.)
+- **Actor avatars** — reads real `ext.actors[i].avatar` (admin's save shape `[{name, avatar}]`); placeholder color when no URL
+- **Director(s)** — switched to plural `ext.directors[]`, falls back to legacy flat string. Each director gets real avatar if saved. Names split per-word for the Figma's multi-line layout
+- Rating overview bar (middle of page) shows actual Oscar count or generic "Βραβεία" when present, suggestion count fallback otherwise
+
+Still on legacy layout (Priority 1 remaining): Series, Food, Bars, Hotels, Recipes, Theater, Events.
+
+### Image-URL safety + migration tolerance ✅ (session 11)
+- `lib/image-url.ts::safeImageUrl()` — returns a `next/image`-compatible URL or null. Absolute and `/`-prefixed pass through; bare relatives (legacy K2 paths like `k2-legacy/movies/.../poster.jpg`) get a leading `/`; null/empty/`data:` return null so callers render placeholders. Wired at every data-layer boundary (home page fetchers, category page mapItem, detail page item normalization, `lib/collections.ts`, `lib/movies-tonight.ts`, `lib/notifications.ts`)
+- `app/admin/suggestions/[id]/page.tsx` — tolerant retry pattern: full SELECT (with `items.images`) first; if Postgres returns 42703 (column does not exist), retry without `images` so admin editor still loads on databases where migration 009 hasn't run
+
+### Lean Edge middleware ✅ (session 11)
+- Vercel was returning `MIDDLEWARE_INVOCATION_FAILED` 500s. Root cause: `@supabase/ssr` import / `createServerClient` call crashing at Edge cold-start, before any try/catch could run.
+- Rewrote middleware to drop the `@supabase/ssr` dependency entirely. It now only checks `request.cookies` for an `sb-*-auth-token` presence to decide redirects. JWT validation still happens at page-level (admin layout, etc.) with the full Supabase server client.
+- Matcher now also excludes `/api/*` (route handlers do their own auth — middleware doesn't need to gate them).
+- Whole body wrapped in try/catch as defense-in-depth: any throw passes through as guest, never 500s the site.
 
 ### Bookmark functionality ✅ (session 10)
 - API: `/api/bookmarks` POST/DELETE/GET (auth-gated, RLS = own only)
@@ -304,7 +340,8 @@ Last updated: 2026-05-04 (session 10)
 
 ### Detail Page Figma Alignment
 - BookDetail rebuilt to match Figma ✅
-- Other 8 detail pages need same treatment (match Figma layout, show suggester above info)
+- MovieDetail rebuilt against Figma 8095-24269 ✅ (session 11) — full awards accordion, real actor/director avatars, Greek category translations
+- Remaining 7 (Series, Food, Bars, Hotels, Recipes, Theater, Events) still on legacy `<InfoCell>` layout
 
 ### Collections — follow-ups
 - Image upload (currently URL-only) → wire Supabase Storage
@@ -316,11 +353,20 @@ Last updated: 2026-05-04 (session 10)
 
 ## 3. WHAT NEEDS TO BE BUILT NEXT (in order)
 
-### Priority 1 — Detail Pages Figma Alignment
-Fix remaining 8 detail components to:
-- Match Figma layout (verify each via `get_figma_data`)
+### Priority 1 — Detail Pages Figma Alignment (2 of 9 done)
+Done: BookDetail, MovieDetail. Fix remaining 7 (Series, Food, Bars, Hotels, Recipes, Theater, Events) to:
+- Match Figma layout (read full spec via `get_figma_data` before writing code)
 - Show suggester prominently above item info (not buried in reviews)
 - Read from extension tables (data now clean and queryable)
+- Use `safeImageUrl()` already wired at the data-layer boundary
+
+### Priority 1.5 — User-action persistence (NEW — surfaced in session-11 audit)
+Submission, rating, comment, follow, report all have UIs but **none persist to DB**:
+- `useSubmission.publish()` does `setTimeout(1000)` — never INSERTs
+- Detail page rating UI ("Με πόσα αστέρια θα βαθμολογούσες την ταινία;") has no Save handler
+- Reviews carousel re-renders existing suggestions as "reviews" — no comment composer
+- Profile page READS follower counts but no follow button anywhere
+- The entire engagement layer is theatrical until this is wired
 
 ### Priority 2 — Guest vs Registered Auth State
 - Replace hardcoded `IS_REGISTERED` with real Supabase session check

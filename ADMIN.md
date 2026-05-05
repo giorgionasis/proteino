@@ -1,7 +1,7 @@
 # Proteino — Admin Panel
 
-> Route: `/admin` — protected via `public.users.role === 'admin'` (currently dev bypass enabled)
-> Last updated: 2026-05-04
+> Route: `/admin` — protected via `public.users.role === 'admin'` (`ADMIN_DEV_BYPASS=1` for local skip)
+> Last updated: 2026-05-05
 
 The admin panel is the back-office for managing all platform content, structure, metadata, and what users see on the frontend.
 
@@ -48,9 +48,13 @@ Admins never touch code. Everything is managed through the admin UI.
 | Item gallery backfill | ✅ | — | scripts/backfill-item-images.js — populates items.images from cover_url |
 | Bulk geocoding | ✅ | — | scripts/geocode-venues.js — Nominatim with rate limiting; supports --table/--limit |
 | Movies Tonight reminders | ✅ | ✅ | DB trigger creates notifications for every user who bookmarked the movie on airing insert |
-| Categories — New | ⏳ | ❌ | Mock UI; rare use case |
-| Suggestions — New | ⏳ | ❌ | Placeholder; rare (admin-created suggestions) |
-| Extra Fields — New | 🚫 | — | Superseded by wizard in main page |
+| Tier 1 velocity tools | ✅ | ✅ | Cmd+K command palette (`/api/admin/search`); sidebar live counters (`/api/admin/counters`, 60s poll); queue nav in SuggestionEditor (←/→, ⌘↵, position counter); unsaved-changes guard (browser + in-app); list keyboard shortcuts (J/K/Enter/P/H/D/`/`); Open-as-user button |
+| Suggestions — New | ✅ | ✅ | Built (`<NewSuggestionForm>`) — minimal scaffold form + `/api/admin/suggestions/create` (atomic item + suggestion insert); redirects to full editor for ext-field details |
+| Image-URL safety | ✅ | ✅ | `lib/image-url.ts::safeImageUrl()` at every data-layer boundary; bare relatives prefixed with `/`, invalid URLs return null; protects `next/image` from legacy K2 paths |
+| Migration tolerance | ✅ | — | `app/admin/suggestions/[id]/page.tsx` retries SELECT without `items.images` on Postgres 42703; editor still loads on DBs missing migration 009 |
+| Lean Edge middleware | ✅ | — | Dropped `@supabase/ssr` from middleware (Edge cold-start crash on Vercel); cookie-presence check only; whole body in try/catch; `/api/*` excluded from matcher |
+| Categories — New | 🚫 | — | Deleted; subcategories managed via `/admin/categories/[id]`. Top-level categories are a fixed enum |
+| Extra Fields — New | 🚫 | — | Deleted; superseded by wizard in `/admin/extra-fields` main page |
 
 Legend: ✅ done · ⏳ mock UI exists, needs data wiring · 🚫 deprecated
 
@@ -553,6 +557,10 @@ SQL migrations in `/scripts/sql/`:
 /api/admin/movies-tonight/bulk        POST, PUT     (preview match/unmatch; commit insert with dedup)
 /api/admin/settings                   GET, PATCH    (key/value app_settings)
 /api/admin/enrich                     POST          (TMDB / Google Books / Places candidates)
+/api/admin/search                     GET           (Cmd+K cross-entity search: suggestions/users/collections/activities/reviews)
+/api/admin/counters                   GET           (sidebar live badge counts)
+/api/admin/suggestions/queue          GET           (queue navigation: prev/next + position/total within filter)
+/api/admin/suggestions/create         POST          (atomic item + suggestion insert from `/admin/suggestions/new`)
 ```
 
 **Required env vars (optional, all features degrade gracefully if missing):**
@@ -589,22 +597,20 @@ Custom map (`α→a`, `β→v`, etc.) used for slug generation across subcategor
 
 ## 15. Pending Work
 
-### Critical (next priorities)
-1. **Notification page type-aware rendering** — current notifications list doesn't differentiate types; click-through for `movie_airing` should deeplink to the movie detail page
-2. **Bulk enrichment** for items missing covers (script that calls /api/admin/enrich for every item with no cover)
-3. **Production deploy checklist** — env vars (TMDB/Places/Books keys), run all migrations 001-011, run scripts in order: `seed-extra-fields.js`, `seed-regions.js`, `backfill-item-images.js`, `geocode-venues.js`
+### Critical (next priorities — from session-11 deep audit)
+1. **User-action persistence** — submission, rating, comment, follow, report all have UIs but **none persist to DB**. The user-side engagement loop is hollow. Affects every metric that matters
+2. **Replace mock `/api/search` and `/api/recommendations`** — currently return 3 hardcoded items; real Supabase query needed
+3. **Real leaderboard** — `LeaderboardPage` renders hardcoded TOP_USERS array; switch to `users` ranked by suggestion_count
+4. **Onboarding flow** (CLAUDE.md priority 3) — 4 steps not built; users land on guest-like home after register
+5. **Rebuild remaining 7 detail components** against Figma (Series, Food, Bars, Hotels, Recipes, Theater, Events) — only Book + Movie done
+6. **Migration drift** — `items.poster_url` and `items.backdrop_url` columns referenced in code + types but **created by no migration**; consolidate `scripts/sql/*` into `supabase/migrations/`
+7. **Hooks from HOOKS.md** — 21 notification triggers + 10 in-app moments specified, only 1 implemented (movie_airing reminder)
 
 ### Less critical
-4. **Content: Filters** — `filter_configs` schema and UI wiring
-5. **Content: Movies Tonight** — schema + real data
-6. **Categories — New** — admin can already manage subcategories via category detail; new top-level category is rare/schema-level
-7. **Suggestions — New** — admin-created suggestions (rare; users normally submit)
-
-### Cross-cutting
-- **Re-enable production auth check** in `app/admin/layout.tsx` (currently `DEV_BYPASS_AUTH = true` in dev)
-- **Image enrichment APIs** (CLAUDE.md §16): TMDB, Google Books, Google Places, Ticketmaster — currently 100% of items have only one image (poster OR backdrop), need both
-- **Geocoding** for 386 venues (food/bars/hotels) without lat/lng
-- **Google Books API** for 839 books missing pages
+- **Item gallery on FoodDetail / BarsDetail / HotelDetail** — `<ItemGalleryViewer>` exists but not wired (placeholder block remains)
+- **Bulk enrichment** for items missing covers (script `bulk-enrich.js` exists; run it)
+- **Filters v3** — admin can edit existing filter rows, but full-on filter widget config (drop-zone, segmented, price-range options) needs richer UI
+- **Tags editor in SuggestionEditor** — admin can fix subcategory but not `metadata.tags`
 
 ### Known data quality issues (manual review)
 - 24 "bars" miscategorized in source data (παγωτατζίδικα, escape rooms, παιδότοποι, soccer academies)
@@ -613,7 +619,6 @@ Custom map (`α→a`, `β→v`, etc.) used for slug generation across subcategor
 - 3 events untagged
 - 2 hotels with bad data ("bbbb", empty)
 - 2 series with only generic tag
-
 All visible and manageable from `/admin/data-quality`.
 
 ---
