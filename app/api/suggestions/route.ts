@@ -131,18 +131,31 @@ export async function POST(req: NextRequest) {
     }
     itemSlug = `${category}/${candidate}`;
 
+    // Pull rich metadata out of ai_match_data (TMDB / Books / Places shape).
+    // Anything missing is null — admin can fill it later via the editor.
+    const md = (body.ai_match_data ?? {}) as Record<string, any>;
+    const posterUrl = typeof md.poster_url === "string" ? md.poster_url : null;
+    const backdropUrl = typeof md.backdrop_url === "string" ? md.backdrop_url : null;
+    const coverUrl = body.cover_url ?? posterUrl ?? backdropUrl ?? null;
+
     const { data: newItem, error: itemErr } = await (admin.from("items") as any)
       .insert({
         title,
         slug: itemSlug,
         category,
-        cover_url: body.cover_url ?? null,
+        cover_url: coverUrl,
+        poster_url: posterUrl,
+        backdrop_url: backdropUrl,
+        description_seo: typeof md.plot === "string" ? md.plot.slice(0, 500) : null,
         is_published: true,
         avg_rating: rating ?? 0,
         rating_count: rating !== null ? 1 : 0,
         suggestion_count: 1,
-        images: body.cover_url ? [{ url: body.cover_url }] : [],
-        metadata: { tags: [] },
+        images: coverUrl ? [{ url: coverUrl }] : [],
+        metadata: {
+          tags: [],
+          ...(md.tmdb_id ? { tmdb_id: md.tmdb_id } : {}),
+        },
       })
       .select("id, slug")
       .single();
@@ -155,6 +168,34 @@ export async function POST(req: NextRequest) {
     }
     itemId = (newItem as any).id;
     itemSlug = (newItem as any).slug;
+
+    // Insert the category extension row with whatever metadata we have.
+    // Best-effort — if this fails we don't roll back the item, the admin
+    // editor can fill the gaps later.
+    if (category === "movies" || category === "series") {
+      const directors = md.director ? [{ name: md.director }] : [];
+      const actors = Array.isArray(md.cast)
+        ? md.cast.map((c: any) => ({ name: c.name, avatar: c.avatar ?? null }))
+        : [];
+      const extPayload: Record<string, any> = {
+        item_id: itemId,
+        director: typeof md.director === "string" ? md.director : null,
+        directors: directors.length > 0 ? directors : null,
+        actors: actors.length > 0 ? actors : null,
+        plot: typeof md.plot === "string" ? md.plot : null,
+        country: null,
+        language: null,
+        trailer_url: null,
+      };
+      if (category === "movies") {
+        extPayload.duration_min = typeof md.runtime === "number" ? md.runtime : null;
+        if (md.year) extPayload.release_date = `${md.year}-01-01`;
+      } else {
+        if (md.year) extPayload.release_date = `${md.year}-01-01`;
+      }
+      const extTable = category === "movies" ? "item_movies" : "item_series";
+      await (admin.from(extTable) as any).insert(extPayload);
+    }
   }
 
   // 3. Insert the suggestion
@@ -202,10 +243,41 @@ export async function POST(req: NextRequest) {
     .update({ suggestion_count: newCount, last_suggestion_at: now })
     .eq("id", user.id);
 
+  // 5. Hook moments (HOOKS.md §2B). Three cheap counts that drive the
+  //    Published screen's social-proof + variable-reward block. Computed
+  //    in parallel; failures degrade gracefully (counts default to 0).
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - 7);
+
+  const [weeklyRes, audienceRes, followersRes] = await Promise.all([
+    // Total suggestions (any user) in the last 7 days, including the one
+    // we just inserted. Drives "Ήσουν ο Nth που πρότεινε αυτή την εβδομάδα".
+    admin
+      .from("suggestions")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", weekStart.toISOString()),
+    // Distinct users with a bookmark in this category — soft proxy for
+    // "how many people care about this category". No "follow category"
+    // feature exists yet; bookmarks are the closest engagement signal.
+    admin
+      .from("bookmarks")
+      .select("user_id", { count: "exact", head: true })
+      .eq("category", category),
+    // Followers of the suggester — drives "X χρήστες σε ακολουθούν —
+    // θα το δουν στο feed τους". Only meaningful when > 0.
+    admin
+      .from("follows")
+      .select("id", { count: "exact", head: true })
+      .eq("following_id", user.id),
+  ]);
+
   return NextResponse.json({
     suggestion_id: (sugRow as any).id,
     item_id: itemId,
     item_slug: itemSlug,
     new_suggestion_count: newCount,
+    weekly_count: weeklyRes.count ?? 0,
+    category_audience_count: audienceRes.count ?? 0,
+    my_followers_count: followersRes.count ?? 0,
   });
 }

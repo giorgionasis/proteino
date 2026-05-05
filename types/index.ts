@@ -111,6 +111,18 @@ export interface Notification {
 }
 
 // AI service types
+export type QualityLabel = "poor" | "fair" | "good" | "excellent";
+
+export interface QualityAssessment {
+  /** 0-100 — how well the user's description holds up. */
+  score: number;
+  label: QualityLabel;
+  /** Most actionable next step. Null when description is excellent. */
+  tip: string | null;
+  /** Quick visible badge for the label, e.g. "🔥 Εξαιρετικό". */
+  badge: string;
+}
+
 export interface SubmissionAnalysis {
   matched: boolean;
   title: string | null;
@@ -119,6 +131,9 @@ export interface SubmissionAnalysis {
   progress: number;
   message: string;
   matchData: Record<string, unknown> | null;
+  /** Real-time coaching on the user's description quality. Optional so the
+   *  type stays back-compat with anything still returning the older shape. */
+  quality?: QualityAssessment;
 }
 
 export interface SearchAnalysis {
