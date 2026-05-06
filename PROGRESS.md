@@ -1,30 +1,49 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-06 (session 14 — UI redesign + icon system + reports + admin polish)
+Last updated: 2026-05-07 (session 15 — reviews/review_votes tables · /reviews subpage · design system showcase)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state:**
-- ✅ Detail-page redesign sweep: chip strip · share button wired · 3-col stat bar conditional (Oscar+high-rating for movies, default = inline RatingLine) · BookDetail border stripped · own-suggestion behavior (edit/delete CTAs replace rate card when viewing own) · 1-col list across all 9 categories with new `<RowCard>` variant
-- ✅ 6 screenshot designs shipped: recipe nutrition row · hotel amenities + side-by-side Google/Booking rating cards + Booking.com availability card · author card (redesigned, moved AFTER reviews, reads metadata.author_*) · theater Public book ad (reads metadata.related_book) · food delivery with real efood/box wordmark logos
-- ✅ Icon system: 62 SVGs in `public/icons/` (brands/nutrition/amenities/property/awards/badges/ui/admin) + `lib/icons.ts` registry + `<Icon>` component + 4 reusable primitives (`<OutlinedPill>`, `<UserBadge>`, `<IconToggleGrid>`, `<PromoCard>` patterns)
-- ✅ Pass A frontend: IMDb/RT/Metacritic real logos · oscar icons in awards accordion (matching category) · `<UserBadge>` replaces all 3 legacy patterns (text pills + inline shields + `<BadgeChip>`) across 9 files
-- ✅ Pass B admin: hotel facilities + recipe nutrition forms now WORK (previously broken — no `checked`/`onChange`); both use `<IconToggleGrid>`. Hotel property type radio with property icons. Hotel external_ratings score+count form. Movies awards admin shows oscar icon previews.
-- ✅ Admin metadata foundation: `metadataPatch` flow through API; merges into `items.metadata` server-side without overwriting other keys. Powers book author rich fields + theater related_book.
-- ✅ Reports system end-to-end: migration 015 (content_reports table, generalized for comment+suggestion targets), 3-step ReportFlowModal per Figma, αναφορά wired across 9 detail pages + CommentThread, admin moderation surface at `/admin/reports` with Dismiss/Hide (both require admin note), sidebar Reports tab with live counter
-- ✅ Histogram + Top Rated restored: server-side combines ratings from BOTH `ratings` table and `suggestions.rating` field (deduped by user), overrides item.rating_count + avg_rating with combined-source totals. `<ReviewCardFooter>` shared component (vote buttons + αναφορά). `<ExtraRatingsRow>` compact display for rating-only users (no suggestion text — common on migrated items).
-- ✅ Migration 015 applied to live DB.
+**Current state — session 15 finished:**
+
+- ✅ **Reviews architecture rewritten cleanly.** Migration 016 created the new `reviews` table (rating mandatory + reflection optional, one row per (user, item), UNIQUE constraint). Migration 017 created `review_votes` with sync trigger (mirror of comment_votes). Legacy `ratings` table wiped + `comments` table left untouched as archive — no `is_legacy` flag, clean break. All `items.rating_count` + `avg_rating` reset to 0 globally.
+- ✅ **Detail-page server fetch sources from `reviews` table** instead of suggestions.slice(1) + ratings union. Histogram, avg, count all computed fresh per request from non-hidden reviews.
+- ✅ **Per-viewer vote state** fetched server-side (1 query, in-clause on review_ids) so thumb buttons render in the active state on first paint — no client-side flash.
+- ✅ **9 detail components migrated**: useRating → useReview, suggestions.slice(1) → data.reviews, textarea added below stars (appears after 1st click), CommentComposer + CommentThread + ExtraRatingsRow removed entirely.
+- ✅ **Vote stack**: `POST /api/reviews/[id]/vote` with self-vote prevention. `useReviewVote` hook with optimistic counter delta + revert on error. ReviewCardFooter now actually clickable, ενεργό thumb gets coral fill.
+- ✅ **`/reviews` subpage** (`app/(main)/[category]/[id]/reviews/page.tsx`): full list of reviews using `<ReviewCard variant="list">`. Empty state CTA "Πρόσθεσε αξιολόγηση" → back to detail. Filters out the original suggester (suggestions.slice(1) logic, since suggester ≠ review).
+- ✅ **`<AllReviewsButton>`** — outlined "Εμφάνιση X αξιολογήσεις" CTA below the carousel on every detail page → `/reviews`.
+- ✅ **`<ReviewCard>`** shared component (carousel + list variants) with truncate at 4 lines + Περισσότερα expand. Hides the text block when reflection is empty (rating-only review).
+- ✅ **FK ambiguity sweep** (root-cause fix from migration 015): added disambiguators (`users!suggestions_user_id_fkey` / `users!comments_user_id_fkey`) in 12 broken queries — fixed empty category pages, empty `/admin/reviews`, missing featured-suggester block, and empty admin search. Same bug class won't bite again.
+- ✅ **K2 aggregate gracefully retired**: detail page no longer falls back to `items.rating_count = 67` social proof. Going forward, the headline reflects only real reviews.
+- ✅ **TMDB image host wired** in `next.config.mjs` (anora/dune were 500ing).
+
+**Design system shipped at `/admin/showcase`** — 8 tabs · 27+ real components:
+
+| Tab | Components |
+|---|---|
+| Foundations | UserBadge · OutlinedPill · Icon · AllReviewsButton |
+| Cards | ReviewCard · SuggestionCardPortrait · SuggestionCardLandscape · CarouselSection · RatingBox · SuggesterCard · BookmarkIcon |
+| Detail modules | RatingCard · BookingAvailabilityCard · ActivityCard · PublicBookAd · AuthorCard · AmenitiesRow · NutritionRow · DurationCard · PlatformLinksCard |
+| Modal | Modal · ConfirmDeleteDialog · DeleteSuccessDialog · ReportFlowModal (link) · EditSuggestionModal (link) |
+| Toasts | Toast (new component) · useToast() hook |
+| Notifications | NotificationCard (extracted from NotificationsPage — 6 type variants) |
+| Admin | IconToggleGrid · PropertyTypeSelector · ImageUploader · ImageGallery (+ LocationPicker link) |
+| Patterns | Empty state, Skeleton (still placeholders) |
+
+Most reusables are **brand new** (extracted from inline detail-component code). Inline implementations replaced by the new components in HotelDetail, RecipeDetail, FoodDetail, TheaterDetail, BookDetail.
 
 **Decision locked but not yet built (Phase A — still pending):**
 - Anthropic Claude Haiku 4.5 integration in **Search + Submission**. Architecture documented in AI.md §12. Cost projections: ~$3.5K/mo at 100K DAU + 3 searches + 30K submissions, ~3% of projected revenue. Awaiting `ANTHROPIC_API_KEY` (user buying credits as Individual plan).
 
-**Known follow-ups from session 14 (small):**
-- Vote up/down buttons wired visually but counts hardcoded to 0 — needs `suggestion_votes` table mirroring `comment_votes` from migration 003
-- A2 platform logos: wired in SeriesDetail's "ΔΙΚΤΥΟ" InfoCell only; MovieDetail has no current spot for channel display
-- Series + Bars don't have a featured-suggestion block (other 7 categories do) — inconsistency, not blocker
-- Recipe suggester not rendering for one specific recipe (kotopoulo) despite is_published=true — needs investigation; user owes screenshot
+**Known follow-ups from session 15 (small):**
+- LocationPicker / AddressMapSection still inline in SuggestionEditor (~174 lines). Extract to standalone reusable in a future round if you want it interactive in the showcase.
+- `CategoryCard` (used in /movies, /food etc lists) has NOT been migrated to use the new SuggestionCardPortrait/Landscape — separate sweep when ready.
+- Empty state + Skeleton primitives still placeholders in showcase Patterns tab. Both used inline in 5+ places — would benefit from extraction.
+- A2 platform logos: still only wired in SeriesDetail's "ΔΙΚΤΥΟ" InfoCell. MovieDetail has no spot.
+- Recipe suggester not rendering for kotopoulo recipe — still pending screenshot from user.
 
 **Two future systems mapped but not started (Phases B + C):**
 - Phase B: pgvector recommendations + nightly batch (5 days)
@@ -35,6 +54,70 @@ See §3 for the full ordered roadmap.
 ---
 
 ## 1. COMPLETED
+
+### Session 15 — Reviews architecture + design system showcase ✅ (2026-05-07)
+
+The biggest architectural cleanup so far. Consolidated the messy ratings/suggestions/comments triangle into a single `reviews` table, fixed the FK ambiguity bug class introduced by migration 015, and stood up `/admin/showcase` as the canonical design-system surface.
+
+**Reviews architecture rewrite**
+- **Migration 016** (`scripts/sql/016-reviews-table.sql`, applied to live DB): new `reviews` table with `rating smallint NOT NULL CHECK (1..5)` + `reflection text NULL` + vote/report/hidden columns + `UNIQUE (user_id, item_id)`. RLS: anyone reads non-hidden, users CRUD their own, admin role policy for moderation. Hot-path index on `(item_id, created_at DESC) WHERE is_hidden = false`. **Wipes** all rows from legacy `ratings` table + resets `items.rating_count` / `avg_rating` to 0 across all 1000 items.
+- **Migration 017** (`scripts/sql/017-review-votes.sql`): `review_votes` table mirroring `comment_votes` from migration 003. PK on (user_id, review_id). Postgres trigger `trg_sync_review_votes` keeps `reviews.vote_up`/`vote_down` in sync on INSERT/UPDATE/DELETE. Self-vote blocked at the API layer.
+- **Legacy tables stay frozen, untouched** — no `is_legacy` flag, no schema mutations on `comments` / `ratings`. The new UI reads only from `reviews`. Future cleanup: drop `ratings` table once we're confident.
+- Per the user's decision: a "review" = rating (mandatory) + optional text. The original submitter's `suggestions` row is NOT a review — it stays as the featured suggester block above the rating box, never inside the carousel or `/reviews` page.
+
+**API + hooks**
+- `app/api/reviews/route.ts` — POST (upsert), GET `?item_id=…` (own review prefill), DELETE (own only). Recomputes `items.rating_count` + `avg_rating` after every write so the detail page reflects the new aggregate immediately.
+- `app/api/reviews/[id]/vote/route.ts` — POST `{ vote: 1 | -1 | null }`. Self-vote returns 403. Trigger handles counter sync.
+- `hooks/useReview.ts` — replaces `useRating`. Manages busy/savedRating/savedReflection state.
+- `hooks/useReviewVote.ts` — optimistic counter delta on click + revert on API error. `toggleUp` / `toggleDown` helpers.
+
+**Detail page server fetch rewritten** (`app/(main)/[category]/[id]/page.tsx`)
+- Replaced the dual-source fetch (ratings table + suggestions.rating union, with K2-aggregate fallback + synthesized histogram) with a single query against `reviews`.
+- `ItemDetailData.reviews[]` typed shape includes `my_vote` per row — fetched server-side via 1 extra `review_votes` query (user_id + in-clause on review_ids) so vote thumbs render in the active state on first paint.
+- `ItemDetailData.myReview` (rating + reflection) for prefilling the rate-this-item form.
+- `ratingDistribution` + `isTopRated` recomputed from real reviews; histogram hidden when no per-user data.
+- Old `synthesizeRatingDistribution` heuristic + K2 aggregate fallback **removed** (no longer needed — table is the source of truth).
+
+**Detail components migration sweep (9 files)**
+- `useRating(item.id, data.userRating)` → `useReview(item.id, data.myReview)` + new `userText` state.
+- Save button calls `saveReview(rating, userText.trim() || null)` with both rating + optional text.
+- Carousel review source: `suggestions.slice(1).map(s => …)` → `data.reviews.map(r => …)`. Each review → `<ReviewCard variant="carousel" myVote={review.myVote} />`.
+- **Textarea added** below the stars in the rate-this-item form (renders after first star click). 6 multi-line files + 3 single-line files patched via Python regex.
+- **CommentComposer + CommentThread JSX removed** from all 9 — no more comments going forward.
+- **`<ExtraRatingsRow>` removed** — no longer needed (review = rating, no separate "rating-only" concept).
+- Bug fixed during sweep: 8 files had `dislikes: r.vote_up` (should be `vote_down`) — unrelated dev-time mistake from earlier sed, dislike count was equal to like count.
+
+**FK ambiguity sweep (root-cause fix)**
+- Migration 015 (session 14) added `suggestions.hidden_by` FK → `users.id`, creating a 2nd FK from suggestions to users. Postgres + PostgREST then refused every embed `users(...)` from `suggestions` with `PGRST201` ambiguous-relationship — silently breaking 12 queries. Same bug class on `comments` (which has `comment_votes` many-to-many).
+- Fixed all sites with explicit FK disambiguators:
+  - `users!suggestions_user_id_fkey` in 8 places (category list, detail page, /reviews, /admin/reports, /admin/suggestions table, command palette, /api/suggestions, /api/suggestions/check, /api/debug/me)
+  - `users!comments_user_id_fkey` in 2 places (admin/reports comment query, admin/reviews list table)
+- Symptoms cleared: empty category pages, missing featured suggester, `/admin/reviews` empty list, broken admin search.
+
+**`/reviews` subpage** (`app/(main)/[category]/[id]/reviews/page.tsx`)
+- Server component, lists all visible reviews using `<ReviewCard variant="list">`.
+- Filters out the original suggester (suggestions.slice(1) logic at API level).
+- Empty state: "Καμία αξιολόγηση ακόμα · Πρόσθεσε αξιολόγηση" CTA back to detail.
+- Per-viewer vote state same approach as detail page (server-side prefetch).
+
+**`<AllReviewsButton>`** (`components/detail/AllReviewsButton.tsx`)
+- Outlined CTA "Εμφάνιση X αξιολογήσεις" (singular/plural) below the carousel on every detail page → links to `/[category]/[id]/reviews`.
+- Hidden when count = 0.
+- Wired into all 9 detail components (Python script + per-file Edit for sub-component variants — Food/Theater/Recipe/Hotel/Event have a `<CommunitySection>` sub-comp that needed `itemSlug` added as a prop).
+
+**Design system showcase (`/admin/showcase`)**
+- New admin route, gated by existing admin layout. 8 tabs: Foundations, Cards, Detail modules, Modal, Toasts, Notifications, Admin, Patterns.
+- Tabbed shell (`ShowcaseShell`) — sticky nav, instant client-side switch.
+- `<ShowcaseSection>` wrapper per component: header (name, file path, description, "view in context" links) + grid of `<Variant>` cells with label + preview.
+- 27+ real components documented with multiple variants each. New reusables built this session:
+  - **Detail modules** (extracted from inline JSX in HotelDetail/TheaterDetail/BookDetail): RatingCard (Google/Booking unified) · BookingAvailabilityCard · ActivityCard · PublicBookAd · AuthorCard · AmenitiesRow · NutritionRow · DurationCard · PlatformLinksCard (unified for Food delivery + Movie/Series watch platforms).
+  - **Cards**: ReviewCard · SuggestionCardPortrait · SuggestionCardLandscape · CarouselSection · RatingBox · SuggesterCard · BookmarkIcon.
+  - **UI primitives**: Toast + useToast() hook (replaces 9+ inline `"✓ Αντιγράφηκε"` patterns).
+  - **Notifications**: NotificationCard extracted from NotificationsPage (6 type variants).
+- Sidebar entry "Showcase" added to AdminSidebar with palette icon.
+
+**TMDB image host fix**
+- Added `image.tmdb.org` to `next.config.mjs` `images.remotePatterns` — anora and dune detail pages were 500ing on TMDB-saved poster URLs.
 
 ### Session 14 — UI redesign + icon system + reports + admin polish ✅ (2026-05-06)
 
@@ -735,7 +818,15 @@ C last because:
 
 ### Older priorities (still relevant, deferred behind Phase A/B/C)
 
-**Detail Pages Figma Alignment (2 of 9 done)** — Series, Food, Bars, Hotels, Recipes, Theater, Events still on legacy InfoCell. Defer until after Phase A.
+**Design system migration sweep** — CategoryCard (used in /movies, /food etc lists) still on legacy implementation. Migrate to use the new SuggestionCardPortrait/SuggestionCardLandscape from session 15. Single sweep across all 9 category pages.
+
+**Inline cleanup follow-ups from session 15:**
+- Extract `AddressMapSection` from SuggestionEditor (~174 lines, used in 4+ admin extension forms) into a standalone reusable so it can render in `/admin/showcase` interactively. Currently shown as a placeholder + link to live admin.
+- Extract empty-state primitive — used inline in 5+ places (search, /reviews, bookmarks, profile suggestions, category list). Single reusable would unify the pattern (icon + headline + body + CTA).
+- Extract Skeleton primitives — `components/ui/Skeleton.tsx` exists but is barely used. Roll out to category pages, profile, /reviews on initial load.
+- Replace 9+ inline `"✓ Αντιγράφηκε"` toast patterns with the new `<Toast>` + `useToast()` hook (session 15). Mostly mechanical sweep.
+
+**Detail Pages Figma Alignment (2 of 9 done)** — Series, Food, Bars, Hotels, Recipes, Theater, Events still on legacy InfoCell layout (the original archetype). Note: session 15 already extracted most of the modules used here (RatingCard, AmenitiesRow, etc.) so the remaining work is layout/composition, not new components.
 
 **Region backfill via reverse geocoding** — bigger fix for the venue-location problem. Use existing 411 lat/lng + Nominatim reverse → admin levels → match against regions table → backfill `region_id`. Can be done independently or as part of Phase B prep.
 

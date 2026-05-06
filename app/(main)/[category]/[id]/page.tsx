@@ -33,25 +33,29 @@ export type ItemDetailData = {
   nearbyActivities?: NearbyActivity[];
   /** True if the current user has bookmarked this item. False for guests. */
   isBookmarked: boolean;
-  /** Current user's rating of this item, or null if they haven't rated / aren't logged in. */
-  userRating: number | null;
+  /** Current user's existing review (rating + optional reflection), or null. */
+  myReview: { rating: number; reflection: string | null } | null;
   /** Auth uid of the viewer, or null for guests. Used to detect own-suggestion. */
   currentUserId: string | null;
-  /** Star distribution computed at fetch time from the ratings table (5★ → 1★). */
+  /** Star distribution computed at fetch time from `reviews` table (5★ → 1★). */
   ratingDistribution: { stars: number; pct: number }[];
-  /** True when avg ≥ 4.5 AND rating_count ≥ 5 — drives "Top Rated" badge. */
+  /** True when avg ≥ 4.5 AND review count ≥ 5 — drives "Top Rated" badge. */
   isTopRated: boolean;
   /**
-   * Users who rated this item but did NOT write a suggestion. Surfaced as a
-   * compact "Άλλες βαθμολογίες" row below the review carousel so the rating
-   * count visible at the top matches the actual people behind it (the gap
-   * shows up most on migrated items where 1 suggester + N rating-only users
-   * is the norm).
+   * All visible reviews for this item (from `reviews` table — the new model).
+   * Each row = one user's rating (mandatory) + optional text. Used by the
+   * carousel below the rating box AND by /reviews page.
    */
-  extraRatings: Array<{
+  reviews: Array<{
+    id: string;
     user: { id: string; display_name: string; handle: string; avatar_url: string | null; level: number };
-    score: number;
+    rating: number;
+    reflection: string | null;
     created_at: string;
+    vote_up: number;
+    vote_down: number;
+    /** Current viewer's vote on this review: 1, -1, or null. Always null for guests. */
+    my_vote: 1 | -1 | null;
   }>;
 };
 
@@ -81,7 +85,7 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
   // Fetch suggestions with user data — exclude moderator-hidden rows.
   // hidden_at is set by `/api/admin/reports/[id]` when an admin chooses "hidden".
   const { data: sugData } = (await (sb.from("suggestions") as any)
-    .select("id, reflection, rating, created_at, users(id, display_name, handle, avatar_url, level, suggestion_count, avg_quality_score)")
+    .select("id, reflection, rating, created_at, users!suggestions_user_id_fkey(id, display_name, handle, avatar_url, level, suggestion_count, avg_quality_score)")
     .eq("item_id", item.id)
     .eq("is_published", true)
     .is("hidden_at", null)
@@ -111,93 +115,78 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     nearbyActivities = await fetchNearbyActivities(sb, ext.lat, ext.lng, 50, 12);
   }
 
-  // Star distribution + counts: ratings live in TWO places due to the MySQL
-  // migration —
-  //   - `ratings` table: independent ratings (new flow + some migrated rows)
-  //   - `suggestions.rating`: embedded rating per suggester (dominant in
-  //     migrated data — old site stored most ratings here)
-  // Dedupe by user_id (canonical: the `ratings` table wins if both exist),
-  // then bucket into 1..5 stars and recompute avg + count + distribution
-  // from this single source of truth. This way `items.rating_count` being
-  // out-of-sync (zero on migrated items) doesn't hide the histogram.
-  const [scoresRes, suggRatingsRes] = await Promise.all([
-    (sb.from("ratings") as any).select("score, user_id").eq("item_id", item.id),
-    (sb.from("suggestions") as any)
-      .select("rating, user_id")
-      .eq("item_id", item.id)
-      .eq("is_published", true)
-      .is("hidden_at", null)
-      .not("rating", "is", null),
-  ]);
+  // Reviews — single source of truth (post migration 016). Each row =
+  // one user's rating (mandatory) + optional reflection. Carousel + /reviews
+  // page read from this. Histogram + headline avg/count computed from it.
+  const { data: reviewRows } = (await (sb.from("reviews") as any)
+    .select("id, rating, reflection, created_at, vote_up, vote_down, users!reviews_user_id_fkey(id, display_name, handle, avatar_url, level)")
+    .eq("item_id", item.id)
+    .eq("is_hidden", false)
+    .order("created_at", { ascending: false })
+    .limit(50)) as { data: any[] | null };
 
-  const scoreByUser = new Map<string, number>();
-  for (const s of (suggRatingsRes.data ?? []) as Array<{ rating: number; user_id: string }>) {
-    if (s.rating != null && s.user_id) scoreByUser.set(s.user_id, Number(s.rating));
-  }
-  for (const r of (scoresRes.data ?? []) as Array<{ score: number; user_id: string }>) {
-    if (r.score != null && r.user_id) scoreByUser.set(r.user_id, Number(r.score));
-  }
+  const reviewsRaw = (reviewRows ?? []).filter((r: any) => r.users);
+
+  // For the logged-in viewer, fetch their votes on this item's reviews so the
+  // thumbs render in the active state on first paint (no client-side flash).
+  let myVoteByReview = new Map<string, 1 | -1>();
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (user && reviewsRaw.length > 0) {
+      const reviewIds = reviewsRaw.map((r: any) => r.id);
+      const { data: voteRows } = await sb
+        .from("review_votes")
+        .select("review_id, vote")
+        .eq("user_id", user.id)
+        .in("review_id", reviewIds);
+      for (const v of (voteRows ?? []) as Array<{ review_id: string; vote: number }>) {
+        if (v.vote === 1 || v.vote === -1) myVoteByReview.set(v.review_id, v.vote as 1 | -1);
+      }
+    }
+  } catch { /* guest or network — defaults to no votes */ }
+
+  const reviews: ItemDetailData["reviews"] = reviewsRaw.map((r: any) => ({
+    id: r.id,
+    user: {
+      id: r.users.id,
+      display_name: r.users.display_name ?? "Χρήστης",
+      handle: r.users.handle ?? "user",
+      avatar_url: r.users.avatar_url ?? null,
+      level: r.users.level ?? 1,
+    },
+    rating: Number(r.rating),
+    reflection: r.reflection,
+    created_at: r.created_at,
+    vote_up: Number(r.vote_up ?? 0),
+    vote_down: Number(r.vote_down ?? 0),
+    my_vote: myVoteByReview.get(r.id) ?? null,
+  }));
 
   const buckets: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   let scoreSum = 0;
-  scoreByUser.forEach((s) => {
-    const bucket = Math.max(1, Math.min(5, Math.round(s)));
-    buckets[bucket] = (buckets[bucket] ?? 0) + 1;
-    scoreSum += s;
-  });
-  const totalScored = scoreByUser.size;
+  for (const r of reviews) {
+    const b = Math.max(1, Math.min(5, Math.round(r.rating)));
+    buckets[b] = (buckets[b] ?? 0) + 1;
+    scoreSum += r.rating;
+  }
+  const totalScored = reviews.length;
 
   const ratingDistribution = [5, 4, 3, 2, 1].map((stars) => ({
     stars,
     pct: totalScored > 0 ? Math.round((buckets[stars] / totalScored) * 100) : 0,
   }));
 
-  const avg = totalScored > 0 ? scoreSum / totalScored : (item.avg_rating ?? 0);
-  const ratingCount = totalScored;
-  const isTopRated = avg >= 4.5 && ratingCount >= 5;
+  const avg = totalScored > 0 ? scoreSum / totalScored : 0;
+  const isTopRated = avg >= 4.5 && totalScored >= 5;
 
-  // Override the item-level aggregates so RatingLine and other consumers
-  // see the corrected count + average even when items.rating_count is stale.
-  item.rating_count = ratingCount;
+  // Override item aggregates (kept in sync by /api/reviews on each write,
+  // but compute fresh here in case the page is loaded before that runs).
+  item.rating_count = totalScored;
   item.avg_rating = Number(avg.toFixed(2));
 
-  // Compact "rating-only" entries: users who rated but didn't write a
-  // suggestion (i.e. they appear in `ratings` but not in `suggestions`).
-  // Distinct from the review carousel above (which is full text + stars).
-  const suggesterIds = new Set(suggestions.map((s) => s.user.id).filter(Boolean));
-  const ratingOnlyUserIds = ((scoresRes.data ?? []) as Array<{ user_id: string }>)
-    .map((r) => r.user_id)
-    .filter((id) => id && !suggesterIds.has(id));
-
-  let extraRatings: ItemDetailData["extraRatings"] = [];
-  if (ratingOnlyUserIds.length > 0) {
-    const { data: extraRows } = (await (sb.from("ratings") as any)
-      .select("score, created_at, users(id, display_name, handle, avatar_url, level)")
-      .eq("item_id", item.id)
-      .in("user_id", ratingOnlyUserIds)
-      .order("created_at", { ascending: false })
-      .limit(20)) as { data: any[] | null };
-
-    extraRatings = (extraRows ?? [])
-      .map((r: any) => ({
-        user: r.users
-          ? {
-              id: r.users.id,
-              display_name: r.users.display_name ?? "Χρήστης",
-              handle: r.users.handle ?? "user",
-              avatar_url: r.users.avatar_url ?? null,
-              level: r.users.level ?? 1,
-            }
-          : null,
-        score: Number(r.score),
-        created_at: r.created_at,
-      }))
-      .filter((r): r is NonNullable<ItemDetailData["extraRatings"][number]> => !!r.user);
-  }
-
-  // Initial bookmark + rating state for the current user
+  // Initial bookmark + own-review state for the current user
   let isBookmarked = false;
-  let userRating: number | null = null;
+  let myReview: ItemDetailData["myReview"] = null;
   let currentUserId: string | null = null;
   try {
     const { data: { user } } = await sb.auth.getUser();
@@ -205,10 +194,11 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
       currentUserId = user.id;
       const [bmRes, rRes] = await Promise.all([
         sb.from("bookmarks").select("id").eq("user_id", user.id).eq("item_id", item.id).maybeSingle(),
-        sb.from("ratings").select("score").eq("user_id", user.id).eq("item_id", item.id).maybeSingle(),
+        sb.from("reviews").select("rating, reflection").eq("user_id", user.id).eq("item_id", item.id).maybeSingle(),
       ]);
       isBookmarked = !!bmRes.data;
-      userRating = (rRes.data as any)?.score ?? null;
+      const r = rRes.data as any;
+      myReview = r ? { rating: Number(r.rating), reflection: r.reflection ?? null } : null;
     }
   } catch { /* not logged in or network error */ }
 
@@ -235,11 +225,11 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     }),
     nearbyActivities,
     isBookmarked,
-    userRating,
+    myReview,
     currentUserId,
     ratingDistribution,
     isTopRated,
-    extraRatings,
+    reviews,
   };
 }
 

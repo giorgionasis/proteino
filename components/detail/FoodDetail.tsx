@@ -9,17 +9,17 @@ import { InnerHeader } from "@/components/layout/Header";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { ItemGalleryViewer, type GalleryImage } from "@/components/detail/ItemGalleryViewer";
 import { useBookmark } from "@/hooks/useBookmark";
-import { useRating } from "@/hooks/useRating";
+import { useReview } from "@/hooks/useReview";
 import { useShareLink } from "@/hooks/useShareLink";
-import { CommentComposer } from "@/components/detail/CommentComposer";
-import { CommentThread } from "@/components/detail/CommentThread";
 import { OwnSuggestionActions } from "@/components/detail/OwnSuggestionActions";
+import { ReviewCard } from "@/components/detail/ReviewCard";
+import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
+import { PlatformLinksCard } from "@/components/detail/PlatformLinksCard";
 import { Icon } from "@/components/ui/Icon";
 import { OutlinedPill } from "@/components/ui/OutlinedPill";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
-import { ExtraRatingsRow } from "@/components/detail/ExtraRatingsRow";
 import { AMENITY_ICON_MAP, AMENITY_LABELS, getActiveAmenities } from "@/lib/icons";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
@@ -53,8 +53,9 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
   const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "food", data.isBookmarked);
   const { share, copied: shareCopied } = useShareLink({ title: data.item.title });
-  const [userRating, setUserRating] = useState(data.userRating ?? 0);
-  const { save: saveRating, busy: ratingBusy, savedScore } = useRating(data.item.id, data.userRating);
+  const [userRating, setUserRating] = useState(data.myReview?.rating ?? 0);
+  const { save: saveReview, busy: reviewBusy, savedRating } = useReview(data.item.id, { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null });
+  const [userText, setUserText] = useState(data.myReview?.reflection ?? "");
   const [plotExpanded, setPlotExpanded] = useState(false);
 
   const { item, extension: ext, suggestions } = data;
@@ -84,17 +85,18 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
 
   const featured = suggestions[0];
 
-  const reviews: ReviewItem[] = suggestions.slice(1).map(s => ({
-    id: s.id,
-    name: s.user.display_name,
-    badge: getBadge(s.user.level),
+  const reviews: ReviewItem[] = data.reviews.map(r => ({
+    id: r.id,
+    name: r.user.display_name,
+    badge: getBadge(r.user.level),
     color: "#a5b5c4",
-    rating: s.rating ?? 0,
-    date: formatDate(s.created_at),
-    text: s.reflection ?? "",
-    likes: 0,
-    dislikes: 0,
-    userData: s.user,
+    rating: r.rating,
+    date: formatDate(r.created_at),
+    text: r.reflection ?? "",
+    likes: r.vote_up,
+    dislikes: r.vote_down,
+    myVote: r.my_vote,
+    userData: r.user,
   }));
 
   return (
@@ -231,34 +233,24 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
 
       {/* Delivery — only show rows for platforms that actually have a link */}
       {(deliveryLinks.efood || deliveryLinks.box) && (
-        <div className="mx-6 mt-6 rounded-[16px] p-6 space-y-2" style={{ backgroundColor: "#FFF2F1" }}>
-          <p className="text-[16px] font-bold" style={{ color: "#4A0800" }}>Delivery</p>
-          <div className="divide-y divide-zinc-200/60">
-            {deliveryLinks.efood && (
-              <div className="flex items-center justify-between py-4">
-                <Icon name="efood" width={94} height={32} alt="efood" />
-                <OutlinedPill href={deliveryLinks.efood}>Παραγγελία</OutlinedPill>
-              </div>
-            )}
-            {deliveryLinks.box && (
-              <div className="flex items-center justify-between py-4">
-                <Icon name="box" width={104} height={32} alt="BOX" />
-                <OutlinedPill href={deliveryLinks.box}>Παραγγελία</OutlinedPill>
-              </div>
-            )}
-          </div>
+        <div className="mx-6 mt-6">
+          <PlatformLinksCard
+            title="Delivery"
+            ctaLabel="Παραγγελία"
+            links={[
+              ...(deliveryLinks.efood
+                ? [{ key: "efood", brandIcon: "efood" as const, brandIconWidth: 94, href: deliveryLinks.efood }]
+                : []),
+              ...(deliveryLinks.box
+                ? [{ key: "box", brandIcon: "box" as const, brandIconWidth: 104, href: deliveryLinks.box }]
+                : []),
+            ]}
+          />
         </div>
       )}
 
       {/* Community */}
-      <CommunitySection ratings={ratingDistribution} ratingCount={ratingCount} isTopRated={isTopRated} topRatedNoun="Το εστιατόριο" communityRating={avgRating} reviews={reviews} extraRatings={data.extraRatings} userRating={userRating} setUserRating={setUserRating} saveRating={saveRating} ratingBusy={ratingBusy} savedScore={savedScore} question="Με πόσα αστέρια θα βαθμολογούσες το εστιατόριο;" mySuggestion={mySuggestion} itemTitle={title} />
-
-      {data.suggestions[0] && (
-        <div className="px-6 flex flex-col gap-4">
-          <CommentComposer suggestionId={data.suggestions[0].id} />
-          <CommentThread suggestionId={data.suggestions[0].id} />
-        </div>
-      )}
+      <CommunitySection ratings={ratingDistribution} ratingCount={ratingCount} isTopRated={isTopRated} topRatedNoun="Το εστιατόριο" communityRating={avgRating} reviews={reviews} userRating={userRating} setUserRating={setUserRating} saveReview={saveReview} userText={userText} setUserText={setUserText} reviewBusy={reviewBusy} savedRating={savedRating} question="Με πόσα αστέρια θα βαθμολογούσες το εστιατόριο;" mySuggestion={mySuggestion} itemTitle={title} itemSlug={item.slug} />
 
     </div>
   );
@@ -288,24 +280,25 @@ function InfoCell({ label, value, coral }: { label: string; value: string; coral
   );
 }
 
-interface ReviewItem { id: string; name: string; badge: "Verified"|"Expert"|"Platinum"|"Gold"; color: string; rating: number; date: string; text: string; likes: number; dislikes: number; userData?: any; }
+interface ReviewItem { id: string; name: string; badge: "Verified"|"Expert"|"Platinum"|"Gold"; color: string; rating: number; date: string; text: string; likes: number; dislikes: number; myVote: 1 | -1 | null; userData?: any; }
 
-function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, communityRating, reviews, extraRatings, userRating, setUserRating, saveRating, ratingBusy, savedScore, question, mySuggestion, itemTitle }: {
+function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, communityRating, reviews, userRating, setUserRating, userText, setUserText, saveReview, reviewBusy, savedRating, question, mySuggestion, itemTitle, itemSlug }: {
   ratings: { stars: number; pct: number }[];
   ratingCount: number;
   isTopRated: boolean;
   topRatedNoun: string;
   communityRating: number;
   reviews: ReviewItem[];
-  extraRatings: ItemDetailData["extraRatings"];
   userRating: number;
   setUserRating: (n: number) => void;
-  saveRating: (score: number) => void;
-  ratingBusy: boolean;
-  savedScore: number | null;
+  saveReview: (rating: number, reflection: string | null) => Promise<unknown>;
+  userText: string;
+  setUserText: (s: string) => void;
+  reviewBusy: boolean;
+  savedRating: number | null;
   question: string;
   mySuggestion: { id: string; reflection: string | null; rating: number | null } | null;
-  itemTitle: string;
+  itemTitle: string; itemSlug: string;
 }) {
   return (
     <div className="mt-8 py-8 flex flex-col items-center gap-[42px]" style={{ background: "linear-gradient(180deg,#fff 0%,#F2F2F7 10%,#F7F7FA 91%,#fff 100%)" }}>
@@ -323,7 +316,7 @@ function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, comm
               </p>
             </div>
           )}
-          {ratingCount > 0 && (
+          {ratings.some((d) => d.pct > 0) && (
             <div className="w-full flex flex-col gap-5 px-6">
               {ratings.map(({ stars, pct }) => (
                 <div key={stars} className="flex items-center gap-3">
@@ -352,13 +345,23 @@ function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, comm
               ))}
             </div>
             {userRating > 0 && (
-              <button
-                onClick={() => saveRating(userRating)}
-                disabled={ratingBusy || userRating === savedScore}
+                <>
+                  <textarea
+                  value={userText}
+                  onChange={e => setUserText(e.target.value)}
+                  placeholder="Γράψε γιατί (προαιρετικό)"
+                  maxLength={4000}
+                  rows={3}
+                  className="w-full rounded-[12px] border border-zinc-300 px-4 py-3 text-[14px] text-zinc-800 placeholder:text-zinc-400 focus:border-coral-600 focus:outline-none resize-none"
+                />
+                  <button
+                onClick={() => saveReview(userRating, userText.trim() || null)}
+                disabled={reviewBusy || userRating === savedRating}
                 className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
               >
-                {ratingBusy ? "Αποθήκευση..." : savedScore === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
+                {reviewBusy ? "Αποθήκευση..." : savedRating === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
               </button>
+                </>
             )}
           </div>
         )}
@@ -368,34 +371,26 @@ function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, comm
         <div className="flex flex-col items-center w-full gap-6">
           <div className="flex gap-5 overflow-x-auto no-scrollbar py-2.5 pl-6 w-full">
             {reviews.map(r => (
-              <div key={r.id} className="flex-none w-[310px] h-[323px] bg-white rounded-[12px] flex flex-col justify-between overflow-hidden" style={{ boxShadow: "2px 2px 9px -2px rgba(0,0,0,0.1)" }}>
-                <div className="p-6 flex flex-col gap-6">
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex gap-0.5">{[1,2,3,4,5].map(s => <StarIcon key={s} size={10} filled={s <= r.rating} />)}</div>
-                    <span className="w-[2px] h-[2px] rounded-full bg-zinc-500 shrink-0" />
-                    <span className="text-[13px] font-medium text-zinc-500">{r.date}</span>
-                  </div>
-                  <p className="text-[14px] font-normal text-zinc-800 leading-[150%] line-clamp-5">{r.text}</p>
-                  <div className="flex items-center gap-3">
-                    <UserAvatarWithPopup user={r.userData ?? { display_name: r.name }} size={50} />
-                    <div className="space-y-1">
-                      <p className="text-[14px] font-bold text-zinc-800">{r.name}</p>
-                      <UserBadge kind={r.badge} />
-                    </div>
-                  </div>
-                </div>
-                <ReviewCardFooter reviewId={r.id} likes={r.likes} dislikes={r.dislikes} />
-              </div>
+              <ReviewCard
+                  key={r.id}
+                  variant="carousel"
+                  id={r.id}
+                  rating={r.rating}
+                  text={r.text}
+                  date={r.date}
+                  name={r.name}
+                  userData={r.userData}
+                  badge={r.badge}
+                  likes={r.likes}
+                  dislikes={r.dislikes}
+                />
             ))}
             <div className="flex-none w-6 shrink-0" />
           </div>
-          <button className="w-[342px] py-[18px] rounded-full border-[1.5px] border-zinc-600 text-[16px] font-semibold text-zinc-700 uppercase tracking-[0.1px] active:bg-zinc-50 transition-colors">
-            Εμφάνιση αξιολογήσεων
-          </button>
         </div>
       )}
 
-      <ExtraRatingsRow ratings={extraRatings} />
+      <AllReviewsButton itemSlug={itemSlug} count={ratingCount} />
     </div>
   );
 }

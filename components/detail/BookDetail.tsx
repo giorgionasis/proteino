@@ -7,15 +7,15 @@ import { InnerHeader } from "@/components/layout/Header";
 import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { useBookmark } from "@/hooks/useBookmark";
-import { useRating } from "@/hooks/useRating";
+import { useReview } from "@/hooks/useReview";
 import { useShareLink } from "@/hooks/useShareLink";
-import { CommentComposer } from "@/components/detail/CommentComposer";
-import { CommentThread } from "@/components/detail/CommentThread";
 import { OwnSuggestionActions } from "@/components/detail/OwnSuggestionActions";
+import { ReviewCard } from "@/components/detail/ReviewCard";
+import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
+import { AuthorCard } from "@/components/detail/AuthorCard";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
-import { ExtraRatingsRow } from "@/components/detail/ExtraRatingsRow";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 function getBadge(level: number): "Expert" | "Platinum" | "Gold" | "Verified" {
@@ -44,8 +44,9 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
   const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "books", data.isBookmarked);
   const { share, copied: shareCopied } = useShareLink({ title: data.item.title });
-  const [userRating, setUserRating] = useState(data.userRating ?? 0);
-  const { save: saveRating, busy: ratingBusy, savedScore } = useRating(data.item.id, data.userRating);
+  const [userRating, setUserRating] = useState(data.myReview?.rating ?? 0);
+  const { save: saveReview, busy: reviewBusy, savedRating } = useReview(data.item.id, { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null });
+  const [userText, setUserText] = useState(data.myReview?.reflection ?? "");
   const [plotExpanded, setPlotExpanded] = useState(false);
   const [authorBioExpanded, setAuthorBioExpanded] = useState(false);
 
@@ -79,17 +80,18 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
   const authorBookCount = (meta.author_book_count as number | undefined) ?? null;
   const authorBio = (meta.author_bio as string | undefined) ?? null;
 
-  const reviews = suggestions.slice(1).map(s => ({
-    id: s.id,
-    name: s.user.display_name,
-    badge: getBadge(s.user.level),
+  const reviews = data.reviews.map(r => ({
+    id: r.id,
+    name: r.user.display_name,
+    badge: getBadge(r.user.level),
     color: "#a5b5c4",
-    rating: s.rating ?? 0,
-    date: formatDate(s.created_at),
-    text: s.reflection ?? "",
-    likes: 0,
-    dislikes: 0,
-    userData: s.user,
+    rating: r.rating,
+    date: formatDate(r.created_at),
+    text: r.reflection ?? "",
+    likes: r.vote_up,
+    dislikes: r.vote_down,
+    myVote: r.my_vote,
+    userData: r.user,
   }));
 
   return (
@@ -224,7 +226,7 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
                 </p>
               </div>
             )}
-            {ratingCount > 0 && (
+            {ratingDistribution.some((d) => d.pct > 0) && (
               <div className="w-full flex flex-col gap-5 px-6">
                 {ratingDistribution.map(({ stars, pct }) => (
                   <div key={stars} className="flex items-center gap-3">
@@ -253,101 +255,63 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
                 ))}
               </div>
               {userRating > 0 && (
-                <button
-                  onClick={() => saveRating(userRating)}
-                  disabled={ratingBusy || userRating === savedScore}
+                <>
+                  <textarea
+                  value={userText}
+                  onChange={e => setUserText(e.target.value)}
+                  placeholder="Γράψε γιατί (προαιρετικό)"
+                  maxLength={4000}
+                  rows={3}
+                  className="w-full rounded-[12px] border border-zinc-300 px-4 py-3 text-[14px] text-zinc-800 placeholder:text-zinc-400 focus:border-coral-600 focus:outline-none resize-none"
+                />
+                  <button
+                  onClick={() => saveReview(userRating, userText.trim() || null)}
+                  disabled={reviewBusy || userRating === savedRating}
                   className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
                 >
-                  {ratingBusy ? "Αποθήκευση..." : savedScore === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
+                  {reviewBusy ? "Αποθήκευση..." : savedRating === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
                 </button>
+                </>
               )}
-            </div>
-          )}
-
-          {data.suggestions[0] && (
-            <div className="flex flex-col gap-4">
-              <CommentComposer suggestionId={data.suggestions[0].id} />
-              <CommentThread suggestionId={data.suggestions[0].id} />
             </div>
           )}
 
           {reviews.length > 0 && (
             <div className="flex gap-5 overflow-x-auto no-scrollbar py-2.5 pl-6 w-full">
               {reviews.map(review => (
-                <div key={review.id} className="flex-none w-[310px] bg-white rounded-[12px] flex flex-col justify-between overflow-hidden" style={{ boxShadow: "2px 2px 9px -2px rgba(0,0,0,0.1)" }}>
-                  <div className="p-6 flex flex-col gap-6">
-                    <div className="flex items-center gap-1.5">
-                      <div className="flex items-center gap-0.5">
-                        {[1,2,3,4,5].map(s => <StarIcon key={s} size={10} filled={s <= review.rating} />)}
-                      </div>
-                      <span className="w-[2px] h-[2px] rounded-full bg-zinc-500 shrink-0" />
-                      <span className="text-[13px] font-medium text-zinc-500">{review.date}</span>
-                    </div>
-                    <p className="text-[14px] font-normal text-zinc-800 leading-[150%] line-clamp-5">{review.text}</p>
-                    <div className="flex items-center gap-3">
-                      <UserAvatarWithPopup user={review.userData ?? { display_name: review.name }} size={50} />
-                      <div className="space-y-1">
-                        <p className="text-[14px] font-bold text-zinc-800 leading-none">{review.name}</p>
-                        <UserBadge kind={review.badge} />
-                      </div>
-                    </div>
-                  </div>
-                  <ReviewCardFooter reviewId={review.id} likes={review.likes} dislikes={review.dislikes} />
-                </div>
+                <ReviewCard
+                  key={review.id}
+                  variant="carousel"
+                  id={review.id}
+                  rating={review.rating}
+                  text={review.text}
+                  date={review.date}
+                  name={review.name}
+                  userData={review.userData}
+                  badge={review.badge}
+                  likes={review.likes}
+                  dislikes={review.dislikes}
+                  myVote={review.myVote}
+                />
               ))}
               <div className="flex-none w-6 shrink-0" />
             </div>
           )}
 
-          <ExtraRatingsRow ratings={data.extraRatings} />
+          <AllReviewsButton itemSlug={item.slug} count={ratingCount} />
         </div>
       </div>
 
       {/* ── Author card — placed AFTER reviews per Figma; engagement-first ── */}
       {author !== "-" && (
-        <div className="mx-6 mt-8 rounded-[12px] bg-zinc-50 p-5">
-          <div className="flex items-center gap-4">
-            <div className="w-[76px] h-[76px] rounded-[12px] shrink-0 overflow-hidden bg-zinc-300 flex items-center justify-center">
-              {authorPhoto ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={authorPhoto} alt={author} className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-zinc-500 text-xl font-bold">{author.charAt(0).toUpperCase()}</span>
-              )}
-            </div>
-            <div className="flex-1 min-w-0 space-y-1">
-              <p className="text-[20px] font-bold text-zinc-900 leading-tight line-clamp-2">{author}</p>
-              {(authorAge != null || authorBookCount != null) && (
-                <div className="flex items-center gap-3 text-[14px] text-zinc-700">
-                  {authorAge != null && (
-                    <span><span className="font-bold text-zinc-900">{authorAge}</span> ετών</span>
-                  )}
-                  {authorBookCount != null && (
-                    <span><span className="font-bold text-zinc-900">{authorBookCount}</span> βιβλία</span>
-                  )}
-                </div>
-              )}
-              {authorAge == null && authorBookCount == null && (
-                <p className="text-[13px] font-medium text-zinc-500">Συγγραφέας</p>
-              )}
-            </div>
-          </div>
-
-          {authorBio && (
-            <div className="mt-4 space-y-3">
-              <p className="text-[14px] font-normal text-zinc-700 leading-[150%]">
-                {authorBioExpanded ? authorBio : authorBio.slice(0, 200) + (authorBio.length > 200 ? "…" : "")}
-              </p>
-              {authorBio.length > 200 && (
-                <button
-                  onClick={() => setAuthorBioExpanded(v => !v)}
-                  className="text-[14px] font-bold text-zinc-800 underline"
-                >
-                  {authorBioExpanded ? "Λιγότερα" : "Περισσότερα"}
-                </button>
-              )}
-            </div>
-          )}
+        <div className="mx-6 mt-8">
+          <AuthorCard
+            name={author}
+            photoUrl={authorPhoto}
+            age={authorAge}
+            bookCount={authorBookCount}
+            bio={authorBio}
+          />
         </div>
       )}
 

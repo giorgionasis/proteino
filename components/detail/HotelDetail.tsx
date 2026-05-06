@@ -10,17 +10,20 @@ import { InnerHeader } from "@/components/layout/Header";
 import { formatDistance } from "@/lib/activities";
 import { ItemGalleryViewer, type GalleryImage } from "@/components/detail/ItemGalleryViewer";
 import { useBookmark } from "@/hooks/useBookmark";
-import { useRating } from "@/hooks/useRating";
+import { useReview } from "@/hooks/useReview";
 import { useShareLink } from "@/hooks/useShareLink";
-import { CommentComposer } from "@/components/detail/CommentComposer";
-import { CommentThread } from "@/components/detail/CommentThread";
 import { OwnSuggestionActions } from "@/components/detail/OwnSuggestionActions";
+import { ReviewCard } from "@/components/detail/ReviewCard";
+import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
+import { RatingCard } from "@/components/detail/RatingCard";
+import { BookingAvailabilityCard } from "@/components/detail/BookingAvailabilityCard";
+import { ActivityCard } from "@/components/detail/ActivityCard";
+import { AmenitiesRow } from "@/components/detail/AmenitiesRow";
 import { Icon } from "@/components/ui/Icon";
 import { OutlinedPill } from "@/components/ui/OutlinedPill";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
-import { ExtraRatingsRow } from "@/components/detail/ExtraRatingsRow";
 import { AMENITY_ICON_MAP, AMENITY_LABELS, getActiveAmenities } from "@/lib/icons";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
@@ -62,8 +65,9 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
   const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "hotels", data.isBookmarked);
   const { share, copied: shareCopied } = useShareLink({ title: data.item.title });
-  const [userRating, setUserRating] = useState(data.userRating ?? 0);
-  const { save: saveRating, busy: ratingBusy, savedScore } = useRating(data.item.id, data.userRating);
+  const [userRating, setUserRating] = useState(data.myReview?.rating ?? 0);
+  const { save: saveReview, busy: reviewBusy, savedRating } = useReview(data.item.id, { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null });
+  const [userText, setUserText] = useState(data.myReview?.reflection ?? "");
 
   const { item, extension: ext, suggestions } = data;
   const mySuggestion = data.currentUserId ? suggestions.find(s => s.user.id === data.currentUserId) ?? null : null;
@@ -130,17 +134,18 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
 
   const featured = suggestions[0];
 
-  const reviews: ReviewItem[] = suggestions.slice(1).map(s => ({
-    id: s.id,
-    name: s.user.display_name,
-    badge: getBadge(s.user.level),
+  const reviews: ReviewItem[] = data.reviews.map(r => ({
+    id: r.id,
+    name: r.user.display_name,
+    badge: getBadge(r.user.level),
     color: "#a5b5c4",
-    rating: s.rating ?? 0,
-    date: formatDate(s.created_at),
-    text: s.reflection ?? "",
-    likes: 0,
-    dislikes: 0,
-    userData: s.user,
+    rating: r.rating,
+    date: formatDate(r.created_at),
+    text: r.reflection ?? "",
+    likes: r.vote_up,
+    dislikes: r.vote_down,
+    myVote: r.my_vote,
+    userData: r.user,
   }));
 
   // Nearby activities — admin-curated, proximity-matched server-side.
@@ -199,82 +204,34 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
         />
       )}
 
-      {/* Amenities row — directly under the user reflection. Horizontal scroll
-          when more than 4 active amenities; otherwise tight 4-col grid. */}
+      {/* Amenities row — directly under the user reflection. */}
       {activeAmenities.length > 0 && (
-        <div className="mt-6">
-          <div
-            className={cn(
-              "px-6 pb-1",
-              activeAmenities.length > 4
-                ? "flex gap-6 overflow-x-auto no-scrollbar"
-                : "grid grid-cols-4 gap-3",
-            )}
-          >
-            {activeAmenities.map((key) => {
-              const iconName = AMENITY_ICON_MAP[key];
-              const label = AMENITY_LABELS[key] ?? key;
-              if (!iconName) return null;
-              return (
-                <div key={key} className="flex-none flex flex-col items-center gap-2 w-[72px]">
-                  <Icon name={iconName} size={44} />
-                  <span className="text-[12px] font-semibold text-zinc-800 text-center leading-tight">
-                    {label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+        <div className="mt-6 px-6">
+          <AmenitiesRow
+            items={activeAmenities
+              .map((key) => {
+                const iconName = AMENITY_ICON_MAP[key];
+                if (!iconName) return null;
+                return { key, icon: iconName, label: AMENITY_LABELS[key] ?? key };
+              })
+              .filter((x): x is { key: string; icon: typeof AMENITY_ICON_MAP[string]; label: string } => x !== null)}
+          />
         </div>
       )}
 
       {/* Side-by-side rating cards — Google + Booking */}
       {ratingCards.length > 0 && (
         <div className={cn("mx-6 mt-6 gap-3", ratingCards.length === 2 ? "grid grid-cols-2" : "flex")}>
-          {ratingCards.map((r) => {
-            const inner = (
-              <>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Icon name={r.icon} size={20} />
-                    <span className="text-[15px] font-semibold text-zinc-800">{r.label}</span>
-                  </div>
-                  {r.href && (
-                    <span className="w-7 h-7 rounded-full bg-white flex items-center justify-center shrink-0" aria-hidden>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-700">
-                        <path d="M7 17l10-10M9 7h8v8" />
-                      </svg>
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-baseline justify-between">
-                  <span className="text-[28px] font-bold text-zinc-900 tabular-nums leading-none">
-                    {r.score}<span className="text-[18px] text-zinc-500 font-semibold ml-0.5">{r.scale}</span>
-                  </span>
-                  {r.count != null && (
-                    <span className="text-[12px] font-medium text-zinc-500">
-                      {r.count} {r.brand === "booking" ? "κρ." : "κριτικές"}
-                    </span>
-                  )}
-                </div>
-              </>
-            );
-            return r.href ? (
-              <a
-                key={r.brand}
-                href={r.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-[12px] bg-zinc-100 p-4 flex flex-col active:bg-zinc-200 transition-colors"
-              >
-                {inner}
-              </a>
-            ) : (
-              <div key={r.brand} className="rounded-[12px] bg-zinc-100 p-4 flex flex-col">
-                {inner}
-              </div>
-            );
-          })}
+          {ratingCards.map((r) => (
+            <RatingCard
+              key={r.brand}
+              brand={r.brand as "google" | "booking"}
+              score={r.score}
+              scale={r.scale}
+              count={r.count}
+              href={r.href}
+            />
+          ))}
         </div>
       )}
 
@@ -322,62 +279,31 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
           <p className="pl-6 text-[20px] font-semibold text-zinc-800">Κοντινές Δραστηριότητες</p>
           <div className="flex gap-4 overflow-x-auto no-scrollbar pl-6 pr-6">
             {nearby.map(act => (
-              <a
+              <ActivityCard
                 key={act.id}
-                href={act.website_url || (act.lat && act.lng ? `https://www.google.com/maps?q=${act.lat},${act.lng}` : undefined)}
-                target={act.website_url ? "_blank" : undefined}
-                rel={act.website_url ? "noopener noreferrer" : undefined}
-                className="flex-none w-[200px] h-[133px] rounded-[12px] overflow-hidden relative bg-zinc-700 active:opacity-90 transition-opacity"
-              >
-                {act.image_url && (
-                  <img
-                    src={act.image_url}
-                    alt=""
-                    className="absolute inset-0 w-full h-full object-cover"
-                  />
-                )}
-                <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0) 18%, rgba(0,0,0,0.8) 100%)" }} />
-                <div className="absolute bottom-0 left-0 right-0 p-4 space-y-0.5">
-                  <p className="text-[14px] font-semibold text-zinc-100 leading-tight uppercase tracking-wide">
-                    {act.type_icon ? `${act.type_icon} ` : ""}{act.type_name}
-                  </p>
-                  <p className="text-[16px] font-bold text-white leading-tight line-clamp-1">
-                    {act.name}
-                  </p>
-                  <p className="text-[12px] font-semibold text-zinc-200">
-                    {formatDistance(act.distance_km)}
-                  </p>
-                </div>
-              </a>
+                title={act.type_name ?? ""}
+                subtitle={act.name}
+                distance={formatDistance(act.distance_km)}
+                imageUrl={act.image_url}
+                href={
+                  act.website_url ||
+                  (act.lat && act.lng
+                    ? `https://www.google.com/maps?q=${act.lat},${act.lng}`
+                    : undefined)
+                }
+              />
             ))}
           </div>
         </div>
       )}
 
       {/* Booking availability CTA — affiliate placement */}
-      <div className="mx-6 mt-6 rounded-[16px] p-7 flex flex-col gap-5" style={{ backgroundColor: "#EFF1FA" }}>
-        <p className="text-[15px] font-medium text-zinc-800 leading-[150%]">
-          Μπορείς να δεις περισσότερα εύκολα και γρήγορα στο
-        </p>
-        <Icon name="booking-wordmark" width={146} height={28} alt="Booking.com" />
-        <OutlinedPill
-          href={`https://www.booking.com/searchresults.html?ss=${encodeURIComponent(title)}`}
-          width="full"
-          size="lg"
-        >
-          Έλεγχος Διαθεσιμότητας
-        </OutlinedPill>
+      <div className="mx-6 mt-6">
+        <BookingAvailabilityCard itemTitle={title} />
       </div>
 
       {/* Community */}
-      <CommunitySection ratings={ratingDistribution} ratingCount={ratingCount} isTopRated={isTopRated} topRatedNoun="Το ξενοδοχείο" communityRating={avgRating} reviews={reviews} extraRatings={data.extraRatings} userRating={userRating} setUserRating={setUserRating} saveRating={saveRating} ratingBusy={ratingBusy} savedScore={savedScore} question="Με πόσα αστέρια θα βαθμολογούσες το ξενοδοχείο;" mySuggestion={mySuggestion} itemTitle={title} />
-
-      {data.suggestions[0] && (
-        <div className="px-6 flex flex-col gap-4">
-          <CommentComposer suggestionId={data.suggestions[0].id} />
-          <CommentThread suggestionId={data.suggestions[0].id} />
-        </div>
-      )}
+      <CommunitySection ratings={ratingDistribution} ratingCount={ratingCount} isTopRated={isTopRated} topRatedNoun="Το ξενοδοχείο" communityRating={avgRating} reviews={reviews} userRating={userRating} setUserRating={setUserRating} saveReview={saveReview} userText={userText} setUserText={setUserText} reviewBusy={reviewBusy} savedRating={savedRating} question="Με πόσα αστέρια θα βαθμολογούσες το ξενοδοχείο;" mySuggestion={mySuggestion} itemTitle={title} itemSlug={item.slug} />
     </div>
   );
 }
@@ -424,16 +350,17 @@ function InfoCell({ label, value, coral }: { label: string; value: string; coral
   );
 }
 
-interface ReviewItem { id: string; name: string; badge: "Verified"|"Expert"|"Platinum"|"Gold"; color: string; rating: number; date: string; text: string; likes: number; dislikes: number; userData?: any; }
+interface ReviewItem { id: string; name: string; badge: "Verified"|"Expert"|"Platinum"|"Gold"; color: string; rating: number; date: string; text: string; likes: number; dislikes: number; myVote: 1 | -1 | null; userData?: any; }
 
-function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, communityRating, reviews, extraRatings, userRating, setUserRating, saveRating, ratingBusy, savedScore, question, mySuggestion, itemTitle }: {
+function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, communityRating, reviews, userRating, setUserRating, userText, setUserText, saveReview, reviewBusy, savedRating, question, mySuggestion, itemTitle, itemSlug }: {
   ratings: { stars: number; pct: number }[]; ratingCount: number; isTopRated: boolean; topRatedNoun: string;
   communityRating: number; reviews: ReviewItem[];
-  extraRatings: ItemDetailData["extraRatings"];
   userRating: number; setUserRating: (n: number) => void; question: string;
-  saveRating: (score: number) => void; ratingBusy: boolean; savedScore: number | null;
+  saveReview: (rating: number, reflection: string | null) => Promise<unknown>;
+  userText: string;
+  setUserText: (s: string) => void; reviewBusy: boolean; savedRating: number | null;
   mySuggestion: { id: string; reflection: string | null; rating: number | null } | null;
-  itemTitle: string;
+  itemTitle: string; itemSlug: string;
 }) {
   return (
     <div className="mt-8 py-8 flex flex-col items-center gap-[42px]" style={{ background: "linear-gradient(180deg,#fff 0%,#F2F2F7 10%,#F7F7FA 91%,#fff 100%)" }}>
@@ -451,7 +378,7 @@ function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, comm
               </p>
             </div>
           )}
-          {ratingCount > 0 && (
+          {ratings.some((d) => d.pct > 0) && (
             <div className="w-full flex flex-col gap-5 px-6">
               {ratings.map(({ stars, pct }) => (
                 <div key={stars} className="flex items-center gap-3">
@@ -474,7 +401,19 @@ function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, comm
             <div className="flex items-center gap-3">
               {[1,2,3,4,5].map(s => <button key={s} onClick={() => setUserRating(s)}><StarIcon size={34} filled={s <= userRating} /></button>)}
             </div>
-            {userRating > 0 && <button onClick={() => saveRating(userRating)} disabled={ratingBusy || userRating === savedScore} className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50">{ratingBusy ? "Αποθήκευση..." : savedScore === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}</button>}
+            {userRating > 0 && (
+              <>
+                <textarea
+                  value={userText}
+                  onChange={e => setUserText(e.target.value)}
+                  placeholder="Γράψε γιατί (προαιρετικό)"
+                  maxLength={4000}
+                  rows={3}
+                  className="w-full rounded-[12px] border border-zinc-300 px-4 py-3 text-[14px] text-zinc-800 placeholder:text-zinc-400 focus:border-coral-600 focus:outline-none resize-none"
+                />
+                <button onClick={() => saveReview(userRating, userText.trim() || null)} disabled={reviewBusy || userRating === savedRating} className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50">{reviewBusy ? "Αποθήκευση..." : savedRating === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}</button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -482,32 +421,26 @@ function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, comm
         <div className="flex flex-col items-center w-full gap-6">
           <div className="flex gap-5 overflow-x-auto no-scrollbar py-2.5 pl-6 w-full">
             {reviews.map(r => (
-              <div key={r.id} className="flex-none w-[310px] h-[323px] bg-white rounded-[12px] flex flex-col justify-between overflow-hidden" style={{ boxShadow: "2px 2px 9px -2px rgba(0,0,0,0.1)" }}>
-                <div className="p-6 flex flex-col gap-6">
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex gap-0.5">{[1,2,3,4,5].map(s => <StarIcon key={s} size={10} filled={s <= r.rating} />)}</div>
-                    <span className="w-[2px] h-[2px] rounded-full bg-zinc-500 shrink-0" />
-                    <span className="text-[13px] font-medium text-zinc-500">{r.date}</span>
-                  </div>
-                  <p className="text-[14px] font-normal text-zinc-800 leading-[150%] line-clamp-5">{r.text}</p>
-                  <div className="flex items-center gap-3">
-                    <UserAvatarWithPopup user={r.userData ?? { display_name: r.name }} size={50} />
-                    <div className="space-y-1">
-                      <p className="text-[14px] font-bold text-zinc-800">{r.name}</p>
-                      <UserBadge kind={r.badge} />
-                    </div>
-                  </div>
-                </div>
-                <ReviewCardFooter reviewId={r.id} likes={r.likes} dislikes={r.dislikes} />
-              </div>
+              <ReviewCard
+                  key={r.id}
+                  variant="carousel"
+                  id={r.id}
+                  rating={r.rating}
+                  text={r.text}
+                  date={r.date}
+                  name={r.name}
+                  userData={r.userData}
+                  badge={r.badge}
+                  likes={r.likes}
+                  dislikes={r.dislikes}
+                />
             ))}
             <div className="flex-none w-6 shrink-0" />
           </div>
-          <button className="w-[342px] py-[18px] rounded-full border-[1.5px] border-zinc-600 text-[16px] font-semibold text-zinc-700 uppercase tracking-[0.1px] active:bg-zinc-50 transition-colors">Εμφάνιση αξιολογήσεων</button>
         </div>
       )}
 
-      <ExtraRatingsRow ratings={extraRatings} />
+      <AllReviewsButton itemSlug={itemSlug} count={ratingCount} />
     </div>
   );
 }

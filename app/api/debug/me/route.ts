@@ -37,7 +37,7 @@ export async function GET() {
   let itemSuggestions: any[] = [];
   if (foundItem) {
     const { data: suggs } = await (admin.from("suggestions") as any)
-      .select("id, user_id, rating, users(handle, email)")
+      .select("id, user_id, rating, users!suggestions_user_id_fkey(handle, email)")
       .eq("item_id", foundItem.id)
       .limit(10);
     itemSuggestions = suggs ?? [];

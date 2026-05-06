@@ -42,7 +42,11 @@ scripts/sql/012-bookmarks-unique.sql
 scripts/sql/013-search-log.sql
 scripts/sql/014-items-title-normalized.sql
 scripts/sql/015-content-reports.sql
+scripts/sql/016-reviews-table.sql
+scripts/sql/017-review-votes.sql
 ```
+
+**Note:** Migration 016 wipes the legacy `ratings` table and resets `items.rating_count` / `avg_rating` to 0 across all items. The legacy `comments` and `ratings` tables stay in the DB as archive but are NOT read by the new UI — all reviews from now on flow through the new `reviews` table (rating mandatory + reflection optional, one row per (user, item)).
 
 Each is idempotent (uses `IF NOT EXISTS` / `ON CONFLICT DO NOTHING`); rerunning is safe.
 

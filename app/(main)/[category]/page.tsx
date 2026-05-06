@@ -231,7 +231,7 @@ export default async function CategoryPage({ params }: Props) {
   const category = cat.slug as CategorySlug;
   const sb = createAdminClient();
 
-  const select = `*, ${EXT_SELECT[category]}, suggestions(users(display_name))`;
+  const select = `*, ${EXT_SELECT[category]}, suggestions(users!suggestions_user_id_fkey(display_name))`;
   const { data: rawItems, count: totalCount } = (await (sb.from("items") as any)
     .select(select, { count: "exact" })
     .eq("category", category)
@@ -251,7 +251,7 @@ export default async function CategoryPage({ params }: Props) {
   const itemIds = items.map((i) => i.id);
   if (itemIds.length > 0) {
     const { data: sugData } = (await (sb.from("suggestions") as any)
-      .select("user_id, users(id, display_name, handle)")
+      .select("user_id, users!suggestions_user_id_fkey(id, display_name, handle)")
       .in("item_id", itemIds.slice(0, 100))) as { data: any[] | null };
 
     const userMap = new Map<string, { user: any; count: number }>();

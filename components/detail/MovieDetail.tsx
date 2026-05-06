@@ -10,16 +10,15 @@ import { CarouselPortrait, type PortraitItem } from "@/components/recommendation
 import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { useBookmark } from "@/hooks/useBookmark";
-import { useRating } from "@/hooks/useRating";
+import { useReview } from "@/hooks/useReview";
 import { useShareLink } from "@/hooks/useShareLink";
-import { CommentComposer } from "@/components/detail/CommentComposer";
-import { CommentThread } from "@/components/detail/CommentThread";
 import { OwnSuggestionActions } from "@/components/detail/OwnSuggestionActions";
+import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
+import { ReviewCard } from "@/components/detail/ReviewCard";
 import { Icon } from "@/components/ui/Icon";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
-import { ExtraRatingsRow } from "@/components/detail/ExtraRatingsRow";
 import { oscarIconForCategory } from "@/lib/icons";
 import { safeImageUrl } from "@/lib/image-url";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
@@ -75,6 +74,7 @@ interface Review {
   text: string;
   likes: number;
   dislikes: number;
+  myVote: 1 | -1 | null;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -83,8 +83,9 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
   const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "movies", data.isBookmarked);
   const { share, copied: shareCopied } = useShareLink({ title: data.item.title });
-  const [userRating,   setUserRating]   = useState(data.userRating ?? 0);
-  const { save: saveRating, busy: ratingBusy, savedScore } = useRating(data.item.id, data.userRating);
+  const [userRating,   setUserRating]   = useState(data.myReview?.rating ?? 0);
+  const { save: saveReview, busy: reviewBusy, savedRating } = useReview(data.item.id, { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null });
+  const [userText, setUserText] = useState(data.myReview?.reflection ?? "");
   const [plotExpanded, setPlotExpanded] = useState(false);
   const [openAwardType, setOpenAwardType] = useState<string | null>(null);
   const { item, extension: ext, suggestions, related } = data;
@@ -169,24 +170,25 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
   // Featured suggestion (first one)
   const featured = suggestions[0];
 
-  // Map suggestions to reviews
-  const reviews: Review[] = suggestions.slice(1).map(s => ({
-    id: s.id,
+  // Reviews come from the new `reviews` table (post migration 016) — one row
+  // per (user, item) with mandatory rating + optional text. No more
+  // suggestions.slice(1) — that featured the K2 submitter as a review.
+  const reviews: Review[] = data.reviews.map(r => ({
+    id: r.id,
     user: {
-      id: s.user.id,
-      handle: s.user.handle,
-      name: s.user.display_name,
-      badge: getBadge(s.user.level),
+      id: r.user.id,
+      handle: r.user.handle,
+      name: r.user.display_name,
+      badge: getBadge(r.user.level),
       placeholder_color: "#a5b5c4",
-      avatar_url: s.user.avatar_url,
-      suggestion_count: (s.user as any).suggestion_count,
-      avg_quality_score: (s.user as any).avg_quality_score,
+      avatar_url: r.user.avatar_url,
     },
-    rating: s.rating ?? 0,
-    date: formatDate(s.created_at),
-    text: s.reflection ?? "",
-    likes: 0,
-    dislikes: 0,
+    rating: r.rating,
+    date: formatDate(r.created_at),
+    text: r.reflection ?? "",
+    likes: r.vote_up,
+    dislikes: r.vote_down,
+    myVote: r.my_vote,
   }));
 
   // Related items
@@ -491,7 +493,7 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
             )}
 
             {/* Star distribution histogram — always shown when there are ratings */}
-            {ratingCount > 0 && (
+            {ratingDistribution.some((d) => d.pct > 0) && (
               <div className="w-full flex flex-col gap-5 px-6">
                 {ratingDistribution.map(({ stars, pct }) => (
                   <div key={stars} className="flex items-center gap-3">
@@ -525,24 +527,27 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
                 ))}
               </div>
               {userRating > 0 && (
-                <button
-                  onClick={() => saveRating(userRating)}
-                  disabled={ratingBusy || userRating === savedScore}
+                <>
+                  <textarea
+                  value={userText}
+                  onChange={e => setUserText(e.target.value)}
+                  placeholder="Γράψε γιατί (προαιρετικό)"
+                  maxLength={4000}
+                  rows={3}
+                  className="w-full rounded-[12px] border border-zinc-300 px-4 py-3 text-[14px] text-zinc-800 placeholder:text-zinc-400 focus:border-coral-600 focus:outline-none resize-none"
+                />
+                  <button
+                  onClick={() => saveReview(userRating, userText.trim() || null)}
+                  disabled={reviewBusy || userRating === savedRating}
                   className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
                 >
-                  {ratingBusy ? "Αποθήκευση..." : savedScore === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
+                  {reviewBusy ? "Αποθήκευση..." : savedRating === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
                 </button>
+                </>
               )}
             </div>
           )}
         </div>
-
-        {data.suggestions[0] && (
-          <div className="flex flex-col gap-4">
-            <CommentComposer suggestionId={data.suggestions[0].id} />
-            <CommentThread suggestionId={data.suggestions[0].id} />
-          </div>
-        )}
 
         {/* Reviews carousel + load more */}
         {reviews.length > 0 && (
@@ -550,46 +555,29 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
             {/* Carousel */}
             <div className="flex gap-5 overflow-x-auto no-scrollbar py-2.5 pl-6 w-full">
               {reviews.map(review => (
-                <div
+                <ReviewCard
                   key={review.id}
-                  className="flex-none w-[310px] h-[323px] bg-white rounded-[12px] flex flex-col justify-between overflow-hidden"
-                  style={{ boxShadow: "2px 2px 9px -2px rgba(0,0,0,0.1)" }}
-                >
-                  <div className="p-6 flex flex-col gap-6">
-                    {/* Stars + date */}
-                    <div className="flex items-center gap-1.5">
-                      <div className="flex items-center gap-0.5">
-                        {[1,2,3,4,5].map(s => <StarIcon key={s} size={10} filled={s <= review.rating} />)}
-                      </div>
-                      <span className="w-[2px] h-[2px] rounded-full bg-zinc-500 shrink-0" />
-                      <span className="text-[13px] font-medium text-zinc-500">{review.date}</span>
-                    </div>
-                    {/* Text */}
-                    <p className="text-[14px] font-normal text-zinc-800 leading-[150%] line-clamp-5">{review.text}</p>
-                    {/* User */}
-                    <div className="flex items-center gap-3">
-                      <UserAvatarWithPopup user={{ ...review.user, display_name: review.user.name }} size={50} />
-                      <div className="space-y-1">
-                        <p className="text-[14px] font-bold text-zinc-800 leading-none">{review.user.name}</p>
-                        <UserBadge kind={review.user.badge} />
-                      </div>
-                    </div>
-                  </div>
-
-                  <ReviewCardFooter reviewId={review.id} likes={review.likes} dislikes={review.dislikes} />
-                </div>
+                  variant="carousel"
+                  id={review.id}
+                  rating={review.rating}
+                  text={review.text}
+                  date={review.date}
+                  name={review.user.name}
+                  userData={{ ...review.user, display_name: review.user.name }}
+                  badge={review.user.badge as any}
+                  likes={review.likes}
+                  dislikes={review.dislikes}
+                  myVote={review.myVote}
+                />
               ))}
               <div className="flex-none w-6 shrink-0" />
             </div>
 
             {/* Load more */}
-            <button className="w-[342px] py-[18px] rounded-full border-[1.5px] border-zinc-600 text-[16px] font-semibold text-zinc-700 uppercase tracking-[0.1px] active:bg-zinc-50 transition-colors">
-              Εμφάνιση {ratingCount} αξιολογήσεων
-            </button>
           </div>
         )}
 
-        <ExtraRatingsRow ratings={data.extraRatings} />
+        <AllReviewsButton itemSlug={item.slug} count={ratingCount} />
       </div>
 
       {/* ── Related movies ────────────────────────────────── */}

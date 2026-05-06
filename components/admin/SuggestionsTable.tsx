@@ -135,7 +135,7 @@ export function SuggestionsTable({ authors, subcategories }: Props) {
         created_at,
         published_at,
         items!inner(id, title, category, subcategory_id, cover_url, rating_count),
-        users!inner(display_name)
+        users!suggestions_user_id_fkey(display_name)
       `, { count: "exact" });
 
     // Category filter

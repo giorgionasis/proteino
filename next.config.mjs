@@ -13,6 +13,8 @@ const nextConfig = {
       // Facebook OAuth avatars
       { protocol: "https", hostname: "*.fbcdn.net" },
       { protocol: "https", hostname: "*.facebook.com" },
+      // TMDB poster/backdrop images (saved during AI submission match)
+      { protocol: "https", hostname: "image.tmdb.org" },
     ],
   },
 };

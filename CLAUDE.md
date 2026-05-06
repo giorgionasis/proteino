@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-06 (session 14 — UI redesign + 62-icon system + reports flow + admin form polish + histogram fix)
+**Last meaningful update:** 2026-05-07 (session 15 — reviews/review_votes tables · /reviews subpage · design system showcase at /admin/showcase)
 
 ---
 
@@ -194,26 +194,49 @@ event_type, availability, status, ticket_url, price,
 performers jsonb, dates jsonb, description text
 ```
 
-#### suggestions
+#### suggestions (the original submitter's text — 1 per item, K2-imported)
 ```sql
 id uuid PK, user_id FK, item_id FK,
 reflection text, rating float,
 ai_quality_score float, ai_match_data jsonb,
 content_hash (immutable, proof of authorship),
-is_published bool, created_at, published_at, modified_at
+is_published bool, hidden_at, hidden_reason, hidden_by FK,
+created_at, published_at, modified_at
 ```
+**Semantic:** the description of whoever first added the item to the platform. NOT a review. Surfaces in the featured suggester block above the rating box on every detail page.
 
-#### ratings
+#### reviews — NEW (migration 016, single source of truth from session 15)
+```sql
+id uuid PK, user_id FK, item_id FK,
+rating smallint NOT NULL CHECK (1..5),
+reflection text NULL,
+vote_up int, vote_down int, report_count int,
+is_hidden bool, hidden_at, hidden_reason, hidden_by FK,
+created_at,
+UNIQUE (user_id, item_id)
+```
+**Semantic:** other users' ratings (mandatory) + optional text. Going forward, every user-on-item interaction is one row here. Powers the carousel below the rating box + the `/[category]/[id]/reviews` subpage. Detail-page server fetch recomputes `items.rating_count` + `items.avg_rating` from this on each request.
+
+#### review_votes — NEW (migration 017)
+```sql
+user_id FK, review_id FK, vote smallint CHECK (-1, 1),
+created_at, PRIMARY KEY(user_id, review_id)
+```
+Postgres trigger `trg_sync_review_votes` keeps `reviews.vote_up`/`vote_down` in sync. Self-vote blocked at the API layer.
+
+#### ratings — LEGACY (frozen, not read by new UI)
 ```sql
 id uuid PK, user_id FK, item_id FK, suggestion_id FK,
 score float, vote_up int, vote_down int, created_at
 ```
+Wiped clean by migration 016. Kept in schema for archive. Future cleanup: drop the table.
 
-#### comments
+#### comments — LEGACY (frozen, not read by new UI)
 ```sql
 id uuid PK, user_id FK, suggestion_id FK,
 parent_id FK (for replies), body text, created_at
 ```
+343 K2 rows. Kept in schema for archive. The new flow (reviews) replaces both `ratings` and `comments`.
 
 #### bookmarks
 ```sql

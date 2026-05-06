@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   const [suggestionsRes, usersRes, collectionsRes, activitiesRes, reviewsRes] = await Promise.all([
     // Suggestions — joined to items + author
     sb.from("suggestions")
-      .select("id, is_published, items!inner(title, slug, category, cover_url), users!inner(display_name)")
+      .select("id, is_published, items!inner(title, slug, category, cover_url), users!suggestions_user_id_fkey(display_name)")
       .ilike("items.title", like)
       .limit(5),
 

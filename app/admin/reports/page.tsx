@@ -32,7 +32,7 @@ export default async function AdminReportsPage() {
   if (suggestionIds.length > 0) {
     const { data: sugRows } = await sb
       .from("suggestions")
-      .select("id, reflection, users(display_name), items(title)")
+      .select("id, reflection, users!suggestions_user_id_fkey(display_name), items(title)")
       .in("id", suggestionIds);
     for (const s of (sugRows ?? []) as any[]) {
       targetMap.set(`suggestion:${s.id}`, {
@@ -46,7 +46,7 @@ export default async function AdminReportsPage() {
   if (commentIds.length > 0) {
     const { data: cmtRows } = await sb
       .from("comments")
-      .select("id, body, users(display_name)")
+      .select("id, body, users!comments_user_id_fkey(display_name)")
       .in("id", commentIds);
     for (const c of (cmtRows ?? []) as any[]) {
       targetMap.set(`comment:${c.id}`, {

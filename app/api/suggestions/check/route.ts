@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
 
   const { data: sug } = await admin
     .from("suggestions")
-    .select("id, user_id, users(handle, display_name)")
+    .select("id, user_id, users!suggestions_user_id_fkey(handle, display_name)")
     .eq("item_id", itemId)
     .limit(1)
     .maybeSingle();

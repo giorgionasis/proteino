@@ -99,7 +99,7 @@ export function ReviewsTable({ stats }: Props) {
         users!comments_user_id_fkey(display_name, handle),
         suggestions!inner(
           id, user_id,
-          users!inner(display_name),
+          users!suggestions_user_id_fkey(display_name),
           items!inner(id, title, category)
         )
       `, { count: "exact" });

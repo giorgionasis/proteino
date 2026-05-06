@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
     // 2. Duplicate check — has anyone already suggested this item?
     const { data: dup } = await admin
       .from("suggestions")
-      .select("id, user_id, users(handle, display_name)")
+      .select("id, user_id, users!suggestions_user_id_fkey(handle, display_name)")
       .eq("item_id", itemId)
       .limit(1)
       .maybeSingle();

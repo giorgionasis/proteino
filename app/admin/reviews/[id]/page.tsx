@@ -13,7 +13,7 @@ export default async function ReviewDetailPage({ params }: { params: { id: strin
       users!comments_user_id_fkey(id, display_name, handle, email, avatar_url, suggestion_count, is_verified),
       suggestions!inner(
         id, reflection, rating, created_at,
-        users!inner(display_name, handle),
+        users!suggestions_user_id_fkey(display_name, handle),
         items!inner(id, title, category, slug, poster_url, backdrop_url)
       )
     `)
