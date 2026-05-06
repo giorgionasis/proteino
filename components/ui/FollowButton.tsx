@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/utils/cn";
 
 export interface FollowButtonProps {
@@ -26,6 +27,8 @@ export function FollowButton({
     onToggle?.(next);
   };
 
+  const iconName = active ? "followed" : "follow";
+
   if (variant === "dark") {
     return (
       <button
@@ -40,7 +43,7 @@ export function FollowButton({
           className,
         )}
       >
-        {!active && <AddUserIcon size={16} color="#FAFAFA" />}
+        <Icon name={iconName} size={20} />
         {active ? "Ακολουθείς" : "Ακολούθησε"}
       </button>
     );
@@ -61,18 +64,8 @@ export function FollowButton({
         className,
       )}
     >
-      {!active && <AddUserIcon size={14} color="#3F3F46" />}
+      <Icon name={iconName} size={size === "lg" ? 18 : 16} />
       {active ? "Ακολουθείς" : "Ακολούθησε"}
     </button>
-  );
-}
-
-function AddUserIcon({ size = 14, color = "#3F3F46" }: { size?: number; color?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path d="M9.5 7C9.5 8.38 8.38 9.5 7 9.5C5.62 9.5 4.5 8.38 4.5 7C4.5 5.62 5.62 4.5 7 4.5C8.38 4.5 9.5 5.62 9.5 7Z" stroke={color} strokeWidth="1.2" />
-      <path d="M2 12C2 10.34 4.24 9 7 9C9.76 9 12 10.34 12 12" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
-      <path d="M11 2V5M9.5 3.5H12.5" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
   );
 }

@@ -224,6 +224,84 @@ function PortraitCard({ item, category }: { item: CategoryItem; category: Catego
   );
 }
 
+/* ── Row card — used for category LIST view (1-col across all categories) ── */
+/*
+ * Portrait categories (movies/series/books) get a small poster left + info
+ * right. Landscape categories (food/bars/hotels/theater/events/recipes)
+ * keep their full-width landscape layout via LandscapeCard.
+ *
+ * PortraitCard above is preserved because CarouselPortrait still uses the
+ * tall poster format for home/category-page carousels.
+ */
+
+function RowCard({ item, category }: { item: CategoryItem; category: CategorySlug }) {
+  // Per-category byline + meta line under title.
+  const meta: string[] = [];
+  if (item.subcategory) meta.push(item.subcategory);
+  if (item.year)        meta.push(String(item.year));
+
+  const byline = (() => {
+    switch (category) {
+      case "movies": return item.director;
+      case "series": return item.channel;
+      case "books":  return item.writer;
+      default:       return undefined;
+    }
+  })();
+
+  return (
+    <Link
+      href={`/${category}/${item.slug ?? item.id}`}
+      className="flex gap-4 active:opacity-80 transition-opacity"
+    >
+      {/* Poster — 2:3, fixed 88px wide */}
+      <div
+        className="shrink-0 w-[88px] h-[132px] rounded-[8px] overflow-hidden relative"
+        style={{ backgroundColor: item.placeholder_color ?? BG[category] }}
+      >
+        {item.cover_url && (
+          <img
+            src={item.cover_url}
+            alt={item.title}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        )}
+      </div>
+
+      {/* Info column */}
+      <div className="flex-1 min-w-0 flex flex-col gap-1.5 py-0.5">
+        <h3 className="text-[16px] font-bold text-[#18181B] leading-tight line-clamp-2">
+          {item.title}
+        </h3>
+
+        {meta.length > 0 && (
+          <p className="text-[13px] font-medium text-[#52525B] line-clamp-1">
+            {meta.join(" · ")}
+          </p>
+        )}
+
+        {byline && (
+          <p className="text-[13px] font-semibold text-[#3F3F46] line-clamp-1">
+            {byline}
+          </p>
+        )}
+
+        <div className="mt-auto flex items-center gap-1.5 pt-1">
+          <Star size={12} />
+          <span className="text-[13px] font-semibold text-[#27272A]">
+            {item.avg_rating.toFixed(1)}
+          </span>
+          {item.rating_count > 0 && (
+            <span className="text-[12px] font-medium text-zinc-500">
+              ({item.rating_count})
+            </span>
+          )}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 /* ── Public API ────────────────────────────────────────────── */
 
 interface CategoryCardProps {
@@ -233,7 +311,9 @@ interface CategoryCardProps {
 }
 
 export function CategoryCard({ item, category, className }: CategoryCardProps) {
-  const Card = isPortraitCategory(category) ? PortraitCard : LandscapeCard;
+  // Portrait categories use the row layout (1-col list); landscape
+  // categories keep the existing full-width landscape card.
+  const Card = isPortraitCategory(category) ? RowCard : LandscapeCard;
   return (
     <div className={className}>
       <Card item={item} category={category} />

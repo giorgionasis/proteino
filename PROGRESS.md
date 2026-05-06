@@ -1,19 +1,30 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-05 (session 13 — search overhaul + AI integration plan)
+Last updated: 2026-05-06 (session 14 — UI redesign + icon system + reports + admin polish)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
 **Current state:**
-- ✅ Submission flow with confidence tiers, TMDB enrichment, light-theme Published, real DuplicateScreen with verification, profile real data + edit/delete
-- ✅ Search overhaul shipped end-to-end: real DB-backed `/api/search`, confidence tiers, removable pills (incl. CATEGORY), seasonal prompts, history with settle-debounce, FEATURED hero, no-match chips → category picker → mini-chat escalation, error state + 8s timeout, aria-live, address-text fallback for sub-regions, people-search via actor/director/writer columns, latent-intent log (migration 013) + diacritic-insensitive title (migration 014) — both APPLIED to live DB
-- ✅ Geocoding: 411/424 venues geocoded (97% of those with addresses). Save Location button on admin extension forms.
-- ✅ Region taxonomy fixes: Filters Explorer tab restored, MoviePicker autoFocus race fixed, keyboard-shortcut clutter removed from admin tables.
+- ✅ Detail-page redesign sweep: chip strip · share button wired · 3-col stat bar conditional (Oscar+high-rating for movies, default = inline RatingLine) · BookDetail border stripped · own-suggestion behavior (edit/delete CTAs replace rate card when viewing own) · 1-col list across all 9 categories with new `<RowCard>` variant
+- ✅ 6 screenshot designs shipped: recipe nutrition row · hotel amenities + side-by-side Google/Booking rating cards + Booking.com availability card · author card (redesigned, moved AFTER reviews, reads metadata.author_*) · theater Public book ad (reads metadata.related_book) · food delivery with real efood/box wordmark logos
+- ✅ Icon system: 62 SVGs in `public/icons/` (brands/nutrition/amenities/property/awards/badges/ui/admin) + `lib/icons.ts` registry + `<Icon>` component + 4 reusable primitives (`<OutlinedPill>`, `<UserBadge>`, `<IconToggleGrid>`, `<PromoCard>` patterns)
+- ✅ Pass A frontend: IMDb/RT/Metacritic real logos · oscar icons in awards accordion (matching category) · `<UserBadge>` replaces all 3 legacy patterns (text pills + inline shields + `<BadgeChip>`) across 9 files
+- ✅ Pass B admin: hotel facilities + recipe nutrition forms now WORK (previously broken — no `checked`/`onChange`); both use `<IconToggleGrid>`. Hotel property type radio with property icons. Hotel external_ratings score+count form. Movies awards admin shows oscar icon previews.
+- ✅ Admin metadata foundation: `metadataPatch` flow through API; merges into `items.metadata` server-side without overwriting other keys. Powers book author rich fields + theater related_book.
+- ✅ Reports system end-to-end: migration 015 (content_reports table, generalized for comment+suggestion targets), 3-step ReportFlowModal per Figma, αναφορά wired across 9 detail pages + CommentThread, admin moderation surface at `/admin/reports` with Dismiss/Hide (both require admin note), sidebar Reports tab with live counter
+- ✅ Histogram + Top Rated restored: server-side combines ratings from BOTH `ratings` table and `suggestions.rating` field (deduped by user), overrides item.rating_count + avg_rating with combined-source totals. `<ReviewCardFooter>` shared component (vote buttons + αναφορά). `<ExtraRatingsRow>` compact display for rating-only users (no suggestion text — common on migrated items).
+- ✅ Migration 015 applied to live DB.
 
-**Decision locked but not yet built (Phase A — start here next session):**
+**Decision locked but not yet built (Phase A — still pending):**
 - Anthropic Claude Haiku 4.5 integration in **Search + Submission**. Architecture documented in AI.md §12. Cost projections: ~$3.5K/mo at 100K DAU + 3 searches + 30K submissions, ~3% of projected revenue. Awaiting `ANTHROPIC_API_KEY` (user buying credits as Individual plan).
+
+**Known follow-ups from session 14 (small):**
+- Vote up/down buttons wired visually but counts hardcoded to 0 — needs `suggestion_votes` table mirroring `comment_votes` from migration 003
+- A2 platform logos: wired in SeriesDetail's "ΔΙΚΤΥΟ" InfoCell only; MovieDetail has no current spot for channel display
+- Series + Bars don't have a featured-suggestion block (other 7 categories do) — inconsistency, not blocker
+- Recipe suggester not rendering for one specific recipe (kotopoulo) despite is_published=true — needs investigation; user owes screenshot
 
 **Two future systems mapped but not started (Phases B + C):**
 - Phase B: pgvector recommendations + nightly batch (5 days)
@@ -24,6 +35,105 @@ See §3 for the full ordered roadmap.
 ---
 
 ## 1. COMPLETED
+
+### Session 14 — UI redesign + icon system + reports + admin polish ✅ (2026-05-06)
+
+The biggest single session. Started with a UI audit complaint that the platform "felt like 2010-2020" and ended with a fully icon-driven design system, the αναφορά flow built end-to-end, and 6 Figma screenshots shipped for hotel/recipe/book/theater/food.
+
+**UI audit + foundation** (`UI_AUDIT.md`)
+- Wrote a complete inventory of the 3 screen archetypes (Home / Category / Item Detail) — 6k lines audited, identified InfoCell pattern as the dominant 2010s tell, hardcoded mock content (Netflix on every movie / "Top 10%" lies / all-zero rating bars), monochrome zinc palette as the visual language gap. Noted gray-circle placeholders standing in for every avatar/photo as the systemic "looks unfinished" issue.
+- User reframe locked: 3 archetypes, not 9 detail pages × N states. Variations per category are minor parameterizations.
+
+**Step 1 — Strip chips from detail pages**
+- Movies: removed `[genre, year, duration, country]` chip row under hero. Title now stands alone above the rating line.
+- Series: removed `[genre, year, seasons, network]` chips. Cleaned up orphaned `yearLabel` + `endYear` vars.
+- Bars: removed `[type, address]` chips.
+- Books / Food / Hotels / Theater / Events / Recipes: untouched (had no chips).
+
+**Step 2 — Kill dead/fake content**
+- New `hooks/useShareLink.ts` — `navigator.share` + clipboard fallback + ✓ Αντιγράφηκε flash. Wired share button across all 9 detail pages (was a `<button>` with no onClick before).
+- Removed watchlist toggle ("Την έχω δει / Θέλω να τη δω") from Movies, Series, Books — was `useState` only, never persisted.
+- Removed hardcoded Netflix/YouTube €3.99/Disney €3.99 platform list from MovieDetail + SeriesDetail.
+- Removed "Top Rated" + "Η ταινία ανήκει στο top 10%" hardcoded copy (later restored when real data became available — see histogram fix below).
+- Hid empty rating-distribution bars (later restored).
+- Removed dead vote up/down buttons from review cards (later restored as visual via `<ReviewCardFooter>`).
+- Removed orphaned `Περισσότερα` decoration links across 9 files; kept the real plot/description expand-collapse links.
+- αναφορά link kept in place for proper wiring later (now done — see Reports system below).
+
+**Icon system** — 62 SVGs from user's `icons.rar`, organized into 8 categorized subfolders under `public/icons/`:
+- `brands/` (16): efood, box, booking + booking-wordmark, google + google-pin, public, airbnb, imdb, rotten-tomatoes, metacritic, netflix + netflix-wordmark, disney, prime, youtube
+- `nutrition/` (5): vegan, no-milk, sugar-free, ingredients, steps
+- `amenities/` (19): hotel, three-star, rooms, suites, breakfast, free-parking, swimming-pool, wifi, bar, restaurant, sea-view, mountain-view, transfer, disabilities, pet-friendly, vegan-menu, playground, on-the-sea, roof-garden
+- `property/` (5): apartment, apartment-alt, villa, camping, house
+- `awards/` (4): oscar-best-actor, oscar-best-picture, oscar-best-screenplay, oscar-best-sound
+- `badges/` (4): verified, expert, gold, platinum
+- `ui/` (7): star, star-rating-hero, pin, calendar, play, follow, followed
+- `admin/` (2): placeholder-upload, link-card
+
+Wiring:
+- `lib/icons.ts` — registry mapping `IconName` → file path. Plus catalogs: `AMENITY_ICON_MAP` + `AMENITY_LABELS`, `HOTEL_AMENITY_GROUPS`, `RECIPE_NUTRITION_OPTIONS`, `HOTEL_PROPERTY_TYPES`, `FOOD_AMENITY_OPTIONS`. Helpers: `badgeIconForLevel(n)`, `platformIconForChannel(s)`, `oscarIconForCategory(type, category)`, `getActiveAmenities(facilities)`.
+- `components/ui/Icon.tsx` — single rendering primitive: `<Icon name="vegan" size={48} />`. Plain `<img>` with explicit width/height. Used everywhere (frontend + admin).
+- `components/ui/OutlinedPill.tsx` — reusable pill button (white fill + zinc-400 border + arrow). Used by delivery, availability, theater ticket, Public book ad.
+- `components/ui/UserBadge.tsx` — derives from level OR explicit kind. Renders `badge-{verified,gold,expert,platinum}` icon + optional label. Replaces 3 legacy patterns spread across 9 detail files.
+- `components/admin/IconToggleGrid.tsx` — visual checkbox grid (icon + label + active=coral border). Used by hotel facilities, recipe nutrition, food amenities admin forms.
+
+**Step 3 — Consistency fixes** (3a + 3b + 3c + 1-col list)
+- 3a: Movies/Series 3-col stat bar made conditional. Movies show it ONLY when `awardsByType["Oscar"]?.length > 0 && avgRating ≥ 4.5`. Series always uses inline RatingLine (no awards data anyway).
+- 3b: BookDetail suggester block stripped of `border + bg-white p-5` — now matches the unboxed pattern of the other 7 categories.
+- 3c: New `components/detail/OwnSuggestionActions.tsx` — replaces the rate-this-item card when current user has an existing suggestion on this item. Uses existing `EditSuggestionModal` + `ConfirmDeleteDialog` from session 13. Server fetches `currentUserId` and adds to `ItemDetailData`. Wired in all 9 detail components.
+- 1-col list across all categories: `getListClass` now always returns flex-col (was 2-col grid for movies/series/books). New `<RowCard>` variant in CategoryCard for portrait categories — small 88×132 poster left + title/meta/byline/rating right (Letterboxd-style row). Carousels untouched (still portrait).
+
+**Six screenshot designs shipped end-to-end**
+- Recipe nutrition row in `RecipeDetail` — under the user reflection. 3 illustrated icons (Χωρίς γάλα · Vegan · Χωρίς ζάχαρη). Reads `ext.nutrition.{vegan, dairy_free|milk|no_milk, sugar_free|sugar|no_sugar}`.
+- Hotel amenities row — 4-col grid or h-scroll if more than 4. Reads `ext.facilities` (handles array or object-of-booleans). Uses line-art amenity icons.
+- Hotel rating cards (Google + Booking side-by-side) — replaces stacked Βαθμολογίες panel. Real `google-pin` + `booking` icons. Score/scale (`/5` or `/10`) + count + arrow chip. Google card links to Maps search. Supports both legacy plain string AND new `{score, count}` jsonb shape.
+- Hotel availability card — lavender bg, real `booking-wordmark` icon, `<OutlinedPill>` to Booking.com search.
+- Theater Public book ad — cross-promo when the play has a book version. Reads `metadata.related_book`. Renders only when `title` is set. Public wordmark + book cover + title/author/page count + outlined pill "Δες το →".
+- Author card in `BookDetail` — REDESIGNED + MOVED AFTER reviews (engagement-first per user). Reads `metadata.author_photo_url / author_birth_year / author_book_count / author_bio`. Photo as 76×76 rounded square OR first-letter placeholder. Big bold name + age + book count meta. Bio with expand/collapse.
+- Food delivery card — uses real efood + BOX wordmark logos via `<Icon>`. Each row only renders when its `delivery_links.{efood,box}` URL is set.
+
+**Pass A — Frontend icon coverage gaps**
+- MovieDetail external ratings: replaced inline placeholder squares (`ImdbLogo`/`RtLogo`/`MetacriticLogo`) with real `imdb`/`rotten-tomatoes`/`metacritic` SVG logos. Removed orphaned helper functions.
+- MovieDetail awards accordion: when `oscarIconForCategory(type, category)` returns a match (Best Picture/Actor/Screenplay/Sound), render the specific oscar icon. Falls back to generic laurel `<AwardBadge>` for other Oscar categories or non-Oscar awards.
+- `<UserBadge>` rolled out across all 9 detail pages — replaces colored text pills (`BADGE_STYLE` + inline span), inline shield SVG (`<VerifiedBadge>+text`), and `<BadgeChip>` function calls. Cleaned up 3 different orphaned patterns + ~30 lines of duplicate definitions per file.
+
+**Pass B — Admin form gaps + foundation**
+- API `/api/admin/suggestions` PUT now accepts `metadataPatch`, fetches existing `items.metadata`, deep-merges, and updates. Preserves other metadata keys.
+- `ExtFieldsHandle` interface adds optional `getMetadataPatch()` so any ExtraFields component can write to metadata. SuggestionEditor save flow pulls both `getData()` (extension table) and `getMetadataPatch()` (items.metadata) and sends both.
+- HotelExtraFields amenity form: was completely broken (text-only checkboxes with no `checked`/`onChange`). Replaced with 3 grouped `<IconToggleGrid>` (Παροχές / Θέα-Τοποθεσία / Extra) saving to `ext.facilities`. Pass-through reads + saves now actually work.
+- HotelExtraFields property type radio: was broken placeholder SVGs. Now visual radio with real `property-*` icons (apartment / villa / camping / house / hotel) + coral active state. Wires to `type` state + saves.
+- HotelExtraFields external_ratings: NEW section. Google + Booking each get score + count inputs. Saves as `{ google: { score, count }, booking: { score, count } }` jsonb — matches the shape HotelDetail's rating cards expect.
+- RecipeExtraFields nutrition form: was broken (no state, no save). Added `nutrition` state, persistence in `getData()`, and `<IconToggleGrid>` with the 3 illustrated nutrition icons.
+- BookExtraFields: NEW author profile section. Photo URL + birth year + book count + bio textarea. Saves to `metadata.author_*` keys via `getMetadataPatch()`.
+- TheaterExtraFields: NEW related_book section. Title / author / pages / cover URL / Public buy link. Saves under `metadata.related_book` jsonb. Empty form clears the key (so admins can remove the cross-promo).
+- MovieExtraFields awards row: shows the matching oscar icon when category resolves via `oscarIconForCategory` — admin sees the same icon that'll render on the frontend.
+
+**Food amenities (new field)**
+- Schema: stored under existing `ext.information.amenities` jsonb (no migration). New `FOOD_AMENITY_OPTIONS` catalog (parking, wifi, pet, vegan menu, playground, ΑΜΕΑ, sea view, παραλιακό, roof garden).
+- Admin: FoodExtraFields' broken Attributes checkboxes replaced with `<IconToggleGrid>`.
+- Frontend: FoodDetail renders amenities row under user reflection (4-col grid or h-scroll), same pattern as HotelDetail.
+
+**A2 + A5 — Smaller polish**
+- A2: `platformIconForChannel(channel)` helper. New `<InfoCellWithIcon>` variant in SeriesDetail. "ΔΙΚΤΥΟ" InfoCell now renders Netflix / Disney / Prime / YouTube logo when channel matches.
+- A5: `<FollowButton>` now uses real `follow` / `followed` icons from registry (was inline `AddUserIcon` SVG).
+
+**Reports system (full implementation)**
+- Migration `scripts/sql/015-content-reports.sql` — APPLIED to live DB. Generalized `content_reports` table: `target_type ∈ {comment, suggestion}`, 4-reason enum (`inaccurate / fraud / offensive / other`), `resolution_action ∈ {kept, hidden}`, `resolution_note` (admin justification), `resolved_by`, `resolved_at`. Unique index `(reporter_id, target_type, target_id, reason)` for idempotency. `suggestions` table gets `hidden_at / hidden_reason / hidden_by` columns mirroring what `comments` already had from migration 003. RLS: users insert + select own reports; admin role policy for full access.
+- API `POST /api/reports` — accepts `{ target_type, target_id, reason, description }`. Description required (≥10 chars). Idempotent on (reporter, target, reason). Returns `{ ok, report_id, already_reported?, self_report? }`.
+- API `PATCH /api/admin/reports/[id]` — admin role check. Note required (≥5 chars). On `kept`: only this report resolves. On `hidden`: also writes `hidden_at/by/reason` on target row + auto-resolves all sibling pending reports for the same target with the same note.
+- `<ReportFlowModal>` (`components/report/`) — 3-step state machine matching user's screenshots exactly: reason → description → confirmation. Reason-aware step-2 headlines + placeholders. Disabled "Επόμενο" button until validation passes.
+- `<ReportLink>` wrapper — small αναφορά text-link with embedded modal state. Used inline on review cards + comment cards.
+- Wired in all 9 detail pages: replaces the previously-dead αναφορά button on review carousel cards with `targetType="suggestion"`. Wired in CommentThread: replaces legacy 5-reason kebab+chips with `targetType="comment"`.
+- Detail page query filters `hidden_at IS NULL` so admin-hidden suggestions disappear from frontend.
+- Admin `/admin/reports` page (`components/admin/ReportsTable.tsx`) — list of unresolved reports grouped by target. Per-row: reason chip, target excerpt, reporter description, Dismiss/Hide buttons (both open inline note textarea). Optimistic remove after resolve. Auto-removes sibling reports when Hide is chosen.
+- Sidebar Reports tab with red badge from `/api/admin/counters` (new `pendingReports` key). New `IconFlag` SVG.
+
+**Histogram + Top Rated restoration** (after step 2 stripped them)
+- Detail page server-side now fetches scores from BOTH `ratings` table AND `suggestions.rating` field. Dedupes by `user_id` (ratings table wins on collision). Buckets into 1..5 stars, computes percentages, computes avg from combined source.
+- Overrides `item.rating_count + item.avg_rating` with combined-source totals so the visible count matches reality (was previously stale on migrated items where ratings live in `suggestions.rating`).
+- `ratingDistribution` always renders when `totalScored > 0`. "Top Rated" + descriptive copy renders when `avg ≥ 4.5 && totalScored ≥ 5`. Per-category noun: Η ταινία / Η σειρά / Το βιβλίο / Το εστιατόριο / Το μαγαζί / Το ξενοδοχείο / Η παράσταση / Η εκδήλωση / Η συνταγή.
+- `<ReviewCardFooter>` shared component re-introduces vote up/down buttons (visual; counts hardcoded to 0 until `suggestion_votes` schema lands) + αναφορά link. One source of truth used by all 9 detail pages.
+- `<ExtraRatingsRow>` — compact rating-only row below the review carousel. Server-side fetches users from `ratings` table whose `user_id NOT IN (suggester user_ids)` for the same item. Each row: avatar + name + stars + relative date. Solves the "X αξιολογήσεις but no review cards visible" gap on migrated items where 1 suggester + N rating-only users is the norm.
 
 ### Session 13 — Search overhaul + audit fixes ✅ (2026-05-05)
 

@@ -8,8 +8,14 @@ import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { useBookmark } from "@/hooks/useBookmark";
 import { useRating } from "@/hooks/useRating";
+import { useShareLink } from "@/hooks/useShareLink";
 import { CommentComposer } from "@/components/detail/CommentComposer";
 import { CommentThread } from "@/components/detail/CommentThread";
+import { OwnSuggestionActions } from "@/components/detail/OwnSuggestionActions";
+import { UserBadge } from "@/components/ui/UserBadge";
+import { ReportLink } from "@/components/report/ReportLink";
+import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
+import { ExtraRatingsRow } from "@/components/detail/ExtraRatingsRow";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 function getBadge(level: number): "Expert" | "Platinum" | "Gold" | "Verified" {
@@ -34,22 +40,17 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString("el-GR", { month: "short", year: "2-digit" });
 }
 
-const BADGE_STYLE: Record<"Expert" | "Platinum" | "Gold" | "Verified", string> = {
-  Expert:   "bg-zinc-800 text-zinc-50",
-  Platinum: "bg-[#c4a5b5] text-white",
-  Gold:     "bg-[#F8D160] text-zinc-800",
-  Verified: "bg-[#1D9E75] text-white",
-};
-
 export function BookDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
   const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "books", data.isBookmarked);
-  const [readStatus, setReadStatus] = useState<"read" | "want" | null>(null);
+  const { share, copied: shareCopied } = useShareLink({ title: data.item.title });
   const [userRating, setUserRating] = useState(data.userRating ?? 0);
   const { save: saveRating, busy: ratingBusy, savedScore } = useRating(data.item.id, data.userRating);
   const [plotExpanded, setPlotExpanded] = useState(false);
+  const [authorBioExpanded, setAuthorBioExpanded] = useState(false);
 
   const { item, extension: ext, suggestions } = data;
+  const mySuggestion = data.currentUserId ? suggestions.find(s => s.user.id === data.currentUserId) ?? null : null;
 
   const meta = item.metadata ?? {};
   const extra = meta.extra_fields_raw ?? {};
@@ -67,9 +68,16 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
   const avgRating = item.avg_rating ?? 0;
   const ratingCount = item.rating_count ?? 0;
 
-  const ratingDistribution: { stars: number; pct: number }[] = (meta.rating_distribution as any) ?? [
-    { stars: 5, pct: 0 }, { stars: 4, pct: 0 }, { stars: 3, pct: 0 }, { stars: 2, pct: 0 }, { stars: 1, pct: 0 },
-  ];
+  const ratingDistribution = data.ratingDistribution;
+  const isTopRated = data.isTopRated;
+
+  // Author rich data (admin-managed via metadata.author_* fields).
+  // Falls back gracefully when fields are missing — at minimum we have the name.
+  const authorPhoto = (meta.author_photo_url as string | undefined) ?? null;
+  const authorBirthYear = (meta.author_birth_year as number | undefined) ?? null;
+  const authorAge = authorBirthYear ? new Date().getFullYear() - authorBirthYear : null;
+  const authorBookCount = (meta.author_book_count as number | undefined) ?? null;
+  const authorBio = (meta.author_bio as string | undefined) ?? null;
 
   const reviews = suggestions.slice(1).map(s => ({
     id: s.id,
@@ -95,8 +103,9 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
             <button onClick={toggleBookmark} className={cn("w-9 h-9 flex items-center justify-center rounded-full transition-colors", bookmarked ? "bg-zinc-800" : "bg-zinc-100 active:bg-zinc-200")} aria-label="Αποθήκευση">
               <Bookmark size={16} className={bookmarked ? "text-white fill-white" : "text-zinc-700"} />
             </button>
-            <button className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors" aria-label="Κοινοποίηση">
-              <Share2 size={16} className="text-zinc-700" />
+            <button onClick={share} className={cn("relative w-9 h-9 flex items-center justify-center rounded-full transition-colors", shareCopied ? "bg-emerald-100" : "bg-zinc-100 active:bg-zinc-200")} aria-label={shareCopied ? "Αντιγράφηκε" : "Κοινοποίηση"}>
+              <Share2 size={16} className={shareCopied ? "text-emerald-700" : "text-zinc-700"} />
+              {shareCopied && <span className="absolute -bottom-7 right-0 whitespace-nowrap px-2 py-1 rounded bg-zinc-900 text-white text-[11px] font-medium">✓ Αντιγράφηκε</span>}
             </button>
           </>
         }
@@ -131,31 +140,29 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
       {suggestions.length > 0 && (() => {
         const s = suggestions[0];
         return (
-          <div className="mx-6 mt-6 rounded-[12px] border border-zinc-200 bg-white p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-[44px] h-[44px] rounded-full shrink-0 overflow-hidden bg-zinc-200 flex items-center justify-center">
-                {s.user.avatar_url ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={s.user.avatar_url} alt={s.user.display_name} className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-zinc-500 text-base font-bold">{s.user.display_name.charAt(0).toUpperCase()}</span>
-                )}
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
-                  <p className="text-[15px] font-bold text-zinc-800">{s.user.display_name}</p>
-                  <span className="text-[13px] font-medium text-zinc-500">{formatDate(s.created_at)}</span>
+          <div className="mx-6 mt-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-[44px] h-[44px] rounded-full shrink-0 overflow-hidden bg-zinc-200 flex items-center justify-center">
+                  {s.user.avatar_url ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={s.user.avatar_url} alt={s.user.display_name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-zinc-500 text-base font-bold">{s.user.display_name.charAt(0).toUpperCase()}</span>
+                  )}
                 </div>
-                <span className={cn("inline-block px-2 py-0.5 rounded-sm text-[11px] font-medium mt-0.5", BADGE_STYLE[getBadge(s.user.level)])}>{getBadge(s.user.level)}</span>
+                <div className="space-y-1">
+                  <p className="text-[14px] font-bold text-zinc-800">{s.user.display_name}</p>
+                  <UserBadge level={s.user.level} />
+                </div>
               </div>
+              <span className="text-[13px] font-medium text-zinc-500">{formatDate(s.created_at)}</span>
             </div>
             {s.reflection && (
-              <p className="text-[14px] font-normal text-zinc-700 leading-[150%] italic line-clamp-3">
-                &ldquo;{s.reflection}&rdquo;
-              </p>
+              <p className="text-[15px] font-normal text-zinc-900 leading-[150%]">{s.reflection}</p>
             )}
             {s.rating != null && s.rating > 0 && (
-              <div className="flex items-center gap-0.5 mt-3">
+              <div className="flex items-center gap-0.5">
                 {[1,2,3,4,5].map(star => <StarIcon key={star} size={12} filled={star <= s.rating!} />)}
               </div>
             )}
@@ -183,21 +190,6 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
         <InfoDivider />
       </div>
 
-      {/* ── Author Section ─────────────────────────────────────── */}
-      {author !== "-" && (
-        <div className="mx-6 mt-6 rounded-[8px] bg-zinc-50 p-5">
-          <div className="flex items-center gap-4">
-            <div className="w-[50px] h-[50px] rounded-full shrink-0 bg-zinc-300 flex items-center justify-center">
-              <span className="text-zinc-500 text-lg font-bold">{author.charAt(0).toUpperCase()}</span>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[18px] font-bold text-zinc-900">{author}</p>
-              <p className="text-[13px] font-medium text-zinc-500">Συγγραφέας</p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── Plot ───────────────────────────────────────────────── */}
       {plot && (
         <div className="px-6 mt-8 space-y-4">
@@ -213,21 +205,6 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
         </div>
       )}
 
-      {/* ── Read Status ────────────────────────────────────────── */}
-      <div className="mt-8">
-        <div className="h-px bg-zinc-200 mx-6" />
-        <div className="flex gap-3 px-6 py-6">
-          {(["read", "want"] as const).map(opt => (
-            <button key={opt} onClick={() => setReadStatus(readStatus === opt ? null : opt)}
-              className={cn("flex-1 h-[52px] rounded-[12px] text-[15px] font-bold transition-colors active:opacity-80",
-                readStatus === opt ? "bg-zinc-800 text-zinc-50" : "border-[1.5px] border-zinc-300 text-zinc-700")}>
-              {opt === "read" ? "Το έχω διαβάσει" : "Θέλω να το διαβάσω"}
-            </button>
-          ))}
-        </div>
-        <div className="h-px bg-zinc-200 mx-6" />
-      </div>
-
       {/* ── Community Ratings ──────────────────────────────────── */}
       <div className="mt-8 py-8 flex flex-col items-center gap-[42px]"
         style={{ background: "linear-gradient(180deg,#fff 0%,#F2F2F7 10%,#F7F7FA 91%,#fff 100%)" }}>
@@ -239,39 +216,53 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
                 {avgRating.toFixed(2)}
               </span>
             </div>
-            <div className="w-full flex flex-col gap-7 px-6">
-              {ratingDistribution.map(({ stars, pct }) => (
-                <div key={stars} className="flex items-center gap-3">
-                  <span className="text-[16px] font-semibold text-zinc-700 w-3 shrink-0 text-right">{stars}</span>
-                  <StarIcon size={11} filled />
-                  <div className="flex-1 h-[10px] rounded-full bg-white overflow-hidden" style={{ boxShadow: "inset 1px 1px 4px rgba(0,0,0,0.25)" }}>
-                    <div className="h-full rounded-full bg-zinc-800" style={{ width: `${pct}%` }} />
+            {isTopRated && (
+              <div className="flex flex-col items-center gap-3">
+                <p className="text-[22px] font-semibold text-zinc-800 text-center">Top Rated</p>
+                <p className="text-[14px] font-medium text-zinc-600 text-center leading-[150%] max-w-[300px]">
+                  Το βιβλίο ανήκει στο <span className="font-bold">top 10%</span> των καλύτερων όπως βαθμολογήθηκε από τους χρήστες
+                </p>
+              </div>
+            )}
+            {ratingCount > 0 && (
+              <div className="w-full flex flex-col gap-5 px-6">
+                {ratingDistribution.map(({ stars, pct }) => (
+                  <div key={stars} className="flex items-center gap-3">
+                    <span className="text-[16px] font-semibold text-zinc-700 w-3 shrink-0 text-right">{stars}</span>
+                    <StarIcon size={11} filled />
+                    <div className="flex-1 h-[10px] rounded-full bg-white overflow-hidden" style={{ boxShadow: "inset 1px 1px 4px rgba(0,0,0,0.25)" }}>
+                      <div className="h-full rounded-full bg-zinc-800" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-[16px] font-semibold text-zinc-800 w-10 text-right shrink-0">{pct}%</span>
                   </div>
-                  <span className="text-[16px] font-semibold text-zinc-800 w-10 text-right shrink-0">{pct}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-[12px] bg-white flex flex-col items-center gap-6 py-12 px-6" style={{ boxShadow: "2px 4px 11px -2px rgba(0,0,0,0.1)" }}>
-            <p className="text-[18px] font-semibold text-zinc-800 text-center leading-[140%]">Με πόσα αστέρια θα βαθμολογούσες το βιβλίο;</p>
-            <div className="flex items-center gap-3">
-              {[1,2,3,4,5].map(s => (
-                <button key={s} onClick={() => setUserRating(s)} aria-label={`${s} αστέρια`}>
-                  <StarIcon size={34} filled={s <= userRating} />
-                </button>
-              ))}
-            </div>
-            {userRating > 0 && (
-              <button
-                onClick={() => saveRating(userRating)}
-                disabled={ratingBusy || userRating === savedScore}
-                className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
-              >
-                {ratingBusy ? "Αποθήκευση..." : savedScore === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
-              </button>
+                ))}
+              </div>
             )}
           </div>
+
+          {mySuggestion ? (
+            <OwnSuggestionActions suggestion={mySuggestion} itemTitle={title} />
+          ) : (
+            <div className="rounded-[12px] bg-white flex flex-col items-center gap-6 py-12 px-6" style={{ boxShadow: "2px 4px 11px -2px rgba(0,0,0,0.1)" }}>
+              <p className="text-[18px] font-semibold text-zinc-800 text-center leading-[140%]">Με πόσα αστέρια θα βαθμολογούσες το βιβλίο;</p>
+              <div className="flex items-center gap-3">
+                {[1,2,3,4,5].map(s => (
+                  <button key={s} onClick={() => setUserRating(s)} aria-label={`${s} αστέρια`}>
+                    <StarIcon size={34} filled={s <= userRating} />
+                  </button>
+                ))}
+              </div>
+              {userRating > 0 && (
+                <button
+                  onClick={() => saveRating(userRating)}
+                  disabled={ratingBusy || userRating === savedScore}
+                  className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
+                >
+                  {ratingBusy ? "Αποθήκευση..." : savedScore === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
+                </button>
+              )}
+            </div>
+          )}
 
           {data.suggestions[0] && (
             <div className="flex flex-col gap-4">
@@ -292,26 +283,73 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
                       <span className="w-[2px] h-[2px] rounded-full bg-zinc-500 shrink-0" />
                       <span className="text-[13px] font-medium text-zinc-500">{review.date}</span>
                     </div>
-                    <p className="text-[14px] font-normal text-zinc-800 leading-[150%] line-clamp-4">{review.text}</p>
+                    <p className="text-[14px] font-normal text-zinc-800 leading-[150%] line-clamp-5">{review.text}</p>
                     <div className="flex items-center gap-3">
                       <UserAvatarWithPopup user={review.userData ?? { display_name: review.name }} size={50} />
                       <div className="space-y-1">
                         <p className="text-[14px] font-bold text-zinc-800 leading-none">{review.name}</p>
-                        <span className={cn("inline-block px-2 py-0.5 rounded-sm text-[11px] font-medium", BADGE_STYLE[review.badge])}>{review.badge}</span>
+                        <UserBadge kind={review.badge} />
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between px-6 py-3 bg-[#F4F4F5]">
-                    <span className="text-[13px] font-semibold text-zinc-600">{review.likes} 👍  {review.dislikes} 👎</span>
-                    <button className="text-[12px] font-medium text-zinc-500 underline">αναφορά</button>
-                  </div>
+                  <ReviewCardFooter reviewId={review.id} likes={review.likes} dislikes={review.dislikes} />
                 </div>
               ))}
               <div className="flex-none w-6 shrink-0" />
             </div>
           )}
+
+          <ExtraRatingsRow ratings={data.extraRatings} />
         </div>
       </div>
+
+      {/* ── Author card — placed AFTER reviews per Figma; engagement-first ── */}
+      {author !== "-" && (
+        <div className="mx-6 mt-8 rounded-[12px] bg-zinc-50 p-5">
+          <div className="flex items-center gap-4">
+            <div className="w-[76px] h-[76px] rounded-[12px] shrink-0 overflow-hidden bg-zinc-300 flex items-center justify-center">
+              {authorPhoto ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={authorPhoto} alt={author} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-zinc-500 text-xl font-bold">{author.charAt(0).toUpperCase()}</span>
+              )}
+            </div>
+            <div className="flex-1 min-w-0 space-y-1">
+              <p className="text-[20px] font-bold text-zinc-900 leading-tight line-clamp-2">{author}</p>
+              {(authorAge != null || authorBookCount != null) && (
+                <div className="flex items-center gap-3 text-[14px] text-zinc-700">
+                  {authorAge != null && (
+                    <span><span className="font-bold text-zinc-900">{authorAge}</span> ετών</span>
+                  )}
+                  {authorBookCount != null && (
+                    <span><span className="font-bold text-zinc-900">{authorBookCount}</span> βιβλία</span>
+                  )}
+                </div>
+              )}
+              {authorAge == null && authorBookCount == null && (
+                <p className="text-[13px] font-medium text-zinc-500">Συγγραφέας</p>
+              )}
+            </div>
+          </div>
+
+          {authorBio && (
+            <div className="mt-4 space-y-3">
+              <p className="text-[14px] font-normal text-zinc-700 leading-[150%]">
+                {authorBioExpanded ? authorBio : authorBio.slice(0, 200) + (authorBio.length > 200 ? "…" : "")}
+              </p>
+              {authorBio.length > 200 && (
+                <button
+                  onClick={() => setAuthorBioExpanded(v => !v)}
+                  className="text-[14px] font-bold text-zinc-800 underline"
+                >
+                  {authorBioExpanded ? "Λιγότερα" : "Περισσότερα"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );

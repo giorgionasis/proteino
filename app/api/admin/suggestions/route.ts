@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function PUT(req: NextRequest) {
   const body = await req.json();
-  const { suggestionId, itemId, category, itemData, suggestionData, extData } = body;
+  const { suggestionId, itemId, category, itemData, suggestionData, extData, metadataPatch } = body;
 
   if (!suggestionId || !itemId || !category) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -12,8 +12,25 @@ export async function PUT(req: NextRequest) {
   const supabase = createAdminClient();
   const errors: string[] = [];
 
-  if (itemData && Object.keys(itemData).length > 0) {
-    const { error } = await (supabase.from("items") as any).update(itemData).eq("id", itemId);
+  // Merge metadataPatch into existing item.metadata before issuing the
+  // items.update — admins editing one metadata field shouldn't blow
+  // away other keys (poster URLs, tags, rating_distribution, etc).
+  let mergedItemData = itemData;
+  if (metadataPatch && typeof metadataPatch === "object") {
+    const { data: existing } = await supabase
+      .from("items")
+      .select("metadata")
+      .eq("id", itemId)
+      .maybeSingle();
+    const currentMeta = (existing as any)?.metadata ?? {};
+    mergedItemData = {
+      ...(itemData ?? {}),
+      metadata: { ...currentMeta, ...metadataPatch },
+    };
+  }
+
+  if (mergedItemData && Object.keys(mergedItemData).length > 0) {
+    const { error } = await (supabase.from("items") as any).update(mergedItemData).eq("id", itemId);
     if (error) errors.push(`items: ${error.message}`);
   }
 

@@ -11,8 +11,16 @@ import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { useBookmark } from "@/hooks/useBookmark";
 import { useRating } from "@/hooks/useRating";
+import { useShareLink } from "@/hooks/useShareLink";
 import { CommentComposer } from "@/components/detail/CommentComposer";
 import { CommentThread } from "@/components/detail/CommentThread";
+import { OwnSuggestionActions } from "@/components/detail/OwnSuggestionActions";
+import { Icon } from "@/components/ui/Icon";
+import { UserBadge } from "@/components/ui/UserBadge";
+import { ReportLink } from "@/components/report/ReportLink";
+import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
+import { ExtraRatingsRow } from "@/components/detail/ExtraRatingsRow";
+import { oscarIconForCategory } from "@/lib/icons";
 import { safeImageUrl } from "@/lib/image-url";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
@@ -69,24 +77,18 @@ interface Review {
   dislikes: number;
 }
 
-const BADGE_STYLE: Record<Review["user"]["badge"], string> = {
-  Expert:   "bg-zinc-800 text-zinc-50",
-  Platinum: "bg-[#c4a5b5] text-white",
-  Gold:     "bg-[#F8D160] text-zinc-800",
-  Verified: "bg-[#1D9E75] text-white",
-};
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function MovieDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
   const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "movies", data.isBookmarked);
-  const [watched,      setWatched]      = useState<"seen" | "want" | null>(null);
+  const { share, copied: shareCopied } = useShareLink({ title: data.item.title });
   const [userRating,   setUserRating]   = useState(data.userRating ?? 0);
   const { save: saveRating, busy: ratingBusy, savedScore } = useRating(data.item.id, data.userRating);
   const [plotExpanded, setPlotExpanded] = useState(false);
   const [openAwardType, setOpenAwardType] = useState<string | null>(null);
   const { item, extension: ext, suggestions, related } = data;
+  const mySuggestion = data.currentUserId ? suggestions.find(s => s.user.id === data.currentUserId) ?? null : null;
 
   const title = item.title ?? "-";
   const genre = item.metadata?.tags?.[0] ?? "-";
@@ -161,9 +163,8 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
   const rt = externalRatings?.rt ?? externalRatings?.rotten_tomatoes ?? "-";
   const metacritic = externalRatings?.metacritic ?? "-";
 
-  const ratingDistribution: { stars: number; pct: number }[] = (item.metadata?.rating_distribution as any) ?? [
-    { stars: 5, pct: 0 }, { stars: 4, pct: 0 }, { stars: 3, pct: 0 }, { stars: 2, pct: 0 }, { stars: 1, pct: 0 },
-  ];
+  const ratingDistribution = data.ratingDistribution;
+  const isTopRated = data.isTopRated;
 
   // Featured suggestion (first one)
   const featured = suggestions[0];
@@ -210,8 +211,9 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
             <button onClick={toggleBookmark} className={cn("w-9 h-9 flex items-center justify-center rounded-full transition-colors", bookmarked ? "bg-zinc-800" : "bg-zinc-100 active:bg-zinc-200")} aria-label="Αποθήκευση">
               <Bookmark size={16} className={bookmarked ? "text-white fill-white" : "text-zinc-700"} />
             </button>
-            <button className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors" aria-label="Κοινοποίηση">
-              <Share2 size={16} className="text-zinc-700" />
+            <button onClick={share} className={cn("relative w-9 h-9 flex items-center justify-center rounded-full transition-colors", shareCopied ? "bg-emerald-100" : "bg-zinc-100 active:bg-zinc-200")} aria-label={shareCopied ? "Αντιγράφηκε" : "Κοινοποίηση"}>
+              <Share2 size={16} className={shareCopied ? "text-emerald-700" : "text-zinc-700"} />
+              {shareCopied && <span className="absolute -bottom-7 right-0 whitespace-nowrap px-2 py-1 rounded bg-zinc-900 text-white text-[11px] font-medium">✓ Αντιγράφηκε</span>}
             </button>
           </>
         }
@@ -231,53 +233,40 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
         </div>
       </div>
 
-      {/* ── Title + chips ──────────────────────────────────── */}
+      {/* ── Title + rating ──────────────────────────────────── */}
       <div className="px-6 pt-5 space-y-3">
-        <h1 className="font-bold text-zinc-800" style={{ fontSize: 26, lineHeight: "22px" }}>{title}</h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          {[genre, String(year), duration, country].filter(c => c !== "-").map(chip => (
-            <span key={chip} className="px-3 py-1 rounded-full border border-zinc-200 text-[13px] font-medium text-zinc-600">{chip}</span>
-          ))}
+        <h1 className="font-bold text-zinc-800" style={{ fontSize: 26, lineHeight: "130%" }}>{title}</h1>
+        <div className="flex items-center gap-2">
+          <StarIcon size={14} filled />
+          <span className="text-[15px] font-semibold text-zinc-700">{avgRating.toFixed(2)}</span>
+          <span className="w-[5px] h-[5px] rounded-full bg-zinc-400" />
+          <span className="text-[15px] font-medium text-zinc-600">{ratingCount} αξιολογήσεις</span>
         </div>
       </div>
 
-      {/* ── Rating overview bar ───────────────────────────── */}
-      <div className="mx-6 mt-5 rounded-[12px] border border-zinc-200 px-4 py-6 flex items-center justify-between">
-        {/* Col 1: score + stars */}
-        <div className="flex flex-col items-center gap-2">
-          <span className="text-[18px] font-bold text-zinc-800 leading-none">{avgRating.toFixed(2)}</span>
-          <div className="flex items-center gap-1">
-            {[1,2,3,4,5].map(s => <StarIcon key={s} size={11} filled={s <= Math.round(avgRating)} />)}
+      {/* ── Special-occasion stat bar — ONLY for Oscar movies with high rating */}
+      {(awardsByType["Oscar"]?.length ?? 0) > 0 && avgRating >= 4.5 && (
+        <div className="mx-6 mt-5 rounded-[12px] border border-zinc-200 px-4 py-6 flex items-center justify-between">
+          <div className="flex flex-col items-center gap-2">
+            <span className="text-[18px] font-bold text-zinc-800 leading-none">{avgRating.toFixed(2)}</span>
+            <div className="flex items-center gap-1">
+              {[1,2,3,4,5].map(s => <StarIcon key={s} size={11} filled={s <= Math.round(avgRating)} />)}
+            </div>
           </div>
-        </div>
-
-        <div className="w-px h-[34px] bg-zinc-200" />
-
-        {/* Col 2: award (count of Oscars or any awards), or suggestion count fallback */}
-        {totalAwards > 0 ? (
+          <div className="w-px h-[34px] bg-zinc-200" />
           <div className="flex items-center gap-1.5">
             <OscarIcon />
             <span className="text-[16px] font-bold text-zinc-800 text-center leading-tight whitespace-pre-line">
-              {(awardsByType["Oscar"]?.length ?? 0) > 0
-                ? `${awardsByType["Oscar"].length}\nΌσκαρ`
-                : `${totalAwards}\nΒραβεία`}
+              {`${awardsByType["Oscar"].length}\nΌσκαρ`}
             </span>
           </div>
-        ) : (
+          <div className="w-px h-[34px] bg-zinc-200" />
           <div className="flex flex-col items-center gap-1">
-            <span className="text-[18px] font-bold text-zinc-800 leading-none">{item.suggestion_count ?? 0}</span>
-            <span className="text-[12px] font-semibold text-zinc-700">προτάσεις</span>
+            <span className="text-[18px] font-bold text-zinc-800 leading-none">{ratingCount}</span>
+            <span className="text-[12px] font-semibold text-zinc-700 underline">αξιολογήσεις</span>
           </div>
-        )}
-
-        <div className="w-px h-[34px] bg-zinc-200" />
-
-        {/* Col 3: review count */}
-        <div className="flex flex-col items-center gap-1">
-          <span className="text-[18px] font-bold text-zinc-800 leading-none">{ratingCount}</span>
-          <span className="text-[12px] font-semibold text-zinc-700 underline">αξιολογήσεις</span>
         </div>
-      </div>
+      )}
 
       {/* ── Featured suggestion ───────────────────────────── */}
       {featured && (
@@ -288,7 +277,7 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
               <UserAvatarWithPopup user={featured.user} size={50} />
               <div className="space-y-1">
                 <p className="text-[14px] font-bold text-zinc-800 leading-none">{featured.user.display_name}</p>
-                <span className={cn("inline-block px-2 py-0.5 rounded-sm text-[11px] font-medium", BADGE_STYLE[getBadge(featured.user.level)])}>{getBadge(featured.user.level)}</span>
+                <UserBadge level={featured.user.level} />
               </div>
             </div>
             <div className="flex items-center gap-1.5 text-[13px] font-medium text-zinc-500">
@@ -298,7 +287,6 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
           </div>
           {/* Review text */}
           {featured.reflection && <p className="text-[15px] font-normal text-zinc-900 leading-[150%]">{featured.reflection}</p>}
-          <button className="text-[14px] font-bold text-zinc-800 underline">Περισσότερα</button>
         </div>
       )}
 
@@ -308,9 +296,9 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
           <p className="text-[16px] font-bold text-zinc-800" style={{ lineHeight: "130%" }}>Βαθμολογίες</p>
           <div className="space-y-1.5">
             {[
-              { name: "IMDb",            score: imdb,       logo: <ImdbLogo /> },
-              { name: "Rotten\nTomatoes",score: rt,          logo: <RtLogo /> },
-              { name: "Metacritic",      score: metacritic,  logo: <MetacriticLogo /> },
+              { name: "IMDb",            score: imdb,       logo: <Icon name="imdb" size={32} alt="IMDb" /> },
+              { name: "Rotten\nTomatoes",score: rt,          logo: <Icon name="rotten-tomatoes" size={32} alt="Rotten Tomatoes" /> },
+              { name: "Metacritic",      score: metacritic,  logo: <Icon name="metacritic" size={32} alt="Metacritic" /> },
             ].filter(r => r.score !== "-").map(({ name, score, logo }, i) => (
               <div key={name}>
                 {i > 0 && <div className="h-px bg-zinc-200 w-[302px] mx-auto my-1.5" />}
@@ -430,14 +418,21 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
                       {/* Expanded: horizontal scroll of award cards */}
                       {open && (
                         <div className="flex gap-4 overflow-x-auto no-scrollbar -mx-6 px-6 pb-1">
-                          {items.map((aw, i) => (
+                          {items.map((aw, i) => {
+                            const oscarIcon = oscarIconForCategory(type, aw.category);
+                            return (
                             <div key={`${type}-${i}`} className="flex-none flex flex-col items-center gap-3 w-[110px]">
-                              <AwardBadge category={aw.category} />
+                              {oscarIcon ? (
+                                <Icon name={oscarIcon} size={72} alt={aw.category} />
+                              ) : (
+                                <AwardBadge category={aw.category} />
+                              )}
                               <p className="text-[13px] font-semibold text-zinc-800 text-center leading-tight whitespace-pre-line">
                                 {greekCategoryLabel(aw.category)}
                               </p>
                             </div>
-                          ))}
+                            );
+                          })}
                           <div className="flex-none w-2 shrink-0" />
                         </div>
                       )}
@@ -468,51 +463,6 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
         )}
       </div>
 
-      {/* ── Που θα την δεις ───────────────────────────────── */}
-      <div className="mx-6 mt-6 rounded-[12px] bg-[#FFF2F1] p-8 space-y-8">
-        <p className="text-[16px] font-semibold" style={{ color: "#4A0800", lineHeight: "130%" }}>Που θα την δεις</p>
-        <div className="space-y-5">
-          {[
-            { name: "Netflix",   detail: "Συνδρομή",  Logo: <NetflixLogo /> },
-            { name: "YouTube",   detail: "Από €3.99", Logo: <YoutubeLogo /> },
-            { name: "Disney TV", detail: "Από €3.99", Logo: <DisneyLogo /> },
-          ].map(({ name, detail, Logo }) => (
-            <div key={name} className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {Logo}
-                <div>
-                  <p className="text-[18px] font-semibold text-zinc-800 leading-none">{name}</p>
-                  <p className="text-[13px] font-medium text-zinc-500 mt-0.5">{detail}</p>
-                </div>
-              </div>
-              <button className="flex items-center gap-2 px-3.5 py-2 rounded-full border border-zinc-500 bg-zinc-50 text-[14px] font-semibold text-zinc-700 active:bg-zinc-100 transition-colors">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden><polygon points="5 3 19 12 5 21 5 3" /></svg>
-                Προβολή
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Watchlist choice ──────────────────────────────── */}
-      <div className="mt-8">
-        <div className="h-px bg-zinc-200 mx-6" />
-        <div className="flex gap-3 px-8 py-6">
-          {(["seen", "want"] as const).map(opt => (
-            <button
-              key={opt}
-              onClick={() => setWatched(watched === opt ? null : opt)}
-              className={cn(
-                "flex-1 h-[52px] rounded-[12px] text-[15px] font-bold transition-colors active:opacity-80",
-                watched === opt ? "bg-zinc-800 text-zinc-50" : "border-[1.5px] border-zinc-300 text-zinc-700",
-              )}
-            >
-              {opt === "seen" ? "Την έχω δει" : "Θέλω να τη δω"}
-            </button>
-          ))}
-        </div>
-        <div className="h-px bg-zinc-200 mx-6" />
-      </div>
 
       {/* ── Community section ─────────────────────────────── */}
       <div
@@ -522,64 +472,69 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
         {/* Rating display + bars + input card */}
         <div className="w-[342px] flex flex-col gap-12">
 
-          {/* Big rating number + Top Rated */}
+          {/* Big rating number + Top Rated badge + histogram */}
           <div className="flex flex-col items-center gap-6">
-            <div className="flex flex-col items-center gap-6">
-              {/* Rating number */}
-              <div className="flex flex-col items-center gap-6">
-                <div className="flex items-center gap-2">
-                  <StarIcon size={24} filled />
-                  <span className="font-bold text-zinc-800" style={{ fontSize: 72, lineHeight: 1 }}>
-                    {avgRating.toFixed(2)}
-                  </span>
-                </div>
+            <div className="flex items-center gap-2">
+              <StarIcon size={24} filled />
+              <span className="font-bold text-zinc-800" style={{ fontSize: 72, lineHeight: 1 }}>
+                {avgRating.toFixed(2)}
+              </span>
+            </div>
+
+            {isTopRated && (
+              <div className="flex flex-col items-center gap-3">
                 <p className="text-[22px] font-semibold text-zinc-800 text-center">Top Rated</p>
+                <p className="text-[14px] font-medium text-zinc-600 text-center leading-[150%] max-w-[300px]">
+                  Η ταινία ανήκει στο <span className="font-bold">top 10%</span> των καλύτερων όπως βαθμολογήθηκε από τους χρήστες
+                </p>
               </div>
-              <p className="text-[16px] font-medium text-zinc-600 text-center leading-[150%] max-w-[330px]">
-                Η ταινία ανήκει στο <span className="font-bold">top 10%</span> των καλύτερων όπως βαθμολογήθηκε από τους χρήστες
-              </p>
-            </div>
+            )}
 
-            {/* Star distribution bars */}
-            <div className="w-full flex flex-col gap-7 px-6">
-              {ratingDistribution.map(({ stars, pct }) => (
-                <div key={stars} className="flex items-center gap-3">
-                  <span className="text-[16px] font-semibold text-zinc-700 w-3 shrink-0 text-right">{stars}</span>
-                  <StarIcon size={11} filled />
-                  <div className="flex-1 h-[10px] rounded-full bg-white overflow-hidden" style={{ boxShadow: "inset 1px 1px 4px rgba(0,0,0,0.25)" }}>
-                    <div className="h-full rounded-full bg-zinc-800" style={{ width: `${pct}%` }} />
+            {/* Star distribution histogram — always shown when there are ratings */}
+            {ratingCount > 0 && (
+              <div className="w-full flex flex-col gap-5 px-6">
+                {ratingDistribution.map(({ stars, pct }) => (
+                  <div key={stars} className="flex items-center gap-3">
+                    <span className="text-[16px] font-semibold text-zinc-700 w-3 shrink-0 text-right">{stars}</span>
+                    <StarIcon size={11} filled />
+                    <div className="flex-1 h-[10px] rounded-full bg-white overflow-hidden" style={{ boxShadow: "inset 1px 1px 4px rgba(0,0,0,0.25)" }}>
+                      <div className="h-full rounded-full bg-zinc-800" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-[16px] font-semibold text-zinc-800 w-10 text-right shrink-0">{pct}%</span>
                   </div>
-                  <span className="text-[16px] font-semibold text-zinc-800 w-10 text-right shrink-0">{pct}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Rating input card */}
-          <div
-            className="rounded-[12px] bg-white flex flex-col items-center gap-6 py-12 px-6"
-            style={{ boxShadow: "2px 4px 11px -2px rgba(0,0,0,0.1)" }}
-          >
-            <p className="text-[18px] font-semibold text-zinc-800 text-center leading-[140%]">
-              Με πόσα αστέρια θα βαθμολογούσες την ταινία;
-            </p>
-            <div className="flex items-center gap-3">
-              {[1,2,3,4,5].map(s => (
-                <button key={s} onClick={() => setUserRating(s)} aria-label={`${s} αστέρια`}>
-                  <StarIcon size={34} filled={s <= userRating} />
-                </button>
-              ))}
-            </div>
-            {userRating > 0 && (
-              <button
-                onClick={() => saveRating(userRating)}
-                disabled={ratingBusy || userRating === savedScore}
-                className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
-              >
-                {ratingBusy ? "Αποθήκευση..." : savedScore === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
-              </button>
+                ))}
+              </div>
             )}
           </div>
+
+          {mySuggestion ? (
+            <OwnSuggestionActions suggestion={mySuggestion} itemTitle={title} />
+          ) : (
+            <div
+              className="rounded-[12px] bg-white flex flex-col items-center gap-6 py-12 px-6"
+              style={{ boxShadow: "2px 4px 11px -2px rgba(0,0,0,0.1)" }}
+            >
+              <p className="text-[18px] font-semibold text-zinc-800 text-center leading-[140%]">
+                Με πόσα αστέρια θα βαθμολογούσες την ταινία;
+              </p>
+              <div className="flex items-center gap-3">
+                {[1,2,3,4,5].map(s => (
+                  <button key={s} onClick={() => setUserRating(s)} aria-label={`${s} αστέρια`}>
+                    <StarIcon size={34} filled={s <= userRating} />
+                  </button>
+                ))}
+              </div>
+              {userRating > 0 && (
+                <button
+                  onClick={() => saveRating(userRating)}
+                  disabled={ratingBusy || userRating === savedScore}
+                  className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
+                >
+                  {ratingBusy ? "Αποθήκευση..." : savedScore === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {data.suggestions[0] && (
@@ -610,37 +565,18 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
                       <span className="text-[13px] font-medium text-zinc-500">{review.date}</span>
                     </div>
                     {/* Text */}
-                    <div className="space-y-3">
-                      <p className="text-[14px] font-normal text-zinc-800 leading-[150%] line-clamp-4">{review.text}</p>
-                      <button className="text-[13px] font-bold text-zinc-800 underline">Περισσότερα</button>
-                    </div>
+                    <p className="text-[14px] font-normal text-zinc-800 leading-[150%] line-clamp-5">{review.text}</p>
                     {/* User */}
                     <div className="flex items-center gap-3">
                       <UserAvatarWithPopup user={{ ...review.user, display_name: review.user.name }} size={50} />
                       <div className="space-y-1">
                         <p className="text-[14px] font-bold text-zinc-800 leading-none">{review.user.name}</p>
-                        <span className={cn("inline-block px-2 py-0.5 rounded-sm text-[11px] font-medium", BADGE_STYLE[review.user.badge])}>
-                          {review.user.badge}
-                        </span>
+                        <UserBadge kind={review.user.badge} />
                       </div>
                     </div>
                   </div>
 
-                  {/* Vote footer */}
-                  <div className="flex items-center justify-between px-6 py-3 bg-[#F4F4F5]">
-                    <div className="flex items-center gap-3 bg-[#F4F4F5] px-3 rounded-full">
-                      <button className="flex items-center gap-1.5 h-8 active:opacity-70 transition-opacity">
-                        <ThumbUpIcon />
-                        <span className="text-[13px] font-semibold text-zinc-700">{review.likes}</span>
-                      </button>
-                      <div className="w-px h-7 bg-white" />
-                      <button className="flex items-center gap-1.5 h-8 active:opacity-70 transition-opacity">
-                        <ThumbDownIcon />
-                        <span className="text-[13px] font-semibold text-zinc-700">{review.dislikes}</span>
-                      </button>
-                    </div>
-                    <button className="text-[12px] font-medium text-zinc-500 underline">αναφορά</button>
-                  </div>
+                  <ReviewCardFooter reviewId={review.id} likes={review.likes} dislikes={review.dislikes} />
                 </div>
               ))}
               <div className="flex-none w-6 shrink-0" />
@@ -652,6 +588,8 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
             </button>
           </div>
         )}
+
+        <ExtraRatingsRow ratings={data.extraRatings} />
       </div>
 
       {/* ── Related movies ────────────────────────────────── */}
@@ -710,74 +648,6 @@ function CalendarIcon() {
       <line x1="16" y1="2" x2="16" y2="6" />
       <line x1="8" y1="2" x2="8" y2="6" />
       <line x1="3" y1="10" x2="21" y2="10" />
-    </svg>
-  );
-}
-
-function ImdbLogo() {
-  return (
-    <div className="w-8 h-8 rounded-[4px] bg-[#E6B91E] flex items-center justify-center">
-      <span className="text-[10px] font-black text-black leading-none">IMDb</span>
-    </div>
-  );
-}
-
-function RtLogo() {
-  return (
-    <div className="w-8 h-8 rounded-full bg-[#F93208] flex items-center justify-center">
-      <span className="text-[10px] font-black text-white leading-none">RT</span>
-    </div>
-  );
-}
-
-function MetacriticLogo() {
-  return (
-    <div className="w-8 h-8 rounded-[4px] bg-[#6AC644] flex items-center justify-center">
-      <span className="text-[10px] font-black text-white leading-none">MC</span>
-    </div>
-  );
-}
-
-function NetflixLogo() {
-  return (
-    <div className="w-8 h-8 rounded-[6px] bg-[#E50914] flex items-center justify-center">
-      <span className="text-[13px] font-black text-white leading-none">N</span>
-    </div>
-  );
-}
-
-function YoutubeLogo() {
-  return (
-    <div className="w-8 h-8 rounded-[6px] bg-[#FF0000] flex items-center justify-center">
-      <svg width="16" height="12" viewBox="0 0 16 12" fill="white" aria-hidden>
-        <polygon points="6,0 6,12 14,6" />
-      </svg>
-    </div>
-  );
-}
-
-function DisneyLogo() {
-  return (
-    <div className="w-8 h-8 rounded-[6px] bg-[#113CCF] flex items-center justify-center">
-      <span className="text-[9px] font-black text-white leading-none">D+</span>
-    </div>
-  );
-}
-
-function ThumbUpIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-600" aria-hidden>
-      <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z" />
-      <path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
-    </svg>
-  );
-}
-
-function ThumbDownIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-600" aria-hidden>
-      <path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z" />
-      <path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" />
     </svg>
   );
 }

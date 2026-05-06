@@ -10,7 +10,7 @@ interface NavItem {
   href: string;
   icon: React.ReactNode;
   /** Source key for the live-counter badge (matches /api/admin/counters response). */
-  counterKey?: "unpublishedSuggestions" | "reportedReviews" | "dataQualityIssues";
+  counterKey?: "unpublishedSuggestions" | "reportedReviews" | "dataQualityIssues" | "pendingReports";
   /** Visual tone for the badge. */
   counterTone?: "red" | "amber";
 }
@@ -44,6 +44,7 @@ const NAV: NavEntry[] = [
     ],
   },
   { label: "Reviews",  href: "/admin/reviews",  icon: <IconStar />, counterKey: "reportedReviews", counterTone: "red" },
+  { label: "Reports",  href: "/admin/reports",  icon: <IconFlag />, counterKey: "pendingReports",  counterTone: "red" },
   { label: "Users",    href: "/admin/users",    icon: <IconUsers /> },
   { label: "Settings", href: "/admin/settings", icon: <IconSettings /> },
 ];
@@ -52,6 +53,7 @@ interface Counters {
   unpublishedSuggestions: number;
   reportedReviews: number;
   dataQualityIssues: number;
+  pendingReports: number;
 }
 
 interface Props {
@@ -69,6 +71,7 @@ export function AdminSidebar({ user }: Props) {
     unpublishedSuggestions: 0,
     reportedReviews: 0,
     dataQualityIssues: 0,
+    pendingReports: 0,
   });
 
   // Poll counters every 60s — gives admins a live "needs attention" signal
@@ -232,6 +235,9 @@ function IconFilm() {
 }
 function IconStar() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
+}
+function IconFlag() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>;
 }
 function IconUsers() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>;

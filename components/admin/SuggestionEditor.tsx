@@ -8,10 +8,16 @@ import { ImageUploader } from "./ImageUploader";
 import { ImageGallery, type GalleryImage } from "./ImageGallery";
 import { MapPicker } from "./MapPicker";
 import { OpenAsUserButton } from "./OpenAsUserButton";
+import { IconToggleGrid } from "./IconToggleGrid";
+import { Icon } from "@/components/ui/Icon";
+import { HOTEL_AMENITY_GROUPS, RECIPE_NUTRITION_OPTIONS, HOTEL_PROPERTY_TYPES, FOOD_AMENITY_OPTIONS, oscarIconForCategory } from "@/lib/icons";
+import { cn } from "@/lib/utils/cn";
 import { useUnsavedGuard } from "@/hooks/useUnsavedGuard";
 
 interface ExtFieldsHandle {
   getData(): Record<string, any>;
+  /** Optional patch to merge into items.metadata jsonb (NOT extension table). */
+  getMetadataPatch?(): Record<string, any> | null;
 }
 
 interface SuggestionProps {
@@ -191,6 +197,7 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
     setSaveStatus("idle");
 
     const extPayload = extFieldsRef.current?.getData() ?? {};
+    const metadataPatch = extFieldsRef.current?.getMetadataPatch?.() ?? null;
 
     // Trailer URL — first non-empty wins. Saved into the extension table only
     // when the category supports it (movies/series).
@@ -232,6 +239,7 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
           published_at: isPublished && !suggestion.publishedAt ? new Date().toISOString() : suggestion.publishedAt,
         },
         extData: extPayload,
+        metadataPatch: metadataPatch && Object.keys(metadataPatch).length > 0 ? metadataPatch : null,
       }),
     });
 
@@ -571,7 +579,7 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
       </div>
 
       {/* ExtraFields */}
-      <ExtraFieldsSection ref={extFieldsRef} itemId={item.id} category={category} extData={extData} regions={regions} extraOptions={extraOptions} />
+      <ExtraFieldsSection ref={extFieldsRef} itemId={item.id} category={category} extData={extData} metadata={item.metadata} regions={regions} extraOptions={extraOptions} />
     </div>
   );
 }
@@ -586,18 +594,18 @@ function formatDate(iso: string): string {
 
 const ExtraFieldsSection = forwardRef<
   ExtFieldsHandle,
-  { itemId: string; category: string; extData: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }
+  { itemId: string; category: string; extData: Record<string, any>; metadata?: any; regions: any[]; extraOptions: ExtraOptions }
 >(
-  function ExtraFieldsSection({ itemId, category, extData, regions, extraOptions }, ref) {
+  function ExtraFieldsSection({ itemId, category, extData, metadata, regions, extraOptions }, ref) {
     switch (category) {
       case "movies": return <MovieExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
-      case "books": return <BookExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
+      case "books": return <BookExtraFields ref={ref} data={extData} metadata={metadata} extraOptions={extraOptions} />;
       case "series": return <SeriesExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
       case "food": return <FoodExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} />;
       case "bars": return <BarsExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} />;
       case "hotels": return <HotelExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} />;
       case "recipes": return <RecipeExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
-      case "theater": case "events": return <TheaterExtraFields ref={ref} itemId={itemId} category={category} data={extData} regions={regions} extraOptions={extraOptions} />;
+      case "theater": case "events": return <TheaterExtraFields ref={ref} itemId={itemId} category={category} data={extData} metadata={metadata} regions={regions} extraOptions={extraOptions} />;
       default: return null;
     }
   }
@@ -767,6 +775,10 @@ function MovieExtraFields({ data, extraOptions }, ref) {
           <div className="space-y-3">
             {awards.map((award, i) => (
               <div key={i} className="flex items-center gap-3 p-3 border border-zinc-200 rounded-lg bg-zinc-50/50">
+                {(() => {
+                  const ic = oscarIconForCategory(award.type, award.category);
+                  return ic ? <Icon name={ic} size={32} /> : <span className="w-8 h-8 shrink-0" aria-hidden />;
+                })()}
                 <span className="text-xs font-bold text-zinc-700 w-24 shrink-0">{award.type}</span>
                 <select
                   value={award.category}
@@ -824,8 +836,8 @@ function MovieExtraFields({ data, extraOptions }, ref) {
 
 /* ─────────────── BOOKS ─────────────── */
 
-const BookExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; extraOptions: ExtraOptions }>(
-function BookExtraFields({ data, extraOptions }, ref) {
+const BookExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; metadata?: any; extraOptions: ExtraOptions }>(
+function BookExtraFields({ data, metadata, extraOptions }, ref) {
   const [writer, setWriter] = useState(data.writer ?? "");
   const [publication, setPublication] = useState(data.publication ?? "");
   const [language, setLanguage] = useState(data.language ?? "");
@@ -834,6 +846,17 @@ function BookExtraFields({ data, extraOptions }, ref) {
   const [plot, setPlot] = useState(data.plot ?? "");
   const [isTrilogy, setIsTrilogy] = useState(data.is_trilogy ?? false);
   const [trilogyName, setTrilogyName] = useState(data.trilogy_name ?? "");
+
+  // Author rich fields → live on item.metadata (NOT extension table).
+  // Read by BookDetail's <Author card> after the reviews carousel.
+  const [authorPhoto, setAuthorPhoto] = useState((metadata?.author_photo_url as string) ?? "");
+  const [authorBirthYear, setAuthorBirthYear] = useState(
+    metadata?.author_birth_year ? String(metadata.author_birth_year) : ""
+  );
+  const [authorBookCount, setAuthorBookCount] = useState(
+    metadata?.author_book_count ? String(metadata.author_book_count) : ""
+  );
+  const [authorBio, setAuthorBio] = useState((metadata?.author_bio as string) ?? "");
 
   useImperativeHandle(ref, () => ({
     getData() {
@@ -847,7 +870,15 @@ function BookExtraFields({ data, extraOptions }, ref) {
         is_trilogy: isTrilogy,
         trilogy_name: trilogyName || null,
       };
-    }
+    },
+    getMetadataPatch() {
+      return {
+        author_photo_url: authorPhoto.trim() || null,
+        author_birth_year: authorBirthYear ? parseInt(authorBirthYear) : null,
+        author_book_count: authorBookCount ? parseInt(authorBookCount) : null,
+        author_bio: authorBio.trim() || null,
+      };
+    },
   }));
 
   return (
@@ -892,6 +923,31 @@ function BookExtraFields({ data, extraOptions }, ref) {
         {isTrilogy && (
           <input type="text" value={trilogyName} onChange={(e) => setTrilogyName(e.target.value)} placeholder="Trilogy name..." className="mt-2 w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
         )}
+      </div>
+
+      {/* Author rich fields — render on detail page below reviews */}
+      <div className="border-t border-zinc-200 pt-6">
+        <h3 className="text-xs font-bold text-zinc-700 uppercase tracking-wide mb-4">Author Profile</h3>
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className="col-span-2">
+            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Author Photo URL</label>
+            <input type="text" value={authorPhoto} onChange={(e) => setAuthorPhoto(e.target.value)} placeholder="https://..." className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Birth Year</label>
+            <input type="text" value={authorBirthYear} onChange={(e) => setAuthorBirthYear(e.target.value)} placeholder="1971" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div>
+            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Book Count</label>
+            <input type="text" value={authorBookCount} onChange={(e) => setAuthorBookCount(e.target.value)} placeholder="17" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Author Bio</label>
+          <textarea value={authorBio} onChange={(e) => setAuthorBio(e.target.value)} placeholder="Σύντομη βιογραφία του συγγραφέα..." className="w-full h-24 px-4 py-3 text-sm border border-zinc-200 rounded-lg resize-none focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+        </div>
       </div>
     </div>
   );
@@ -1098,17 +1154,15 @@ function FoodExtraFields({ itemId, data, regions, extraOptions }, ref) {
         </div>
       </div>
 
-      {/* Attributes / Facilities */}
+      {/* Amenities — visual icon grid; saved under information.amenities jsonb */}
       <div className="mb-6">
-        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Attributes</label>
-        <div className="grid grid-cols-3 gap-x-8 gap-y-2">
-          {getOpts(extraOptions, "attributes", ["Parking", "Wi-Fi", "Outdoor Seating", "Kid Friendly", "Pet Friendly", "Reservations", "Takeaway", "Delivery", "Live Music", "Accessible", "Smoking Area", "Credit Cards"]).map((a) => (
-            <label key={a} className="flex items-center gap-2 text-sm text-zinc-600 py-1">
-              <input type="checkbox" className="w-4 h-4 rounded border-zinc-300" />
-              {a}
-            </label>
-          ))}
-        </div>
+        <IconToggleGrid
+          title="Amenities"
+          options={FOOD_AMENITY_OPTIONS}
+          value={(information?.amenities && typeof information.amenities === "object") ? information.amenities : {}}
+          onChange={(next) => setInformation((info) => ({ ...info, amenities: Object.keys(next).length > 0 ? next : undefined }))}
+          cols={5}
+        />
       </div>
 
       {/* Delivery */}
@@ -1236,12 +1290,25 @@ function HotelExtraFields({ itemId, data, regions, extraOptions }, ref) {
   const [priceRange, setPriceRange] = useState(data.price_range ?? "");
   const [regionId, setRegionId] = useState(data.region_id ?? "");
   const [facilities, setFacilities] = useState<any>(data.facilities ?? {});
+  // External ratings — saves as { google: {score, count}, booking: {score, count}, ... }
+  const initER = (data.external_ratings && typeof data.external_ratings === "object") ? data.external_ratings : {};
+  const [googleScore, setGoogleScore] = useState(initER.google?.score ?? (typeof initER.google === "string" ? initER.google : ""));
+  const [googleCount, setGoogleCount] = useState(initER.google?.count ? String(initER.google.count) : "");
+  const [bookingScore, setBookingScore] = useState(initER.booking?.score ?? (typeof initER.booking === "string" ? initER.booking : ""));
+  const [bookingCount, setBookingCount] = useState(initER.booking?.count ? String(initER.booking.count) : "");
 
   const parentRegions = regions.filter((r) => !r.parent_id);
   const childRegions = regions.filter((r) => r.parent_id);
 
   useImperativeHandle(ref, () => ({
     getData() {
+      const externalRatings: any = {};
+      if (googleScore || googleCount) {
+        externalRatings.google = { score: String(googleScore || ""), count: googleCount ? parseInt(googleCount) : null };
+      }
+      if (bookingScore || bookingCount) {
+        externalRatings.booking = { score: String(bookingScore || ""), count: bookingCount ? parseInt(bookingCount) : null };
+      }
       return {
         // address / lat / lng are owned by the location-save button (see
         // AddressMapSection). Excluded here so accidental pin drags don't
@@ -1252,6 +1319,7 @@ function HotelExtraFields({ itemId, data, regions, extraOptions }, ref) {
         region_id: regionId || null,
         plot: plot || null,
         facilities: Object.keys(facilities).length > 0 ? facilities : null,
+        external_ratings: Object.keys(externalRatings).length > 0 ? externalRatings : null,
       };
     }
   }));
@@ -1287,42 +1355,87 @@ function HotelExtraFields({ itemId, data, regions, extraOptions }, ref) {
         </div>
       </div>
 
-      {/* Type */}
+      {/* Type — visual radio with property icons */}
       <div className="mb-6">
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Type</label>
         <div className="flex gap-3 flex-wrap">
-          {getOpts(extraOptions, "type", ["Διαμέρισμα", "Δωμάτιο", "Camping", "Μονοκατοικία", "Ξενοδοχείο"]).map((t) => (
-            <label key={t} className="flex flex-col items-center gap-2 p-4 border border-zinc-200 rounded-lg hover:border-zinc-300 min-w-[90px] cursor-pointer">
-              <input type="radio" name="hotelType" className="sr-only peer" />
-              <div className="w-10 h-10 rounded-full bg-zinc-100 peer-checked:bg-emerald-100 flex items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-zinc-500"><path d="M3 21h18M3 7v14M21 7v14M6 7V4a1 1 0 011-1h10a1 1 0 011 1v3M9 21v-4h6v4" /></svg>
-              </div>
-              <span className="text-xs text-zinc-600">{t}</span>
-            </label>
-          ))}
+          {HOTEL_PROPERTY_TYPES.map((opt) => {
+            const active = type === opt.key;
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setType(active ? "" : opt.key)}
+                className={cn(
+                  "flex flex-col items-center gap-2 p-4 border rounded-lg min-w-[100px] transition-colors",
+                  active
+                    ? "border-coral-600 bg-coral-50"
+                    : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50",
+                )}
+                aria-pressed={active}
+              >
+                <Icon name={opt.icon} size={36} />
+                <span className={cn(
+                  "text-xs font-semibold",
+                  active ? "text-coral-700" : "text-zinc-700",
+                )}>
+                  {opt.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Amenities */}
-      <div className="grid grid-cols-3 gap-6 mb-6">
-        <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Παροχές</label>
-          {getOpts(extraOptions, "amenities_facilities", ["Pool", "Bar", "Restaurant", "Parking", "Breakfast"]).map((a) => (
-            <label key={a} className="flex items-center gap-2 text-sm text-zinc-600 py-1"><input type="checkbox" className="w-4 h-4 rounded border-zinc-300" />{a}</label>
-          ))}
+      {/* External ratings — saved as { google: {score, count}, booking: {score, count} } */}
+      <div className="mb-6 border-t border-zinc-200 pt-6">
+        <h3 className="text-xs font-bold text-zinc-700 uppercase tracking-wide mb-4">External Ratings</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="rounded-lg bg-zinc-50 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Icon name="google-pin" size={20} />
+              <span className="text-sm font-semibold text-zinc-800">Google</span>
+              <span className="text-[11px] text-zinc-500 ml-auto">/ 5</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="text" value={googleScore} onChange={(e) => setGoogleScore(e.target.value)} placeholder="4.7" className="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none focus:border-zinc-400" />
+              <input type="text" value={googleCount} onChange={(e) => setGoogleCount(e.target.value)} placeholder="188" className="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none focus:border-zinc-400" />
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Score</span>
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Reviews</span>
+            </div>
+          </div>
+          <div className="rounded-lg bg-zinc-50 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Icon name="booking" size={20} />
+              <span className="text-sm font-semibold text-zinc-800">Booking</span>
+              <span className="text-[11px] text-zinc-500 ml-auto">/ 10</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="text" value={bookingScore} onChange={(e) => setBookingScore(e.target.value)} placeholder="9.2" className="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none focus:border-zinc-400" />
+              <input type="text" value={bookingCount} onChange={(e) => setBookingCount(e.target.value)} placeholder="91" className="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none focus:border-zinc-400" />
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Score</span>
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Reviews</span>
+            </div>
+          </div>
         </div>
-        <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Δωμάτιο</label>
-          {getOpts(extraOptions, "amenities_room", ["Sea view", "Mountain View", "Wifi"]).map((a) => (
-            <label key={a} className="flex items-center gap-2 text-sm text-zinc-600 py-1"><input type="checkbox" className="w-4 h-4 rounded border-zinc-300" />{a}</label>
-          ))}
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Extra</label>
-          {getOpts(extraOptions, "amenities_extra", ["Pet Friendly", "Disabilities", "Transfer"]).map((a) => (
-            <label key={a} className="flex items-center gap-2 text-sm text-zinc-600 py-1"><input type="checkbox" className="w-4 h-4 rounded border-zinc-300" />{a}</label>
-          ))}
-        </div>
+      </div>
+
+      {/* Amenities — visual icon grid; saves to ext.facilities */}
+      <div className="space-y-5 mb-6">
+        {HOTEL_AMENITY_GROUPS.map((g) => (
+          <IconToggleGrid
+            key={g.title}
+            title={g.title}
+            options={g.options}
+            value={facilities}
+            onChange={setFacilities}
+            cols={5}
+          />
+        ))}
       </div>
 
       {/* Availability */}
@@ -1365,6 +1478,11 @@ function RecipeExtraFields({ data, extraOptions }, ref) {
   const [channel, setChannel] = useState(data.channel ?? "");
   const [origin, setOrigin] = useState(data.origin ?? "");
   const [yields, setYields] = useState(data.yields?.toString() ?? "");
+  const [nutrition, setNutrition] = useState<Record<string, boolean>>(
+    (data.nutrition && typeof data.nutrition === "object" && !Array.isArray(data.nutrition))
+      ? (data.nutrition as Record<string, boolean>)
+      : {}
+  );
 
   useImperativeHandle(ref, () => ({
     getData() {
@@ -1377,12 +1495,12 @@ function RecipeExtraFields({ data, extraOptions }, ref) {
         channel: channel || null,
         origin: origin || null,
         yields: yields ? parseInt(yields) : null,
+        nutrition: Object.keys(nutrition).length > 0 ? nutrition : null,
       };
     }
   }));
 
   const UNITS = getOpts(extraOptions, "unit", ["κ.γ.", "κ.σ.", "κούπα", "κούπες", "γρ.", "κιλό", "ml", "lt", "τεμ", "φέτες", "ματσάκι"]);
-  const NUTRITION = getOpts(extraOptions, "nutrition", ["Vegan", "Milk", "Sugar", "Gluten Free", "Nut Free"]);
   const LEVELS = getOpts(extraOptions, "level", ["Easy", "Medium", "Hard"]);
   const COMMON_INGREDIENTS = getOpts(extraOptions, "common_ingredient", ["αλεύρι", "ζάχαρη", "βούτυρο", "αυγά", "γάλα", "αλάτι", "πιπέρι", "ελαιόλαδο", "κρεμμύδι", "σκόρδο"]);
 
@@ -1536,25 +1654,24 @@ function RecipeExtraFields({ data, extraOptions }, ref) {
         </div>
       </div>
 
-      <div>
-        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Nutrition</label>
-        <div className="flex gap-4 flex-wrap">
-          {NUTRITION.map((n) => (
-            <label key={n} className="flex items-center gap-1.5 text-xs text-zinc-600">
-              <input type="checkbox" className="w-3.5 h-3.5 rounded border-zinc-300" />
-              {n}
-            </label>
-          ))}
-        </div>
-      </div>
+      {/* Nutrition — visual icon grid; saves to ext.nutrition */}
+      <IconToggleGrid
+        title="Nutrition"
+        options={RECIPE_NUTRITION_OPTIONS}
+        value={nutrition}
+        onChange={setNutrition}
+        cols={3}
+        iconSize={48}
+      />
+
     </div>
   );
 });
 
 /* ─────────────── THEATER / EVENTS ─────────────── */
 
-const TheaterExtraFields = forwardRef<ExtFieldsHandle, { itemId: string; category: string; data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
-function TheaterExtraFields({ itemId, category, data, regions, extraOptions }, ref) {
+const TheaterExtraFields = forwardRef<ExtFieldsHandle, { itemId: string; category: string; data: Record<string, any>; metadata?: any; regions: any[]; extraOptions: ExtraOptions }>(
+function TheaterExtraFields({ itemId, category, data, metadata, regions, extraOptions }, ref) {
   const [eventType, setEventType] = useState<"single" | "tour">("single");
   const [adsActive, setAdsActive] = useState(false);
   const initDates = Array.isArray(data.dates) ? data.dates : [
@@ -1576,6 +1693,15 @@ function TheaterExtraFields({ itemId, category, data, regions, extraOptions }, r
   const [regionId, setRegionId] = useState(data.region_id ?? "");
   const [actors, setActors] = useState<any[]>(Array.isArray(data.actors) ? data.actors : []);
 
+  // related_book — metadata jsonb populated only when the play has a book version.
+  // Renders as the Public ad in TheaterDetail. Optional cross-promo.
+  const initRelatedBook = metadata?.related_book ?? null;
+  const [rbTitle, setRbTitle] = useState((initRelatedBook?.title as string) ?? "");
+  const [rbAuthor, setRbAuthor] = useState((initRelatedBook?.author as string) ?? "");
+  const [rbPages, setRbPages] = useState(initRelatedBook?.pages ? String(initRelatedBook.pages) : "");
+  const [rbCover, setRbCover] = useState((initRelatedBook?.cover_url as string) ?? "");
+  const [rbHref, setRbHref] = useState((initRelatedBook?.href as string) ?? "");
+
   const parentRegions = regions.filter((r) => !r.parent_id);
   const childRegions = regions.filter((r) => r.parent_id);
 
@@ -1595,7 +1721,20 @@ function TheaterExtraFields({ itemId, category, data, regions, extraOptions }, r
         dates: dates.length > 0 ? dates : null,
         actors: actors.length > 0 ? actors : null,
       };
-    }
+    },
+    getMetadataPatch() {
+      // null clears the related_book key; otherwise build the cross-promo blob.
+      const hasAny = rbTitle || rbAuthor || rbPages || rbCover || rbHref;
+      return {
+        related_book: hasAny ? {
+          title: rbTitle.trim() || null,
+          author: rbAuthor.trim() || null,
+          pages: rbPages ? parseInt(rbPages) : null,
+          cover_url: rbCover.trim() || null,
+          href: rbHref.trim() || null,
+        } : null,
+      };
+    },
   }));
 
   return (
@@ -1740,6 +1879,38 @@ function TheaterExtraFields({ itemId, category, data, regions, extraOptions }, r
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Related book — cross-promo "Public" ad in TheaterDetail */}
+      <div className="mt-6 bg-white border border-zinc-200 rounded-xl p-8">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide">Related Book (Public ad)</h2>
+          <span className="text-[11px] text-zinc-400">Optional — leave empty to hide</span>
+        </div>
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Book Title</label>
+            <input type="text" value={rbTitle} onChange={(e) => setRbTitle(e.target.value)} placeholder="Ο τυχαίος θάνατος ενός αναρχικού" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Author</label>
+            <input type="text" value={rbAuthor} onChange={(e) => setRbAuthor(e.target.value)} placeholder="Ντάριο Φο" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div>
+            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Pages</label>
+            <input type="text" value={rbPages} onChange={(e) => setRbPages(e.target.value)} placeholder="144" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+          </div>
+          <div className="col-span-2">
+            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Cover URL</label>
+            <input type="text" value={rbCover} onChange={(e) => setRbCover(e.target.value)} placeholder="https://..." className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Buy Link (Public)</label>
+          <input type="text" value={rbHref} onChange={(e) => setRbHref(e.target.value)} placeholder="https://www.public.gr/..." className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
         </div>
       </div>
     </>

@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-05 (session 13 — search overhaul shipped, AI integration plan locked, recommendation + notification architectures documented)
+**Last meaningful update:** 2026-05-06 (session 14 — UI redesign + 62-icon system + reports flow + admin form polish + histogram fix)
 
 ---
 
@@ -896,4 +896,133 @@ const checkDuplicate = async (itemId: string, userId: string) => {
 - Check happens immediately after LOCKED state — before SYNCING starts
 - Never a dead end — always show 2-3 alternative actions
 - "Ακολούθησε" CTA only shows if user doesn't already follow the suggester
+
+---
+
+## 23. Icon System
+> ✅ SHIPPED (session 14)
+
+Single source of truth for all icon assets across frontend AND admin.
+
+### File structure
+```
+public/icons/
+├── brands/      # 16 — efood, box, booking, google, imdb, netflix, ...
+├── nutrition/   # 5  — vegan, no-milk, sugar-free, ingredients, steps
+├── amenities/   # 19 — hotel, breakfast, parking, pool, wifi, sea-view, ...
+├── property/    # 5  — apartment, villa, camping, house, ...
+├── awards/      # 4  — oscar-best-{actor,picture,screenplay,sound}
+├── badges/      # 4  — verified, gold, expert, platinum
+├── ui/          # 7  — star, pin, calendar, play, follow, ...
+└── admin/       # 2  — placeholder-upload, link-card
+
+lib/icons.ts             # Registry + type-safe IconName + catalogs/helpers
+components/ui/Icon.tsx   # <Icon name="..." size={24} />
+```
+
+### Registry-driven
+Add an icon: drop SVG in subfolder, register in `lib/icons.ts`, done. Both frontend and admin import from same place.
+
+```typescript
+import { Icon } from "@/components/ui/Icon";
+
+<Icon name="vegan" size={48} />
+<Icon name="amenity-wifi" size={32} />
+<Icon name="booking-wordmark" width={140} height={32} alt="Booking.com" />
+```
+
+### Helpers (in lib/icons.ts)
+- `badgeIconForLevel(level: number): IconName` — user level → badge icon
+- `platformIconForChannel(channel: string): IconName | null` — channel name → streaming brand icon
+- `oscarIconForCategory(type, category): IconName | null` — award type+category → specific oscar icon
+- `getActiveAmenities(facilities: unknown): string[]` — handles array-of-strings OR object-of-booleans
+
+### Catalogs (admin form data)
+- `HOTEL_AMENITY_GROUPS` — 3 groups (Παροχές / Θέα-Τοποθεσία / Extra) for `<IconToggleGrid>`
+- `RECIPE_NUTRITION_OPTIONS` — vegan / no-milk / sugar-free
+- `HOTEL_PROPERTY_TYPES` — visual radio cards for hotel admin form
+- `FOOD_AMENITY_OPTIONS` — restaurant amenity subset (parking/wifi/pet/...)
+
+### Reusable primitives
+- `<UserBadge>` — level badge + label (replaces 3 legacy patterns: colored text pills, inline shield SVG, BadgeChip)
+- `<OutlinedPill>` — pill button with arrow used by Booking, Public, Delivery, Theater ticket cards
+- `<IconToggleGrid>` — visual checkbox grid in admin (icon + label, coral active state)
+- `<ReviewCardFooter>` — vote up/down + αναφορά footer used by all 9 detail pages
+- `<ExtraRatingsRow>` — compact rating-only entries (users who rated but didn't suggest)
+
+---
+
+## 24. Reports / Moderation System
+> ✅ SHIPPED (session 14, migration 015 applied)
+
+Generalized content reporting + admin moderation. Same flow used for both reviews/suggestions and comments.
+
+### Schema (`scripts/sql/015-content-reports.sql`)
+```sql
+content_reports (
+  id uuid PK,
+  target_type text  CHECK ('comment' | 'suggestion'),
+  target_id uuid,
+  reporter_id uuid FK users,
+  reason text       CHECK ('inaccurate' | 'fraud' | 'offensive' | 'other'),
+  description text  NOT NULL,                  -- ≥10 chars; required for ALL reasons
+  resolved boolean DEFAULT false,
+  resolution_action text CHECK ('kept' | 'hidden'),
+  resolution_note text,                        -- admin's justification (required ≥5 chars)
+  resolved_by uuid FK users,
+  resolved_at timestamptz,
+  created_at timestamptz
+)
+
+-- UNIQUE INDEX (reporter_id, target_type, target_id, reason) — idempotency
+-- INDEX on (target_type, target_id) WHERE resolved = false — moderation queue lookup
+
+suggestions  -- gets these columns to mirror what comments already had
+  + hidden_at timestamptz
+  + hidden_reason text
+  + hidden_by uuid FK users
+```
+
+### User-facing flow (`<ReportFlowModal>`)
+3-step state machine, designed from user's `Desktop/report/*.png` screenshots:
+1. **Reason picker** — 4 radio options (Είναι ανακριβής ή λανθασμένη / απάτη / προσβλητική / κάτι άλλο). "Επόμενο" disabled until selection.
+2. **Description** — required textarea (≥10 chars). Reason-aware headline + placeholder example.
+3. **Confirmation** — "Λάβαμε την αναφορά σου" thank-you. OK button closes.
+
+Posted via `POST /api/reports`. Idempotent on (reporter, target, reason).
+
+### Admin moderation (`/admin/reports`)
+- Lists unresolved reports across both `target_type`s
+- Per-row: reason chip + target excerpt + reporter description + Dismiss/Hide buttons
+- Both actions REQUIRE an admin note (≥5 chars) — audit trail per product decision
+- `kept` — only this report resolves; sibling pending reports stay open
+- `hidden` — also writes `hidden_at/by/reason` on target row + auto-resolves all sibling pending reports for the same target with same note
+
+### Wiring
+- Frontend review carousel cards (all 9 detail pages) → `<ReportLink targetType="suggestion" targetId={review.id} />`
+- Comment thread → `<ReportLink targetType="comment" targetId={c.id} />`
+- Detail-page suggestion query filters `hidden_at IS NULL`
+- Sidebar Reports tab with red badge from `/api/admin/counters` (key `pendingReports`)
+
+### Decisions locked
+- Description always required for the user (not optional, not just for "other")
+- Admin note always required (audit trail)
+- Multiple reports per target supported (separate rows, individually resolvable; auto-batch on `hidden`)
+- Never hard-delete — full history preserved, soft-hide via `hidden_at`
+- Old `comment_reports` table from migration 003 stays for historical data; new flow writes only to `content_reports`
+- Ban deferred (no `users.role='banned'` introduced yet)
+
+---
+
+## 25. Detail Page Composition Rules (locked session 14)
+
+The 9 detail pages are visual variations of one archetype. Rules locked from user feedback:
+
+- **No chips under hero by default.** If a category truly needs 2-3 inline chips, surface them via the InfoCell table below the user reflection — NOT as a chip row. Movies/Series/Bars had chips in step 1; all stripped.
+- **3-col stat bar is conditional, not default.** Movies show it ONLY when Oscar present + `avgRating ≥ 4.5`. Default = inline `<RatingLine>` (`★ X.XX · N αξιολογήσεις`).
+- **Suggester block is unboxed.** Avatar + name + badge + reflection text + date, no border or fill. Books had a border; stripped.
+- **1-column list across all 9 categories.** New `<RowCard>` variant for portrait categories (movies/series/books) — small 88×132 poster left + title/meta/byline/rating right. Carousels stay portrait.
+- **Histogram + Top Rated** combine ratings from BOTH sources (`ratings` table + `suggestions.rating` field), deduped by user. Server-side computation, override `item.rating_count + item.avg_rating` so visible count + avg match what's shown.
+- **Extra ratings row** ("Άλλες βαθμολογίες") below review carousel — compact rows for users who rated but didn't write a suggestion. Common on migrated items.
+- **Own-suggestion behavior** — when viewing your own suggestion, the rate-this-item card is replaced with `<OwnSuggestionActions>` (Επεξεργασία + Διαγραφή). Comments stay open.
 

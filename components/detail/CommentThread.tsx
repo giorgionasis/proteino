@@ -3,19 +3,15 @@
 /**
  * CommentThread — list comments on a suggestion + report each one.
  *
- * Phase 1 minimum-viable surface:
  *  - Fetches via GET /api/comments?suggestion_id=...
  *  - Renders oldest → newest (matches API ordering)
- *  - Each comment has a [⋮] menu that opens 5 reason chips → POST /api/reports
- *  - After report, the menu closes and a "✓ Έχει αναφερθεί" pill replaces it
- *
- * The Figma rebuild can replace this with a richer thread (replies,
- * voting, time-grouping). For now this just makes user-side comments and
- * reports visible end-to-end.
+ *  - Each comment has an "αναφορά" link that opens the 3-step ReportFlowModal
+ *    (reason → description → confirmation) — same flow as review reports
+ *  - After report, an "✓ Αναφέρθηκε" pill replaces the link
  */
 
 import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils/cn";
+import { ReportLink } from "@/components/report/ReportLink";
 
 interface Comment {
   id: string;
@@ -32,14 +28,6 @@ interface Comment {
     level: number;
   } | null;
 }
-
-const REASONS: Array<{ id: "offensive" | "spam" | "misinformation" | "harassment" | "other"; label: string }> = [
-  { id: "offensive",      label: "Προσβλητικό" },
-  { id: "spam",           label: "Spam" },
-  { id: "misinformation", label: "Παραπληροφόρηση" },
-  { id: "harassment",     label: "Παρενόχληση" },
-  { id: "other",          label: "Άλλο" },
-];
 
 function relativeTime(iso: string): string {
   const d = new Date(iso);
@@ -63,7 +51,6 @@ interface Props {
 export function CommentThread({ suggestionId, appendLocal }: Props) {
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
   const [reportedIds, setReportedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -83,26 +70,6 @@ export function CommentThread({ suggestionId, appendLocal }: Props) {
     })();
     return () => { cancelled = true; };
   }, [suggestionId]);
-
-  const submitReport = async (commentId: string, reason: string) => {
-    setOpenMenuFor(null);
-    try {
-      const res = await fetch("/api/reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comment_id: commentId, reason }),
-      });
-      if (res.status === 401) {
-        window.location.href = "/login?redirect=" + encodeURIComponent(window.location.pathname);
-        return;
-      }
-      if (res.ok) {
-        setReportedIds((s) => new Set(s).add(commentId));
-      }
-    } catch {
-      /* swallow — silent failure is fine for moderation actions */
-    }
-  };
 
   if (error) {
     return <p className="text-[13px] text-zinc-500 px-1">{error}</p>;
@@ -161,35 +128,16 @@ export function CommentThread({ suggestionId, appendLocal }: Props) {
                 <p className="text-[14px] text-zinc-800 leading-[150%] break-words">{c.body}</p>
               </div>
 
-              {/* Report kebab + reason chips */}
-              <div className="relative shrink-0">
+              {/* Report link — opens the 3-step ReportFlowModal */}
+              <div className="shrink-0">
                 {reported ? (
                   <span className="text-[11px] font-medium text-[#1D9E75] whitespace-nowrap">✓ Αναφέρθηκε</span>
                 ) : (
-                  <button
-                    onClick={() => setOpenMenuFor(openMenuFor === c.id ? null : c.id)}
-                    aria-label="Επιλογές"
-                    className="w-7 h-7 flex items-center justify-center rounded-full text-zinc-400 active:bg-zinc-100"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg>
-                  </button>
-                )}
-                {openMenuFor === c.id && (
-                  <div className="absolute right-0 top-9 z-10 rounded-[8px] bg-white border border-zinc-200 shadow-lg py-1 min-w-[170px]">
-                    <p className="px-3 py-1.5 text-[10px] font-bold text-zinc-400 tracking-widest uppercase">Αναφορά</p>
-                    {REASONS.map((r) => (
-                      <button
-                        key={r.id}
-                        onClick={() => submitReport(c.id, r.id)}
-                        className={cn(
-                          "block w-full text-left px-3 py-2 text-[13px] text-zinc-700",
-                          "active:bg-zinc-100"
-                        )}
-                      >
-                        {r.label}
-                      </button>
-                    ))}
-                  </div>
+                  <ReportLink
+                    targetType="comment"
+                    targetId={c.id}
+                    onReported={() => setReportedIds((s) => new Set(s).add(c.id))}
+                  />
                 )}
               </div>
             </div>

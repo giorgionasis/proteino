@@ -56,8 +56,10 @@ const SECTION_TITLES: Record<CategorySlug, [string, string]> = {
   events:  ["Επερχόμενες Εκδηλώσεις",    "Κορυφαίες Επιλογές"],
 };
 
-function getListClass(category: CategorySlug): string {
-  if (isPortraitCategory(category)) return "grid grid-cols-2 gap-x-3 gap-y-6 px-4 pt-2";
+function getListClass(_category: CategorySlug): string {
+  // Single-column list across all categories. Portrait items render via
+  // RowCard (poster left + info right); landscape items via LandscapeCard
+  // at full width. Decision: session 14 — UI consistency.
   return "flex flex-col gap-5 px-4 pt-2";
 }
 

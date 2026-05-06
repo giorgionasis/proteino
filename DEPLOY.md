@@ -38,6 +38,10 @@ scripts/sql/008-category-filters.sql
 scripts/sql/009-item-gallery.sql
 scripts/sql/010-app-settings.sql
 scripts/sql/011-movies-tonight-reminders.sql
+scripts/sql/012-bookmarks-unique.sql
+scripts/sql/013-search-log.sql
+scripts/sql/014-items-title-normalized.sql
+scripts/sql/015-content-reports.sql
 ```
 
 Each is idempotent (uses `IF NOT EXISTS` / `ON CONFLICT DO NOTHING`); rerunning is safe.
