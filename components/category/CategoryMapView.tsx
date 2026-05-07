@@ -1,25 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import { useEffect, useMemo, useRef, useState } from "react";
+import maplibregl, { Map, LngLatBoundsLike } from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
+import Supercluster from "supercluster";
+import Link from "next/link";
 import type { CategorySlug } from "@/types";
-
-interface ClusterPin {
-  lat: number;
-  lng: number;
-  count: number;
-}
-
-interface ItemPin {
-  id: string;
-  lat: number;
-  lng: number;
-  title: string;
-  rating: number;
-  ratingCount: number;
-  placeholderColor: string;
-}
+import type { CategoryItem } from "./CategoryCard";
 
 interface ActiveFilter {
   id: string;
@@ -28,155 +15,219 @@ interface ActiveFilter {
 
 interface Props {
   category: CategorySlug;
+  items: CategoryItem[];
   onSwitchToList: () => void;
   activeFilters?: ActiveFilter[];
   onRemoveFilter?: (id: string) => void;
   onOpenFilters?: () => void;
 }
 
-const CLUSTER_ZOOM_THRESHOLD = 11;
+// Carto's free vector "voyager" style — clean, modern, well-suited for
+// venue browsing. Swap to another tile provider by changing this URL.
+const TILE_STYLE = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
 
-const CLUSTERS: Record<string, ClusterPin[]> = {
-  food: [
-    { lat: 37.98, lng: 23.73, count: 168 },
-    { lat: 40.64, lng: 22.94, count: 84 },
-    { lat: 35.34, lng: 25.14, count: 34 },
-    { lat: 40.3, lng: 22.3, count: 112 },
-    { lat: 37.5, lng: 22.4, count: 45 },
-    { lat: 39.6, lng: 20.8, count: 65 },
-    { lat: 37.4, lng: 25.4, count: 77 },
-    { lat: 38.3, lng: 21.7, count: 56 },
-    { lat: 36.4, lng: 28.2, count: 93 },
-    { lat: 36.7, lng: 25.0, count: 168 },
-  ],
-  bars: [
-    { lat: 37.98, lng: 23.73, count: 95 },
-    { lat: 40.64, lng: 22.94, count: 42 },
-    { lat: 35.34, lng: 25.14, count: 18 },
-    { lat: 37.0, lng: 25.5, count: 33 },
-    { lat: 38.3, lng: 21.7, count: 27 },
-    { lat: 39.6, lng: 20.8, count: 19 },
-    { lat: 36.4, lng: 28.2, count: 31 },
-  ],
+// Greece bounding box — used as the default view when we have no items
+// to fit to (e.g. category with zero geocoded venues).
+const GREECE_BOUNDS: LngLatBoundsLike = [
+  [19.3, 34.8], // SW
+  [29.7, 41.8], // NE
+];
+
+const CLUSTER_BUCKET_BG = (count: number): string => {
+  // Color steps mirror Mapbox's example clustering tutorial — small clusters
+  // are the lightest, big clusters get a deeper coral.
+  if (count >= 100) return "#FE6F5E";
+  if (count >= 25) return "#FF8B7A";
+  if (count >= 10) return "#FFA294";
+  return "#FFB4A7";
 };
 
-const ITEM_PINS: Record<string, ItemPin[]> = {
-  food: [
-    { id: "f1", lat: 37.975, lng: 23.735, title: "Seaside Fish", rating: 4.74, ratingCount: 123, placeholderColor: "#a5b8c4" },
-    { id: "f2", lat: 37.984, lng: 23.728, title: "Ο τζίτζικας και ο μέρμυγκας", rating: 4.74, ratingCount: 123, placeholderColor: "#c4b08a" },
-    { id: "f3", lat: 37.990, lng: 23.745, title: "Κουκουβάγια", rating: 4.74, ratingCount: 123, placeholderColor: "#b5a5c4" },
-    { id: "f4", lat: 37.968, lng: 23.720, title: "Το μαύρο πρόβατο", rating: 4.80, ratingCount: 201, placeholderColor: "#c4b5a5" },
-    { id: "f5", lat: 37.992, lng: 23.715, title: "Sense", rating: 4.55, ratingCount: 87, placeholderColor: "#b5b5a5" },
-    { id: "f6", lat: 37.976, lng: 23.750, title: "Ο Γάκιας", rating: 4.80, ratingCount: 201, placeholderColor: "#c4a5a5" },
-  ],
-  bars: [
-    { id: "b1", lat: 37.978, lng: 23.729, title: "The Clumsies", rating: 4.9, ratingCount: 214, placeholderColor: "#4a3a50" },
-    { id: "b2", lat: 37.976, lng: 23.725, title: "Baba Au Rum", rating: 4.8, ratingCount: 178, placeholderColor: "#5a4a40" },
-    { id: "b3", lat: 37.979, lng: 23.720, title: "Jazz Point", rating: 4.7, ratingCount: 92, placeholderColor: "#403050" },
-    { id: "b4", lat: 37.985, lng: 23.740, title: "Noel", rating: 4.6, ratingCount: 67, placeholderColor: "#483040" },
-    { id: "b5", lat: 37.982, lng: 23.733, title: "Galaxy Bar", rating: 4.8, ratingCount: 156, placeholderColor: "#3a4050" },
-  ],
+const CLUSTER_BUCKET_SIZE = (count: number): number => {
+  if (count >= 100) return 56;
+  if (count >= 25) return 48;
+  if (count >= 10) return 42;
+  return 36;
 };
 
-function createClusterIcon(count: number, filtered: boolean): L.DivIcon {
-  const bg = filtered ? "#52525B" : "#3F3F46";
-  return L.divIcon({
-    className: "",
-    html: `<div style="width:55px;height:55px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;cursor:pointer;"><span style="font-family:'Open Sans',sans-serif;font-weight:700;font-size:18px;color:#fff;line-height:1;">${count}</span></div>`,
-    iconSize: [55, 55],
-    iconAnchor: [27, 27],
-  });
-}
-
-function createItemIcon(item: ItemPin): L.DivIcon {
-  return L.divIcon({
-    className: "",
-    html: `
-      <div style="display:flex;flex-direction:column;align-items:center;">
-        <div style="position:relative;width:45px;height:64px;">
-          <svg width="45" height="64" viewBox="0 0 45 64" style="position:absolute;top:0;left:0;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
-            <path d="M22.5 64C22.5 64 0 38 0 22.5C0 10.07 10.07 0 22.5 0C34.93 0 45 10.07 45 22.5C45 38 22.5 64 22.5 64Z" fill="#27272A"/>
-          </svg>
-          <div style="position:absolute;left:4.5px;top:4px;width:36px;height:36px;border-radius:50%;background:${item.placeholderColor};"></div>
-        </div>
-        <div style="background:#27272A;border-radius:4px;padding:8px;margin-top:-6px;white-space:nowrap;max-width:160px;">
-          <div style="font-family:'Open Sans',sans-serif;font-weight:700;font-size:14px;color:#fff;overflow:hidden;text-overflow:ellipsis;letter-spacing:0.01em;">${item.title}</div>
-          <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="#fff"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            <span style="font-family:'Open Sans',sans-serif;font-weight:600;font-size:14px;color:#fff;">${item.rating.toFixed(2)}</span>
-            <span style="font-family:'Open Sans',sans-serif;font-weight:500;font-size:14px;color:#fff;">(${item.ratingCount})</span>
-          </div>
-        </div>
-      </div>
-    `,
-    iconSize: [160, 130],
-    iconAnchor: [80, 64],
-  });
+interface ClusterFeature {
+  type: "Feature";
+  properties: {
+    cluster?: boolean;
+    cluster_id?: number;
+    point_count?: number;
+    item?: CategoryItem;
+  };
+  geometry: { type: "Point"; coordinates: [number, number] };
 }
 
 export function CategoryMapView({
   category,
+  items,
   onSwitchToList,
   activeFilters = [],
   onRemoveFilter,
   onOpenFilters,
 }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstance = useRef<L.Map | null>(null);
-  const markersLayer = useRef<L.LayerGroup | null>(null);
+  const mapInstance = useRef<Map | null>(null);
+  const markersRef = useRef<maplibregl.Marker[]>([]);
   const [zoom, setZoom] = useState(6);
-  const isFiltered = activeFilters.length > 0;
+  const [bounds, setBounds] = useState<{ west: number; south: number; east: number; north: number } | null>(null);
+  const [selected, setSelected] = useState<CategoryItem | null>(null);
 
+  // Filter items down to those with valid coordinates — only pinnable ones go on the map.
+  const geoItems = useMemo(
+    () => items.filter((i) => typeof i.lat === "number" && typeof i.lng === "number"),
+    [items],
+  );
+
+  // Build supercluster index. Recomputed when items change.
+  const cluster = useMemo(() => {
+    const idx = new Supercluster<{ item: CategoryItem }, { item: CategoryItem }>({
+      radius: 60,
+      maxZoom: 16,
+    });
+    const points = geoItems.map((i) => ({
+      type: "Feature" as const,
+      properties: { item: i },
+      geometry: { type: "Point" as const, coordinates: [i.lng!, i.lat!] as [number, number] },
+    }));
+    idx.load(points);
+    return idx;
+  }, [geoItems]);
+
+  // Initialize the map once.
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
 
-    const map = L.map(mapRef.current, {
-      center: [38.5, 24.0],
+    const map = new maplibregl.Map({
+      container: mapRef.current,
+      style: TILE_STYLE,
+      center: [24.5, 38.5],
       zoom: 6,
-      zoomControl: false,
       attributionControl: false,
     });
 
-    L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-      { maxZoom: 19 },
-    ).addTo(map);
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
-    markersLayer.current = L.layerGroup().addTo(map);
+    map.on("load", () => {
+      const updateState = () => {
+        const b = map.getBounds();
+        setZoom(map.getZoom());
+        setBounds({
+          west: b.getWest(),
+          south: b.getSouth(),
+          east: b.getEast(),
+          north: b.getNorth(),
+        });
+      };
+      updateState();
+      map.on("moveend", updateState);
+      map.on("zoomend", updateState);
+    });
+
     mapInstance.current = map;
-
-    map.on("zoomend", () => setZoom(map.getZoom()));
 
     return () => {
       map.remove();
       mapInstance.current = null;
-      markersLayer.current = null;
     };
   }, []);
 
+  // Auto-fit to items when the dataset changes (filters applied/cleared).
   useEffect(() => {
-    const layer = markersLayer.current;
-    if (!layer) return;
-    layer.clearLayers();
-
-    if (zoom >= CLUSTER_ZOOM_THRESHOLD) {
-      const items = ITEM_PINS[category] ?? [];
-      items.forEach((item) => {
-        L.marker([item.lat, item.lng], { icon: createItemIcon(item) }).addTo(layer);
-      });
-    } else {
-      const clusters = CLUSTERS[category] ?? [];
-      clusters.forEach((c) => {
-        const marker = L.marker([c.lat, c.lng], {
-          icon: createClusterIcon(c.count, isFiltered),
-        });
-        marker.on("click", () => {
-          mapInstance.current?.setView([c.lat, c.lng], 12, { animate: true });
-        });
-        marker.addTo(layer);
-      });
+    const map = mapInstance.current;
+    if (!map) return;
+    if (geoItems.length === 0) {
+      map.fitBounds(GREECE_BOUNDS, { padding: 40, animate: true, duration: 600 });
+      return;
     }
-  }, [zoom, category, isFiltered]);
+    if (geoItems.length === 1) {
+      const i = geoItems[0];
+      map.flyTo({ center: [i.lng!, i.lat!], zoom: 14, duration: 600 });
+      return;
+    }
+    let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity;
+    for (const i of geoItems) {
+      if (i.lng! < west)  west  = i.lng!;
+      if (i.lng! > east)  east  = i.lng!;
+      if (i.lat! < south) south = i.lat!;
+      if (i.lat! > north) north = i.lat!;
+    }
+    map.fitBounds(
+      [[west, south], [east, north]],
+      { padding: { top: 80, bottom: 200, left: 40, right: 40 }, animate: true, duration: 600, maxZoom: 13 },
+    );
+  }, [geoItems]);
+
+  // Render markers (clusters + individual pins) every time zoom/bounds change.
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map || !bounds) return;
+
+    // Clear previous markers
+    for (const m of markersRef.current) m.remove();
+    markersRef.current = [];
+
+    const clusters = cluster.getClusters(
+      [bounds.west, bounds.south, bounds.east, bounds.north],
+      Math.floor(zoom),
+    ) as ClusterFeature[];
+
+    for (const c of clusters) {
+      const [lng, lat] = c.geometry.coordinates;
+
+      if (c.properties.cluster) {
+        const count = c.properties.point_count!;
+        const size = CLUSTER_BUCKET_SIZE(count);
+        const bg = CLUSTER_BUCKET_BG(count);
+        const el = document.createElement("div");
+        el.style.cssText = `
+          width: ${size}px; height: ${size}px; border-radius: 50%;
+          background: ${bg};
+          display: flex; align-items: center; justify-content: center;
+          color: white; font-weight: 700; font-size: ${Math.min(18, size / 3)}px;
+          font-family: 'Open Sans', sans-serif;
+          cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+          border: 3px solid white;
+        `;
+        el.textContent = count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count);
+        el.addEventListener("click", () => {
+          const expansionZoom = Math.min(cluster.getClusterExpansionZoom(c.properties.cluster_id!), 17);
+          map.flyTo({ center: [lng, lat], zoom: expansionZoom, duration: 500 });
+        });
+        const marker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
+        markersRef.current.push(marker);
+      } else {
+        const item = c.properties.item!;
+        const el = document.createElement("div");
+        el.style.cssText = `
+          display: flex; flex-direction: column; align-items: center;
+          cursor: pointer; pointer-events: auto;
+        `;
+        el.innerHTML = `
+          <div style="position:relative;width:36px;height:50px;">
+            <svg width="36" height="50" viewBox="0 0 45 64" style="position:absolute;top:0;left:0;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
+              <path d="M22.5 64C22.5 64 0 38 0 22.5C0 10.07 10.07 0 22.5 0C34.93 0 45 10.07 45 22.5C45 38 22.5 64 22.5 64Z" fill="#27272A"/>
+              <circle cx="22.5" cy="22.5" r="9" fill="white"/>
+            </svg>
+          </div>
+          <div style="background:#27272A;border-radius:4px;padding:4px 8px;margin-top:-4px;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;">
+            <span style="font-family:'Open Sans',sans-serif;font-weight:700;font-size:12px;color:#fff;">${escapeHtml(item.title)}</span>
+          </div>
+        `;
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setSelected(item);
+        });
+        const marker = new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([lng, lat]).addTo(map);
+        markersRef.current.push(marker);
+      }
+    }
+  }, [cluster, bounds, zoom]);
+
+  const isFiltered = activeFilters.length > 0;
 
   return (
     <div
@@ -200,57 +251,124 @@ export function CategoryMapView({
         </span>
       </button>
 
-      {/* Floating bottom bar: Φίλτρα + active chips */}
-      <div
-        className="absolute left-0 right-0 z-[1000] flex items-center justify-center gap-3 px-5"
-        style={{ bottom: "calc(64px + env(safe-area-inset-bottom, 0px) + 12px)" }}
-      >
-        {/* Filter button */}
-        <button
-          onClick={onOpenFilters}
-          className="shrink-0 flex items-center gap-2 rounded-full active:opacity-80 transition-opacity select-none"
-          style={{
-            background: "#18181B",
-            boxShadow: "0px 0px 20px -3px rgba(0,0,0,0.49)",
-            padding: "14px 16px",
-            height: 44,
-          }}
-        >
-          <FilterSliderIcon />
-          <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 16, color: "#FAFAFA", lineHeight: "20px", letterSpacing: "0.01em" }}>
-            Φίλτρα
-          </span>
-          {activeFilters.length > 0 && (
-            <span
-              className="flex items-center justify-center rounded-full"
-              style={{ width: 28, height: 28, background: "#FFF2F1", fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 16, color: "#000", lineHeight: "20px" }}
-            >
-              {activeFilters.length}
-            </span>
-          )}
-        </button>
+      {/* Empty state badge */}
+      {geoItems.length === 0 && items.length > 0 && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1000] bg-white/95 backdrop-blur px-4 py-2 rounded-full text-sm font-medium text-zinc-700 shadow-sm">
+          Δεν υπάρχουν γεωκωδικοποιημένα στοιχεία για τα φίλτρα αυτά
+        </div>
+      )}
 
-        {/* Active filter chips */}
-        {activeFilters.length > 0 && (
-          <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
-            {activeFilters.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => onRemoveFilter?.(f.id)}
-                className="shrink-0 flex items-center gap-2 rounded-full active:opacity-80 transition-opacity select-none"
-                style={{ background: "#E4E4E7", padding: "4px 16px", height: 44 }}
+      {/* Floating bottom bar: Φίλτρα + active chips */}
+      {!selected && (
+        <div
+          className="absolute left-0 right-0 z-[1000] flex items-center justify-center gap-3 px-5"
+          style={{ bottom: "calc(64px + env(safe-area-inset-bottom, 0px) + 12px)" }}
+        >
+          <button
+            onClick={onOpenFilters}
+            className="shrink-0 flex items-center gap-2 rounded-full active:opacity-80 transition-opacity select-none"
+            style={{
+              background: "#18181B",
+              boxShadow: "0px 0px 20px -3px rgba(0,0,0,0.49)",
+              padding: "14px 16px",
+              height: 44,
+            }}
+          >
+            <FilterSliderIcon />
+            <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 16, color: "#FAFAFA", lineHeight: "20px", letterSpacing: "0.01em" }}>
+              Φίλτρα
+            </span>
+            {isFiltered && (
+              <span
+                className="flex items-center justify-center rounded-full"
+                style={{ width: 28, height: 28, background: "#FFF2F1", fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 16, color: "#000", lineHeight: "20px" }}
               >
-                <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 14, color: "#3F3F46", lineHeight: "20px" }}>
-                  {f.label}
-                </span>
-                <CloseChipIcon />
-              </button>
-            ))}
+                {activeFilters.length}
+              </span>
+            )}
+          </button>
+
+          {activeFilters.length > 0 && (
+            <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
+              {activeFilters.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => onRemoveFilter?.(f.id)}
+                  className="shrink-0 flex items-center gap-2 rounded-full active:opacity-80 transition-opacity select-none"
+                  style={{ background: "#E4E4E7", padding: "4px 16px", height: 44 }}
+                >
+                  <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 14, color: "#3F3F46", lineHeight: "20px" }}>
+                    {f.label}
+                  </span>
+                  <CloseChipIcon />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bottom card on pin tap */}
+      {selected && (
+        <BottomCard
+          item={selected}
+          category={category}
+          onClose={() => setSelected(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function BottomCard({ item, category, onClose }: { item: CategoryItem; category: CategorySlug; onClose: () => void }) {
+  return (
+    <div
+      className="absolute left-0 right-0 z-[1100] bg-white rounded-t-2xl shadow-xl"
+      style={{ bottom: "calc(64px + env(safe-area-inset-bottom, 0px))" }}
+    >
+      <button
+        onClick={onClose}
+        aria-label="Κλείσιμο"
+        className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#27272a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 6 6 18M6 6l12 12" />
+        </svg>
+      </button>
+      <div className="flex gap-3 p-4 pr-12">
+        <div className="shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-zinc-200">
+          {item.cover_url ? (
+            <img src={item.cover_url} alt={item.title} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full" style={{ background: item.placeholder_color ?? "#a1a1aa" }} />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[15px] font-bold text-zinc-900 truncate">{item.title}</div>
+          {item.area && <div className="text-[13px] text-zinc-500 truncate mt-0.5">{item.area}</div>}
+          <div className="flex items-center gap-1 mt-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#FE6F5E"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            <span className="text-[13px] font-semibold text-zinc-900">{item.avg_rating.toFixed(2)}</span>
+            <span className="text-[13px] text-zinc-500">({item.rating_count})</span>
           </div>
-        )}
+          <Link
+            href={`/${category}/${item.slug ?? item.id}`}
+            className="inline-flex items-center mt-2 text-[13px] font-semibold text-coral-600 active:opacity-70"
+            style={{ color: "#FE6F5E" }}
+          >
+            Δες περισσότερα
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FE6F5E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="ml-0.5">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </Link>
+        </div>
       </div>
     </div>
   );
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[m]!);
 }
 
 function ListToggleIcon() {

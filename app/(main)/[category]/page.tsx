@@ -35,12 +35,12 @@ const EXT_SELECT: Record<CategorySlug, string> = {
   books: "item_books(writer, publication, publication_year, language, pages)",
   movies: "item_movies(director, release_date, channel, duration_min, actors)",
   series: "item_series(director, channel, seasons, actors)",
-  food: "item_food(cuisine, type, address, region_id, delivery_links)",
+  food: "item_food(cuisine, type, address, region_id, lat, lng, delivery_links)",
   recipes: "item_recipes(level, channel)",
-  bars: "item_bars(type, address, region_id)",
-  hotels: "item_hotels(type, address, region_id, price_range)",
-  theater: "item_theater(type, address, region_id, name_place, director, writer, actors)",
-  events: "item_events(event_type, address, region_id, name_place, performers)",
+  bars: "item_bars(type, address, region_id, lat, lng)",
+  hotels: "item_hotels(type, address, region_id, lat, lng, price_range)",
+  theater: "item_theater(type, address, region_id, lat, lng, name_place, director, writer, actors)",
+  events: "item_events(event_type, address, region_id, lat, lng, name_place, performers)",
 };
 
 const GENERIC_TAGS: Record<string, string[]> = {
@@ -105,6 +105,12 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
     suggestedBy: buildSuggestedBy(item.suggestions),
     tags,
   };
+
+  // Surface lat/lng for venue categories — used by map view.
+  if (typeof ext?.lat === "number" && typeof ext?.lng === "number") {
+    result.lat = ext.lat;
+    result.lng = ext.lng;
+  }
 
   switch (category) {
     case "food":

@@ -301,6 +301,7 @@ export function CategoryPageShell({
       <>
         <CategoryMapView
           category={category}
+          items={filteredItems}
           onSwitchToList={() => setShowMap(false)}
           activeFilters={activeFiltersForMap}
           onRemoveFilter={handleRemoveFilter}
