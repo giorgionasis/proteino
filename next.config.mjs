@@ -15,6 +15,8 @@ const nextConfig = {
       { protocol: "https", hostname: "*.facebook.com" },
       // TMDB poster/backdrop images (saved during AI submission match)
       { protocol: "https", hostname: "image.tmdb.org" },
+      // Unsplash (used in showcase sample data)
+      { protocol: "https", hostname: "images.unsplash.com" },
     ],
   },
 };

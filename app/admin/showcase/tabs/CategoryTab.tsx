@@ -10,6 +10,9 @@ import { FilterRow } from "@/components/category/FilterRow";
 import { FilterBottomSheet } from "@/components/category/FilterBottomSheet";
 import { CategoryHeroStats } from "@/components/category/CategoryHeroStats";
 import { CategoryTopUsers } from "@/components/category/CategoryTopUsers";
+import { TwoStepListPicker, type TwoStepNode } from "@/components/filters/TwoStepListPicker";
+import { GroupedCheckboxList, type GroupedListGroup } from "@/components/filters/GroupedCheckboxList";
+import { Icon } from "@/components/ui/Icon";
 
 const SAMPLE_MOVIE: CategoryItem = {
   id: "m1",
@@ -72,9 +75,255 @@ export function CategoryTab() {
       <SubCategoryTabsShowcase />
       <FilterRowShowcase />
       <FilterBottomSheetShowcase />
+      <RegionPickerShowcase />
+      <AwardsPickerShowcase />
       <CategoryHeroStatsShowcase />
       <CategoryTopUsersShowcase />
     </>
+  );
+}
+
+const REGION_DATA: TwoStepNode[] = [
+  {
+    id: "argosaronikos", label: "Αργοσαρωνικός", count: 29,
+    children: [
+      { id: "aigina", label: "Αίγινα", count: 12 },
+      { id: "spetses", label: "Σπέτσες", count: 9 },
+      { id: "poros", label: "Πόρος", count: 5 },
+      { id: "ydra", label: "Ύδρα", count: 3 },
+    ],
+  },
+  {
+    id: "attiki", label: "Αττική", count: 382,
+    children: [
+      { id: "ampelokipoi", label: "Αμπελόκηποι", count: 56 },
+      { id: "ano-patisia", label: "Άνω Πατήσια", count: 45 },
+      { id: "voula", label: "Βούλα", count: 34 },
+      { id: "vyronas", label: "Βύρωνας", count: 23 },
+      { id: "galatsi", label: "Γαλάτσι", count: 16 },
+      { id: "gerakas", label: "Γέρακας", count: 8 },
+      { id: "glyka-nera", label: "Γλυκά Νερά", count: 6 },
+      { id: "glyfada", label: "Γλυφάδα", count: 34 },
+      { id: "dafni", label: "Δάφνη", count: 35 },
+      { id: "ellinikos", label: "Ελληνικό", count: 35 },
+      { id: "exarcheia", label: "Εξάρχεια", count: 28 },
+      { id: "kifisia", label: "Κηφισιά", count: 41 },
+      { id: "kolonaki", label: "Κολωνάκι", count: 22 },
+    ],
+  },
+  {
+    id: "boreio-aigaio", label: "Βόρειο Αιγαίο", count: 76,
+    children: [
+      { id: "lesvos", label: "Λέσβος", count: 32 },
+      { id: "chios", label: "Χίος", count: 24 },
+      { id: "samos", label: "Σάμος", count: 20 },
+    ],
+  },
+  {
+    id: "dodekanisa", label: "Δωδεκάνησα", count: 45,
+    children: [
+      { id: "rodos", label: "Ρόδος", count: 28 },
+      { id: "kos", label: "Κως", count: 12 },
+      { id: "patmos", label: "Πάτμος", count: 5 },
+    ],
+  },
+  {
+    id: "evvoia", label: "Εύβοια", count: 98,
+    children: [
+      { id: "chalkida", label: "Χαλκίδα", count: 42 },
+      { id: "eretria", label: "Ερέτρια", count: 18 },
+      { id: "karystos", label: "Κάρυστος", count: 38 },
+    ],
+  },
+  {
+    id: "thessalia", label: "Θεσσαλία", count: 78,
+    children: [
+      { id: "volos", label: "Βόλος", count: 38 },
+      { id: "larisa", label: "Λάρισα", count: 22 },
+      { id: "trikala", label: "Τρίκαλα", count: 18 },
+    ],
+  },
+  {
+    id: "ionio", label: "Ιόνιο", count: 118,
+    children: [
+      { id: "kerkyra", label: "Κέρκυρα", count: 52 },
+      { id: "kefalonia", label: "Κεφαλονιά", count: 36 },
+      { id: "zakynthos", label: "Ζάκυνθος", count: 30 },
+    ],
+  },
+  {
+    id: "kentriki-makedonia", label: "Κεντρική Μακεδονία", count: 68,
+    children: [
+      { id: "thessaloniki", label: "Θεσσαλονίκη", count: 48 },
+      { id: "chalkidiki", label: "Χαλκιδική", count: 20 },
+    ],
+  },
+  {
+    id: "kriti", label: "Κρήτη", count: 238,
+    children: [
+      { id: "iraklio", label: "Ηράκλειο", count: 88 },
+      { id: "chania", label: "Χανιά", count: 76 },
+      { id: "rethymno", label: "Ρέθυμνο", count: 42 },
+      { id: "lasithi", label: "Λασίθι", count: 32 },
+    ],
+  },
+  {
+    id: "kyklades", label: "Κυκλάδες", count: 56,
+    children: [
+      { id: "santorini", label: "Σαντορίνη", count: 22 },
+      { id: "mykonos", label: "Μύκονος", count: 18 },
+      { id: "naxos", label: "Νάξος", count: 16 },
+    ],
+  },
+  {
+    id: "peloponnisos", label: "Πελοπόννησος", count: 34,
+    children: [
+      { id: "nafplio", label: "Ναύπλιο", count: 14 },
+      { id: "kalamata", label: "Καλαμάτα", count: 12 },
+      { id: "patra", label: "Πάτρα", count: 8 },
+    ],
+  },
+];
+
+const TOTAL_REGION_COUNT = REGION_DATA.reduce((sum, r) => sum + r.count, 0);
+
+function RegionPickerShowcase() {
+  const [selected, setSelected] = useState<Set<string>>(new Set(["galatsi", "voula"]));
+
+  const liveCount = (() => {
+    if (selected.size === 0) return TOTAL_REGION_COUNT;
+    let n = 0;
+    for (const p of REGION_DATA) {
+      for (const c of p.children) if (selected.has(c.id)) n += c.count;
+    }
+    return n;
+  })();
+
+  return (
+    <ShowcaseSection
+      name="TwoStepListPicker (Region)"
+      filePath="components/filters/TwoStepListPicker.tsx"
+      description="Two-step parent → children filter picker. Step 1 lists regions with chevrons; selecting any drills into Step 2 with checkboxes for sub-areas. Selections persist across parents (e.g. select sub-areas in Αττική, go back, drill into Κρήτη, select more). 'Όλη η Αττική' auto-selects all sub-areas of Attica. Step 1 shows 'X επιλεγμένα' badge when a parent has any children selected. Slides horizontally on navigation."
+      contextLinks={[{ label: "Live (food)", href: "/food" }]}
+    >
+      <Variant label="Empty selection" note="Default state — no sub-areas chosen, count shows total">
+        <div className="w-[390px] h-[700px] bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm">
+          <TwoStepListPicker
+            title="Περιοχή"
+            parents={REGION_DATA}
+            selected={new Set()}
+            onSelectionChange={() => {}}
+            resultCount={TOTAL_REGION_COUNT}
+            onClearAll={() => {}}
+          />
+        </div>
+      </Variant>
+
+      <Variant label="With selections (interactive)" note="Try drilling into Αττική — pre-selected: Γαλάτσι + Βούλα">
+        <div className="w-[390px] h-[700px] bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm">
+          <TwoStepListPicker
+            title="Περιοχή"
+            parents={REGION_DATA}
+            selected={selected}
+            onSelectionChange={setSelected}
+            resultCount={liveCount}
+            onClearAll={() => setSelected(new Set())}
+          />
+        </div>
+      </Variant>
+    </ShowcaseSection>
+  );
+}
+
+const AWARDS_DATA: GroupedListGroup[] = [
+  {
+    id: "oscar",
+    label: "ΟΣΚΑΡ",
+    icon: <Icon name="oscar-best-picture" size={24} />,
+    items: [
+      { id: "oscar-best-picture", label: "Καλύτερης Ταινίας", count: 17 },
+      { id: "oscar-best-actor", label: "Α' Ανδρικού", count: 3 },
+      { id: "oscar-best-actress", label: "Α' Γυναικείου", count: 6 },
+      { id: "oscar-best-director", label: "Καλύτερης Σκηνοθεσίας", count: 5 },
+      { id: "oscar-best-screenplay", label: "Καλύτερου Σεναρίου", count: 2 },
+      { id: "oscar-best-supporting-actor", label: "Β' Ανδρικού", count: 6 },
+      { id: "oscar-best-supporting-actress", label: "Β' Γυναικείου", count: 2 },
+    ],
+  },
+  {
+    id: "bafta",
+    label: "BAFTA",
+    icon: <span className="text-[20px]">🎭</span>,
+    items: [
+      { id: "bafta-best-film", label: "Καλύτερης Ταινίας", count: 17 },
+      { id: "bafta-best-actor", label: "Α' Ανδρικού", count: 4 },
+      { id: "bafta-best-director", label: "Καλύτερης Σκηνοθεσίας", count: 3 },
+    ],
+  },
+  {
+    id: "cannes",
+    label: "CANNES",
+    icon: <span className="text-[20px]">🌴</span>,
+    items: [
+      { id: "cannes-palme-dor", label: "Χρυσός Φοίνικας", count: 3 },
+      { id: "cannes-best-director", label: "Καλύτερης Σκηνοθεσίας", count: 1 },
+    ],
+  },
+  {
+    id: "venice",
+    label: "VENICE",
+    icon: <span className="text-[20px]">🦁</span>,
+    items: [
+      { id: "venice-golden-lion", label: "Χρυσό Λιοντάρι", count: 2 },
+    ],
+  },
+  {
+    id: "golden-globes",
+    label: "GOLDEN GLOBES",
+    icon: <span className="text-[20px]">🌐</span>,
+    items: [
+      { id: "gg-best-drama", label: "Καλύτερης Δραματικής Ταινίας", count: 5 },
+      { id: "gg-best-comedy", label: "Καλύτερης Κωμωδίας", count: 2 },
+    ],
+  },
+];
+
+function AwardsPickerShowcase() {
+  const [selected, setSelected] = useState<Set<string>>(new Set(["oscar-best-picture", "cannes-palme-dor"]));
+
+  return (
+    <ShowcaseSection
+      name="GroupedCheckboxList (Awards)"
+      filePath="components/filters/GroupedCheckboxList.tsx"
+      description="Single-screen filter picker with grouped checkbox lists. Each group has its own card with icon + heading + checkbox rows. Used for awards (Oscar / BAFTA / Cannes / Venice / Golden Globes) where the option count is small enough that a second drill-down would be overkill. Items have globally-unique IDs so the flat selection Set covers all groups."
+      contextLinks={[{ label: "Live (movies)", href: "/movies" }]}
+    >
+      <Variant label="Empty selection">
+        <div className="w-[390px] h-[700px] bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm">
+          <GroupedCheckboxList
+            title="Βραβεία"
+            groups={AWARDS_DATA}
+            selected={new Set()}
+            onSelectionChange={() => {}}
+            resultCount={754}
+            onClearAll={() => {}}
+          />
+        </div>
+      </Variant>
+
+      <Variant label="With selections (interactive)" note="Pre-selected: Best Picture + Palme d'Or">
+        <div className="w-[390px] h-[700px] bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm">
+          <GroupedCheckboxList
+            title="Βραβεία"
+            groups={AWARDS_DATA}
+            selected={selected}
+            onSelectionChange={setSelected}
+            resultCount={754}
+            onClearAll={() => setSelected(new Set())}
+          />
+        </div>
+      </Variant>
+    </ShowcaseSection>
   );
 }
 

@@ -9,6 +9,8 @@ export interface CategoryItem {
   title:             string;
   subcategory:       string;
   area?:             string;
+  /** Sub-region ID (uuid) from regions table — used by region-picker filter. */
+  regionId?:         string;
   year?:             number;
   avg_rating:        number;
   rating_count:      number;

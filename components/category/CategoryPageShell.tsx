@@ -125,7 +125,17 @@ function matchesFilter(
       return ciIncludes(item.actors, v);
 
     case "region":
+      if (arr.length > 0) return item.regionId ? arr.includes(item.regionId) : false;
       return ciEq(item.area, v);
+
+    case "awards":
+      // Awards picker selections live as string[] of award category IDs
+      // (e.g. "oscar-best-picture"). Storage on item_movies.awards is not
+      // standardized yet, so this filter is a no-op for now — selections
+      // persist in the picker but don't filter the list. Wire when awards
+      // jsonb shape is normalized.
+      if (arr.length > 0) return true;
+      return true;
 
     case "platform":
       if (arr.length > 0) return arr.some((p) => ciIncludes(item.channel, p));
@@ -186,6 +196,12 @@ interface CategoryPageShellProps {
   filterData: FilterData;
   /** DB-driven filter config; falls back to constant when undefined. */
   filterConfig?: CategoryFilters;
+  /** Region hierarchy with item counts (food/bars/hotels/events). */
+  regionTree?: import("@/components/filters/TwoStepListPicker").TwoStepNode[];
+  /** Map of sub-region id → parent region id, used by region filter app. */
+  regionChildToParent?: Record<string, string>;
+  /** Awards taxonomy with counts (movies/series). */
+  awardsGroups?: import("@/components/filters/GroupedCheckboxList").GroupedListGroup[];
 }
 
 export function CategoryPageShell({
@@ -196,6 +212,9 @@ export function CategoryPageShell({
   contributors,
   filterData,
   filterConfig: filterConfigProp,
+  regionTree,
+  regionChildToParent,
+  awardsGroups,
 }: CategoryPageShellProps) {
   const router = useRouter();
   const [activeTab, setActiveTab]       = useState("Όλα");
@@ -295,6 +314,8 @@ export function CategoryPageShell({
           onChange={setFilterValues}
           resultCount={filteredCount}
           dataOptions={filterData.options}
+          regionTree={regionTree}
+          awardsGroups={awardsGroups}
           onComputeCount={computeCount}
         />
       </>
@@ -415,6 +436,8 @@ export function CategoryPageShell({
         onChange={setFilterValues}
         resultCount={filteredCount}
         dataOptions={filterData.options}
+        regionTree={regionTree}
+        awardsGroups={awardsGroups}
         onComputeCount={computeCount}
       />
     </div>

@@ -8,7 +8,9 @@ export type FilterWidgetType =
   | "icon-cards"
   | "checkboxes"
   | "price-range"
-  | "origin-cards";
+  | "origin-cards"
+  | "region-picker"   // Two-step parent → child picker (TwoStepListPicker). Multi-select.
+  | "awards-picker";  // Single-screen grouped checkbox list (GroupedCheckboxList). Multi-select.
 
 export interface FilterOption {
   id: string;
@@ -66,7 +68,7 @@ export const CATEGORY_FILTERS: Record<CategorySlug, CategoryFilters> = {
           { id: "youtube", label: "YouTube" },
         ],
       },
-      { id: "awards", label: "Βραβεία", widget: "dropdown", placeholder: "Διάλεξε Βραβεία" },
+      { id: "awards", label: "Βραβεία", widget: "awards-picker" },
     ],
     sortOptions: DEFAULT_SORT,
   },
@@ -96,7 +98,7 @@ export const CATEGORY_FILTERS: Record<CategorySlug, CategoryFilters> = {
         ],
       },
       { id: "actor", label: "Πρωταγωνιστής", widget: "search-dropdown", placeholder: "Διάλεξε πρωταγωνιστή πχ Πατσίνο" },
-      { id: "awards", label: "Βραβεία", widget: "dropdown", placeholder: "Διάλεξε Βραβεία" },
+      { id: "awards", label: "Βραβεία", widget: "awards-picker" },
     ],
     sortOptions: DEFAULT_SORT,
   },
@@ -146,7 +148,7 @@ export const CATEGORY_FILTERS: Record<CategorySlug, CategoryFilters> = {
     ],
     hasNearby: true,
     bottomSheet: [
-      { id: "region", label: "Περιοχή", widget: "dropdown" },
+      { id: "region", label: "Περιοχή", widget: "region-picker" },
       { id: "type", label: "Είδος", widget: "dropdown" },
       { id: "cuisine", label: "Κουζίνα", widget: "dropdown" },
       {
@@ -166,7 +168,7 @@ export const CATEGORY_FILTERS: Record<CategorySlug, CategoryFilters> = {
     ],
     hasNearby: true,
     bottomSheet: [
-      { id: "region", label: "Περιοχή", widget: "dropdown" },
+      { id: "region", label: "Περιοχή", widget: "region-picker" },
     ],
     sortOptions: DEFAULT_SORT,
   },
@@ -177,7 +179,7 @@ export const CATEGORY_FILTERS: Record<CategorySlug, CategoryFilters> = {
     ],
     hasNearby: false,
     bottomSheet: [
-      { id: "region", label: "Περιοχή", widget: "dropdown" },
+      { id: "region", label: "Περιοχή", widget: "region-picker" },
       {
         id: "property_type", label: "Είδος", widget: "icon-cards",
         options: [
@@ -215,7 +217,7 @@ export const CATEGORY_FILTERS: Record<CategorySlug, CategoryFilters> = {
     hasNearby: false,
     bottomSheet: [
       { id: "event_type", label: "Κατηγορία", widget: "dropdown" },
-      { id: "region", label: "Περιοχή", widget: "dropdown" },
+      { id: "region", label: "Περιοχή", widget: "region-picker" },
       {
         id: "when", label: "Πότε", widget: "segmented",
         options: [

@@ -9,6 +9,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchCategoryFilterConfig } from "@/lib/category-filters";
 import { CATEGORY_FILTERS } from "@/constants/filters";
 import { safeImageUrl } from "@/lib/image-url";
+import { fetchRegionTreeForCategory } from "@/lib/regions";
+import { getAwardsTaxonomy } from "@/lib/awards";
 
 interface Props {
   params: { category: string };
@@ -33,12 +35,12 @@ const EXT_SELECT: Record<CategorySlug, string> = {
   books: "item_books(writer, publication, publication_year, language, pages)",
   movies: "item_movies(director, release_date, channel, duration_min, actors)",
   series: "item_series(director, channel, seasons, actors)",
-  food: "item_food(cuisine, type, address, delivery_links)",
+  food: "item_food(cuisine, type, address, region_id, delivery_links)",
   recipes: "item_recipes(level, channel)",
-  bars: "item_bars(type, address)",
-  hotels: "item_hotels(type, address, price_range)",
-  theater: "item_theater(type, address, name_place, director, writer, actors)",
-  events: "item_events(event_type, address, name_place, performers)",
+  bars: "item_bars(type, address, region_id)",
+  hotels: "item_hotels(type, address, region_id, price_range)",
+  theater: "item_theater(type, address, region_id, name_place, director, writer, actors)",
+  events: "item_events(event_type, address, region_id, name_place, performers)",
 };
 
 const GENERIC_TAGS: Record<string, string[]> = {
@@ -108,6 +110,7 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
     case "food":
       result.subcategory = ext?.cuisine || ext?.type || tags[0] || "Εστιατόριο";
       result.area = extractArea(ext?.address);
+      result.regionId = ext?.region_id || undefined;
       result.foodType = ext?.type || undefined;
       if (ext?.delivery_links && typeof ext.delivery_links === "object") {
         result.delivery = Object.keys(ext.delivery_links).filter((k) => ext.delivery_links[k]);
@@ -116,21 +119,25 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
     case "bars":
       result.subcategory = ext?.type || tags[0] || "Bar";
       result.area = extractArea(ext?.address);
+      result.regionId = ext?.region_id || undefined;
       break;
     case "hotels":
       result.subcategory = ext?.type || tags[0] || "Ξενοδοχείο";
       result.hotelType = ext?.type || undefined;
       result.area = extractArea(ext?.address);
+      result.regionId = ext?.region_id || undefined;
       break;
     case "theater":
       result.subcategory = ext?.type || tags[0] || "Θέατρο";
       result.area = extractArea(ext?.address);
+      result.regionId = ext?.region_id || undefined;
       result.director = ext?.director || undefined;
       result.actors = stringifyActors(ext?.actors);
       break;
     case "events":
       result.subcategory = ext?.event_type || tags[0] || "Εκδήλωση";
       result.area = extractArea(ext?.address);
+      result.regionId = ext?.region_id || undefined;
       result.actors = stringifyActors(ext?.performers);
       break;
     case "movies":
@@ -245,6 +252,14 @@ export default async function CategoryPage({ params }: Props) {
   const dbFilterConfig = await fetchCategoryFilterConfig(sb, category);
   const filterConfig = dbFilterConfig ?? CATEGORY_FILTERS[category];
 
+  // Region tree for venue categories (food/bars/hotels/events). Empty for others.
+  const regionTreeData = await fetchRegionTreeForCategory(sb, category);
+
+  // Awards taxonomy: counts are placeholder zero for now (storage isn't
+  // standardized — see lib/awards.ts). Picker UI is wired; counts will be
+  // populated in a follow-up round.
+  const awardsGroups = (category === "movies" || category === "series") ? getAwardsTaxonomy() : undefined;
+
   let topUser: TopUser | null = null;
   let contributors: ContributorUser[] = [];
 
@@ -296,6 +311,9 @@ export default async function CategoryPage({ params }: Props) {
       contributors={contributors}
       filterData={filterData}
       filterConfig={filterConfig}
+      regionTree={regionTreeData.parents}
+      regionChildToParent={regionTreeData.childToParent}
+      awardsGroups={awardsGroups}
     />
   );
 }

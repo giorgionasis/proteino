@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import type { CategorySlug } from "@/types";
 import type { FilterDefinition } from "@/constants/filters";
 import { CATEGORY_FILTERS } from "@/constants/filters";
+import { TwoStepListPicker, type TwoStepNode } from "@/components/filters/TwoStepListPicker";
+import { GroupedCheckboxList, type GroupedListGroup } from "@/components/filters/GroupedCheckboxList";
 
 export type FilterValues = Record<string, string | string[]>;
 
@@ -15,13 +17,20 @@ interface Props {
   onChange: (values: FilterValues) => void;
   resultCount: number;
   dataOptions?: Record<string, string[]>;
+  /** Hierarchical region tree per category (food/bars/hotels/events). */
+  regionTree?: TwoStepNode[];
+  /** Awards taxonomy with counts (movies/series). */
+  awardsGroups?: GroupedListGroup[];
   onComputeCount?: (vals: FilterValues) => number;
 }
 
-export function FilterBottomSheet({ open, onClose, category, values, onChange, resultCount, dataOptions, onComputeCount }: Props) {
+type SubPicker = "region" | "awards" | null;
+
+export function FilterBottomSheet({ open, onClose, category, values, onChange, resultCount, dataOptions, regionTree, awardsGroups, onComputeCount }: Props) {
   const [localValues, setLocalValues] = useState<FilterValues>(values);
   const config = CATEGORY_FILTERS[category];
   const [activeSort, setActiveSort] = useState(config.sortOptions[1] ?? config.sortOptions[0]);
+  const [subPicker, setSubPicker] = useState<SubPicker>(null);
 
   const liveCount = useMemo(
     () => onComputeCount ? onComputeCount(localValues) : resultCount,
@@ -115,6 +124,9 @@ export function FilterBottomSheet({ open, onClose, category, values, onChange, r
               onChangeValue={(v) => setFilter(filter.id, v)}
               onToggle={(optionId) => toggleArrayValue(filter.id, optionId)}
               dataOptions={dataOptions?.[filter.id]}
+              onOpenSubPicker={(p) => setSubPicker(p)}
+              regionTree={regionTree}
+              awardsGroups={awardsGroups}
             />
           ))}
         </div>
@@ -141,6 +153,34 @@ export function FilterBottomSheet({ open, onClose, category, values, onChange, r
         </div>
         <div style={{ height: "env(safe-area-inset-bottom, 0px)" }} />
       </div>
+
+      {/* Full-screen sub-pickers (region / awards). Rendered on top when open. */}
+      {subPicker === "region" && regionTree && (
+        <div className="absolute inset-0 z-10 bg-zinc-100">
+          <TwoStepListPicker
+            title="Περιοχή"
+            parents={regionTree}
+            selected={new Set((localValues.region as string[]) ?? [])}
+            onSelectionChange={(s) => setFilter("region", Array.from(s))}
+            resultCount={liveCount}
+            onClearAll={() => setFilter("region", [])}
+            onClose={() => setSubPicker(null)}
+          />
+        </div>
+      )}
+      {subPicker === "awards" && awardsGroups && (
+        <div className="absolute inset-0 z-10 bg-zinc-100">
+          <GroupedCheckboxList
+            title="Βραβεία"
+            groups={awardsGroups}
+            selected={new Set((localValues.awards as string[]) ?? [])}
+            onSelectionChange={(s) => setFilter("awards", Array.from(s))}
+            resultCount={liveCount}
+            onClearAll={() => setFilter("awards", [])}
+            onClose={() => setSubPicker(null)}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -186,13 +226,16 @@ function SortSection({ options, active, onChange }: {
 
 /* ── Filter Section Router ───────────────────────────────── */
 
-function FilterSection({ filter, category, value, onChangeValue, onToggle, dataOptions }: {
+function FilterSection({ filter, category, value, onChangeValue, onToggle, dataOptions, onOpenSubPicker, regionTree, awardsGroups }: {
   filter: FilterDefinition;
   category: CategorySlug;
   value: string | string[] | undefined;
   onChangeValue: (v: string | string[]) => void;
   onToggle: (optionId: string) => void;
   dataOptions?: string[];
+  onOpenSubPicker?: (p: SubPicker) => void;
+  regionTree?: TwoStepNode[];
+  awardsGroups?: GroupedListGroup[];
 }) {
   switch (filter.widget) {
     case "dropdown":
@@ -211,9 +254,76 @@ function FilterSection({ filter, category, value, onChangeValue, onToggle, dataO
       return <PriceRangeFilter filter={filter} value={(value as string) ?? ""} onChange={(v) => onChangeValue(v)} />;
     case "origin-cards":
       return <OriginCardsFilter filter={filter} value={(value as string) ?? ""} onChange={(v) => onChangeValue(v)} />;
+    case "region-picker":
+      return (
+        <DrilldownRow
+          label={filter.label}
+          summary={summarizeRegionSelection((value as string[]) ?? [], regionTree)}
+          onOpen={() => onOpenSubPicker?.("region")}
+        />
+      );
+    case "awards-picker":
+      return (
+        <DrilldownRow
+          label={filter.label}
+          summary={summarizeAwardsSelection((value as string[]) ?? [], awardsGroups)}
+          onOpen={() => onOpenSubPicker?.("awards")}
+        />
+      );
     default:
       return null;
   }
+}
+
+function summarizeRegionSelection(selectedIds: string[], tree?: TwoStepNode[]): string {
+  if (!tree || selectedIds.length === 0) return "Όλες";
+  if (selectedIds.length === 1) {
+    for (const p of tree) {
+      const child = p.children.find((c) => c.id === selectedIds[0]);
+      if (child) return child.label;
+    }
+  }
+  return `${selectedIds.length} επιλεγμένες`;
+}
+
+function summarizeAwardsSelection(selectedIds: string[], groups?: GroupedListGroup[]): string {
+  if (!groups || selectedIds.length === 0) return "Όλα";
+  if (selectedIds.length === 1) {
+    for (const g of groups) {
+      const item = g.items.find((it) => it.id === selectedIds[0]);
+      if (item) return `${g.label} · ${item.label}`;
+    }
+  }
+  return `${selectedIds.length} επιλεγμένα`;
+}
+
+function DrilldownRow({ label, summary, onOpen }: { label: string; summary: string; onOpen: () => void }) {
+  return (
+    <div>
+      <p className="font-bold text-lg text-zinc-800 mb-4" style={{ fontFamily: "'Open Sans', sans-serif", lineHeight: "20px" }}>
+        {label}
+      </p>
+      <button
+        onClick={onOpen}
+        className="w-full h-[50px] rounded-xl border border-zinc-400 flex items-center justify-between px-4 active:bg-zinc-50 transition-colors"
+        style={{ maxWidth: 340 }}
+      >
+        <span
+          className="text-base truncate text-left"
+          style={{
+            fontFamily: "'Open Sans', sans-serif",
+            fontWeight: summary === "Όλες" || summary === "Όλα" ? 600 : 700,
+            color: summary === "Όλες" || summary === "Όλα" ? "#71717A" : "#27272A",
+          }}
+        >
+          {summary}
+        </span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#71717A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m9 18 6-6-6-6" />
+        </svg>
+      </button>
+    </div>
+  );
 }
 
 /* ── Dropdown Filter ───────────────────────────────────────── */
