@@ -334,11 +334,18 @@ export function CategoryMapView({
     >
       <div
         ref={mapRef}
-        className="absolute inset-0"
-        // Diagnostic: red shows the container has dimensions but the map
-        // canvas isn't drawing on top. White-on-white means container is
-        // 0px or invisible. Remove once map is confirmed working.
-        style={{ background: "#fee" }}
+        // Inline styles required: maplibre-gl.css adds .maplibregl-map with
+        // `position: relative` to the container, which overrides Tailwind's
+        // `.absolute` class (CSS imported after = higher precedence). With
+        // relative positioning, `inset-0` does nothing and the canvas-only
+        // child contributes 0 to height. Inline styles beat both classes.
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+        }}
       />
 
       {/* "Εμφάνιση σε λίστα" floating button — top center */}
