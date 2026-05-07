@@ -8,10 +8,12 @@ export default async function SuggestionDetailPage({ params }: { params: { id: s
   // Try with the new `items.images` column first (post migration 009).
   // If the column doesn't exist yet (Postgres error 42703), retry without it
   // so the editor still loads — admin can run the migration when convenient.
+  // FK disambiguator: suggestions has two FKs to users (user_id + hidden_by from
+  // migration 015), so plain `users(...)` returns PGRST201 ambiguous-relationship.
   const fullSelect = `
       id, rating, reflection, is_published, created_at, published_at,
       user_id,
-      users!inner(id, display_name),
+      users!suggestions_user_id_fkey(id, display_name),
       items!inner(
         id, title, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, images,
         avg_rating, rating_count, suggestion_count, description_seo, metadata
@@ -20,7 +22,7 @@ export default async function SuggestionDetailPage({ params }: { params: { id: s
   const fallbackSelect = `
       id, rating, reflection, is_published, created_at, published_at,
       user_id,
-      users!inner(id, display_name),
+      users!suggestions_user_id_fkey(id, display_name),
       items!inner(
         id, title, slug, category, subcategory_id, cover_url, poster_url, backdrop_url,
         avg_rating, rating_count, suggestion_count, description_seo, metadata
