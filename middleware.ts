@@ -1,59 +1,58 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-/**
- * Edge-runtime middleware. Kept intentionally minimal — anything that
- * throws here surfaces as MIDDLEWARE_INVOCATION_FAILED → 500 on every
- * request. We don't import @supabase/ssr (it has historically been
- * flaky on Edge cold-starts) and we don't validate the JWT — middleware
- * only needs to know "is there an auth cookie?" to decide redirects.
- * The actual auth check happens server-side in route handlers / layouts.
- */
+// Edge-runtime middleware. Kept intentionally minimal — anything that throws
+// here surfaces as MIDDLEWARE_INVOCATION_FAILED → 500 on every request. No
+// @supabase/ssr import (historically flaky on Edge cold-starts) and no JWT
+// validation — middleware only needs cookie presence to gate /admin redirects.
 
-/**
- * Detect a Supabase auth cookie. Supabase names cookies as
- * `sb-<projectRef>-auth-token` (and a `.0`, `.1`, … chunked variant).
- * Presence implies the user has at some point authenticated; freshness
- * is validated downstream.
- */
 function hasAuthCookie(request: NextRequest): boolean {
-  for (const c of request.cookies.getAll()) {
-    if (c.name.startsWith("sb-") && c.name.includes("-auth-token") && c.value) {
-      return true;
+  try {
+    const all = request.cookies.getAll();
+    if (!all || !Array.isArray(all)) return false;
+    for (const c of all) {
+      const name = c?.name;
+      const value = c?.value;
+      if (typeof name === "string" && name.startsWith("sb-") && name.includes("-auth-token") && value) {
+        return true;
+      }
     }
+  } catch {
+    // Cookie parsing can throw on malformed headers — treat as guest.
   }
   return false;
 }
 
 export async function middleware(request: NextRequest) {
   try {
-    const { pathname } = request.nextUrl;
+    const pathname = request.nextUrl?.pathname ?? "/";
     const loggedIn = hasAuthCookie(request);
 
-    // Protect admin routes (page-level role check still runs in /admin/layout)
+    // Protect /admin: redirect guests to login. Page-level role check still
+    // runs in app/admin/layout.tsx with the full Supabase server client.
     if (pathname.startsWith("/admin") && !loggedIn && process.env.NODE_ENV !== "development") {
-      return NextResponse.redirect(new URL("/login?redirect=" + encodeURIComponent(pathname), request.url));
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("redirect", pathname);
+      return NextResponse.redirect(loginUrl);
     }
 
-    // NOTE: We deliberately do NOT redirect logged-in users away from
-    // /login or /register here. Middleware can only detect cookie
-    // presence, not JWT validity — so a stale/expired cookie would
-    // create a redirect trap (user can never reach the login form to
-    // re-authenticate). The login/register pages do their own
-    // server-side session validation and redirect when the session
-    // actually decodes.
+    // Deliberately NOT redirecting logged-in users away from /login or
+    // /register: middleware can only detect cookie presence, not JWT
+    // validity, so a stale cookie would trap users who can never re-auth.
+    // Those pages do their own server-side getSession() check.
 
     return NextResponse.next();
   } catch (err) {
     // Last-resort: never 500 the site from middleware.
-    console.error("[middleware] crashed, passing through:", err);
+    console.error("[middleware] passthrough:", err);
     return NextResponse.next();
   }
 }
 
 export const config = {
   matcher: [
-    // Run middleware on everything EXCEPT static assets, image optimization,
-    // favicon, image files, and API routes (which handle their own auth).
-    "/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Run on everything except static assets, _next internals, favicon,
+    // and API routes (which gate themselves). Image extensions excluded so
+    // we don't burn middleware invocations on every <img>.
+    "/((?!_next/|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|avif|woff|woff2)$).*)",
   ],
 };
