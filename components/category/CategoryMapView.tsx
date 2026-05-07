@@ -99,6 +99,13 @@ export function CategoryMapView({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  // StrictMode dev double-invokes effects: mount → cleanup → mount. The
+  // straight pattern (create in mount, destroy in cleanup) creates two
+  // MapLibre instances per real mount, and the second one ends up with a
+  // 0-height canvas because the cleanup of the first leaves the container
+  // in a transitional state. Pattern: defer cleanup with a microtask so
+  // the second mount can cancel it before it actually destroys the map.
+  const cleanupTimeoutRef = useRef<number | null>(null);
   const [zoom, setZoom] = useState(6);
   const [bounds, setBounds] = useState<{ west: number; south: number; east: number; north: number } | null>(null);
   const [selected, setSelected] = useState<CategoryItem | null>(null);
@@ -126,14 +133,22 @@ export function CategoryMapView({
 
   // Initialize the map once.
   useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log("[CategoryMapView] init effect fired. mapRef.current:", mapRef.current, "existing instance?", !!mapInstance.current);
+    // Cancel any pending cleanup from a prior (StrictMode) unmount.
+    if (cleanupTimeoutRef.current !== null) {
+      window.clearTimeout(cleanupTimeoutRef.current);
+      cleanupTimeoutRef.current = null;
+    }
+
+    // If the map already exists from a prior mount that we just rescued
+    // from cleanup, keep using it.
+    if (mapInstance.current) {
+      // eslint-disable-next-line no-console
+      console.log("[CategoryMapView] reusing existing map instance");
+      return () => scheduleMapCleanup();
+    }
+
     if (!mapRef.current) {
       console.warn("[CategoryMapView] mapRef.current is null, aborting init");
-      return;
-    }
-    if (mapInstance.current) {
-      console.log("[CategoryMapView] map already exists, skipping");
       return;
     }
     // eslint-disable-next-line no-console
@@ -189,14 +204,31 @@ export function CategoryMapView({
     const onResize = () => map.resize();
     window.addEventListener("resize", onResize);
 
+    // Stash the resize handler on the map so the deferred cleanup can find it.
+    (map as any).__protRsz = onResize;
+
     mapInstance.current = map;
 
-    return () => {
-      window.removeEventListener("resize", onResize);
-      map.remove();
-      mapInstance.current = null;
-    };
+    return () => scheduleMapCleanup();
   }, []);
+
+  // Helper: defer cleanup so StrictMode's mount→unmount→mount cycle in dev
+  // doesn't tear down the map between the two mounts. Real unmount (user
+  // navigating away) waits 50ms but still cleans up; StrictMode remount
+  // cancels the timeout in time.
+  function scheduleMapCleanup() {
+    if (cleanupTimeoutRef.current !== null) return;
+    cleanupTimeoutRef.current = window.setTimeout(() => {
+      const map = mapInstance.current;
+      if (map) {
+        const rsz = (map as any).__protRsz;
+        if (rsz) window.removeEventListener("resize", rsz);
+        map.remove();
+        mapInstance.current = null;
+      }
+      cleanupTimeoutRef.current = null;
+    }, 50);
+  }
 
   // Auto-fit to items when the dataset changes (filters applied/cleared).
   useEffect(() => {
