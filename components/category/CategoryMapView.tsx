@@ -22,9 +22,37 @@ interface Props {
   onOpenFilters?: () => void;
 }
 
-// Carto's free vector "voyager" style — clean, modern, well-suited for
-// venue browsing. Swap to another tile provider by changing this URL.
-const TILE_STYLE = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
+// Inline raster style — Carto Voyager raster tiles. Picked over vector
+// tiles because MapLibre vector pipeline failed silently in browser tests
+// (white canvas, no controls, no console error). Raster has no Web Worker
+// or vector decoding step — just PNGs over HTTP — so it's the safest first
+// draw. Visual quality is still very good. Swap to vector later once the
+// vector pipeline is debugged.
+const TILE_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {
+    "carto-voyager": {
+      type: "raster",
+      tiles: [
+        "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+        "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+        "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+        "https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+      ],
+      tileSize: 256,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    },
+  },
+  layers: [
+    {
+      id: "carto-voyager-tiles",
+      type: "raster",
+      source: "carto-voyager",
+      minzoom: 0,
+      maxzoom: 20,
+    },
+  ],
+};
 
 // Greece bounding box — used as the default view when we have no items
 // to fit to (e.g. category with zero geocoded venues).
@@ -123,6 +151,8 @@ export function CategoryMapView({
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
     map.on("load", () => {
+      // eslint-disable-next-line no-console
+      console.log("[CategoryMapView] map loaded; container size:", mapRef.current?.clientWidth, "x", mapRef.current?.clientHeight);
       // Force a resize in case the container had 0 dimensions during init
       // (common when the parent uses dynamic-imported components or layout
       // is still settling).
