@@ -1,4 +1,3 @@
-// Cache buster: forcing Vercel rebuild after MIDDLEWARE_INVOCATION_FAILED — 2026-05-07
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
