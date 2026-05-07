@@ -126,7 +126,18 @@ export function CategoryMapView({
 
   // Initialize the map once.
   useEffect(() => {
-    if (!mapRef.current || mapInstance.current) return;
+    // eslint-disable-next-line no-console
+    console.log("[CategoryMapView] init effect fired. mapRef.current:", mapRef.current, "existing instance?", !!mapInstance.current);
+    if (!mapRef.current) {
+      console.warn("[CategoryMapView] mapRef.current is null, aborting init");
+      return;
+    }
+    if (mapInstance.current) {
+      console.log("[CategoryMapView] map already exists, skipping");
+      return;
+    }
+    // eslint-disable-next-line no-console
+    console.log("[CategoryMapView] container size before init:", mapRef.current.clientWidth, "x", mapRef.current.clientHeight);
 
     let map: Map;
     try {
@@ -137,6 +148,8 @@ export function CategoryMapView({
         zoom: 6,
         attributionControl: false,
       });
+      // eslint-disable-next-line no-console
+      console.log("[CategoryMapView] map instance created");
     } catch (err) {
       console.error("[CategoryMapView] Failed to init MapLibre:", err);
       return;
@@ -287,7 +300,14 @@ export function CategoryMapView({
         marginBottom: "calc(-64px - env(safe-area-inset-bottom, 0px))",
       }}
     >
-      <div ref={mapRef} className="absolute inset-0" />
+      <div
+        ref={mapRef}
+        className="absolute inset-0"
+        // Diagnostic: red shows the container has dimensions but the map
+        // canvas isn't drawing on top. White-on-white means container is
+        // 0px or invisible. Remove once map is confirmed working.
+        style={{ background: "#fee" }}
+      />
 
       {/* "Εμφάνιση σε λίστα" floating button — top center */}
       <button

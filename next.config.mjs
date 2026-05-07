@@ -19,6 +19,9 @@ const nextConfig = {
       { protocol: "https", hostname: "images.unsplash.com" },
     ],
   },
+  // MapLibre uses Web Workers + has CJS/ESM mixed exports; transpiling it
+  // through Next's compiler avoids known bundling issues in App Router.
+  transpilePackages: ["maplibre-gl"],
 };
 
 export default nextConfig;
