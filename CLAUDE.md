@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-07 (session 15 — reviews/review_votes tables · /reviews subpage · design system showcase at /admin/showcase)
+**Last meaningful update:** 2026-05-07 (session 16 — design system showcase completion: 16 tabs · ~110 components · per-tab file split)
 
 ---
 
@@ -1049,3 +1049,68 @@ The 9 detail pages are visual variations of one archetype. Rules locked from use
 - **Extra ratings row** ("Άλλες βαθμολογίες") below review carousel — compact rows for users who rated but didn't write a suggestion. Common on migrated items.
 - **Own-suggestion behavior** — when viewing your own suggestion, the rate-this-item card is replaced with `<OwnSuggestionActions>` (Επεξεργασία + Διαγραφή). Comments stay open.
 
+---
+
+## 26. Design System Showcase
+> ✅ COMPLETE (session 16) — `/admin/showcase` documents every reusable component in the codebase. ~110 components across 16 tabs.
+
+The single source of truth for visual review + design QA. Open `/admin/showcase` in admin to see live variants of every reusable.
+
+### Tabs (16, in order)
+| Tab | Components | Purpose |
+|---|---|---|
+| **Primitives** | 15 atoms | Button · Input · Textarea · Card · Badge · Avatar · AvatarImage · StarRating · IconButton · FilterChip · SortPills · Spinner · StatCard · FollowButton · WantToSeeButton · Skeleton |
+| **Foundations** | 4 | UserBadge · OutlinedPill · Icon · AllReviewsButton |
+| **Cards** | 7 | ReviewCard · SuggestionCardPortrait/Landscape · CarouselSection · RatingBox · SuggesterCard · BookmarkIcon |
+| **Detail modules** | 16 | RatingCard · BookingAvailabilityCard · ActivityCard · PublicBookAd · AuthorCard · AmenitiesRow · NutritionRow · DurationCard · PlatformLinksCard · ReviewCardFooter · OwnSuggestionActions · UserAvatarWithPopup · DeliverySelector · PlatformSelector · ItemGalleryViewer · ExtraRatingsRow |
+| **Profile** | 9 | ProfileCard · BadgeDisplay · Stats · CategoryStatCard · RowMenu · FollowersPopupCentered · ProfilePopup · BookmarkedCard · OwnSuggestionCard |
+| **Category** | 7 | CategoryCard (4 variants) · FeaturedCard · SubCategoryTabs · FilterRow · FilterBottomSheet · CategoryHeroStats · CategoryTopUsers |
+| **Home** | 12 | AIChips · MoviesTonightSection · SuggestedUsers · ContributionCTA · DailyPrompt · SupportSection · home/CategoryTiles · guest/SuggestionFeed · guest/HeroDiscover/Suggest/Personalise · guest/HowItWorks · guest/RegisterPromo · guest/CategoryTiles |
+| **Submission/AI** | 3 | ProteínoIntelligence · AchievementProgress · ai/ProgressBar |
+| **Recommendation** | 5 | Carousel · CarouselPortrait · CarouselLandscape · BecauseYouLiked · CollectionRenderer (link-only — server component) |
+| **Auth** | 5 | AuthHeader · AuthDivider · AuthTrustBadge · OAuthButtons · PasswordRuleList |
+| **Layout** | 6 | Header · BottomNav · FAB · MaintenanceBanner · FullScreenOverlay · ReportLink (most chrome is link-only — fixed-position) |
+| **Modal** | 5 | Modal · ConfirmDeleteDialog · DeleteSuccessDialog · ReportFlowModal (link) · EditSuggestionModal (link) |
+| **Toasts** | 2 | Toast · useToast() hook |
+| **Notifications** | 1 | NotificationCard (6 type variants) |
+| **Admin** | 5 | IconToggleGrid · PropertyTypeSelector · ImageUploader · ImageGallery · LocationPicker (link) |
+| **Patterns** | 2 | Empty state · Skeleton (placeholders for future extraction) |
+
+### File structure
+```
+app/admin/showcase/
+├── page.tsx                  # 45 lines — composer
+└── tabs/                     # 16 focused files, 100-700 lines each
+    ├── PrimitivesTab.tsx
+    ├── FoundationsTab.tsx
+    ├── CardsTab.tsx
+    ├── DetailModulesTab.tsx
+    ├── ProfileTab.tsx
+    ├── CategoryTab.tsx
+    ├── HomeTab.tsx
+    ├── SubmissionAITab.tsx
+    ├── RecommendationTab.tsx
+    ├── AuthTab.tsx
+    ├── LayoutTab.tsx
+    ├── ModalTab.tsx
+    ├── ToastsTab.tsx
+    ├── NotificationsTab.tsx
+    ├── AdminTab.tsx
+    └── PatternsTab.tsx
+
+components/admin/showcase/
+├── ShowcaseShell.tsx         # tabbed nav + active state
+└── ShowcaseSection.tsx       # per-component wrapper + Variant cell
+```
+
+### Patterns
+- **Variant cell:** `<Variant label="…" note?="…" dark?>` — preview surface, optional dark bg for light components.
+- **Context links:** every section has `contextLinks={[{ label, href }]}` pointing to live pages where the component is used in production.
+- **Link-only fallback:** components that need real server context (full overlays, fixed-position chrome, server components) get a description + "see live" link rather than a fake render. Used for Header / BottomNav / FullScreenOverlay / CollectionRenderer / LocationPicker / ReportFlowModal / EditSuggestionModal.
+- **Per-tab file split:** one TS error in any tab no longer takes down the whole showcase. Each tab loads its own imports lazily via React.
+
+### When to update
+- New shared component → add a section to the matching tab.
+- New visual variant → add a `<Variant>` cell.
+- Component refactor → check if any showcase variant breaks (TypeScript catches it; the showcase is a typecheck canary).
+- Major redesign → review the showcase first, lock the variants, then ship the redesign.

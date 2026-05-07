@@ -3,9 +3,17 @@
 import { useState, type ReactNode } from "react";
 
 const TABS = [
+  "Primitives",
   "Foundations",
   "Cards",
   "Detail modules",
+  "Profile",
+  "Category",
+  "Home",
+  "Submission/AI",
+  "Recommendation",
+  "Auth",
+  "Layout",
   "Modal",
   "Toasts",
   "Notifications",
@@ -20,11 +28,11 @@ interface ShowcaseShellProps {
 }
 
 /**
- * Top-level showcase shell. Tabbed nav across the 5 grouping categories.
+ * Top-level showcase shell. Tabbed nav across grouping categories.
  * Server passes the rendered content for each tab as a record; we pick the
  * active one client-side so switching is instant (no route change).
  */
-export function ShowcaseShell({ children, defaultTab = "Cards" }: ShowcaseShellProps) {
+export function ShowcaseShell({ children, defaultTab = "Primitives" }: ShowcaseShellProps) {
   const [active, setActive] = useState<ShowcaseTab>(defaultTab);
 
   return (

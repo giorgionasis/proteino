@@ -1,12 +1,22 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-07 (session 15 — reviews/review_votes tables · /reviews subpage · design system showcase)
+Last updated: 2026-05-07 (session 16 — design system showcase completion: 16 tabs · ~110 components · per-tab file split)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 15 finished:**
+**Current state — session 16 finished:**
+
+- ✅ **Design system showcase is complete.** `/admin/showcase` now documents every reusable component in the codebase — ~110 components across 16 tabs. The single 1582-line monolith from session 15 has been split into per-tab files under `app/admin/showcase/tabs/` (16 files, 100-700 lines each). Default tab: Primitives. Full tab list + responsibilities in CLAUDE.md §26.
+- ✅ **3 batches shipped this session:**
+  - **Batch 1 — Primitives tab** (15 atoms): Button · Input · Textarea · Card · Badge · Avatar · AvatarImage · StarRating · IconButton · FilterChip · SortPills · Spinner · StatCard · FollowButton · WantToSeeButton · Skeleton (with helpers).
+  - **Batch 2 — 4 new tabs** (~30 components): Profile (9) · Category (7) · Submission/AI (3) · Recommendation (5). Plus 7 detail extras added to the existing Detail modules tab (ReviewCardFooter · OwnSuggestionActions · UserAvatarWithPopup · DeliverySelector · PlatformSelector · ItemGalleryViewer · ExtraRatingsRow).
+  - **Batch 3 — 3 new tabs** (~20 components): Home (12 — including 3 scaled-down 733px guest heroes) · Auth (5 atoms) · Layout (5 chrome + ReportLink, mostly link-only since they're fixed-position).
+- ✅ **`npx tsc --noEmit` → 0 errors** across all three batches. The showcase is now a typecheck canary — any breaking refactor of a shared component fails CI before it ships.
+- ✅ **Link-only fallback pattern documented** for components that need real server context (Header / BottomNav / FullScreenOverlay / CollectionRenderer / LocationPicker / ReportFlowModal / EditSuggestionModal). Description + "see live" link beats faking a render.
+
+**Previous state — session 15 finished (still all current):**
 
 - ✅ **Reviews architecture rewritten cleanly.** Migration 016 created the new `reviews` table (rating mandatory + reflection optional, one row per (user, item), UNIQUE constraint). Migration 017 created `review_votes` with sync trigger (mirror of comment_votes). Legacy `ratings` table wiped + `comments` table left untouched as archive — no `is_legacy` flag, clean break. All `items.rating_count` + `avg_rating` reset to 0 globally.
 - ✅ **Detail-page server fetch sources from `reviews` table** instead of suggestions.slice(1) + ratings union. Histogram, avg, count all computed fresh per request from non-hidden reviews.
@@ -54,6 +64,63 @@ See §3 for the full ordered roadmap.
 ---
 
 ## 1. COMPLETED
+
+### Session 16 — Design system completion ✅ (2026-05-07)
+
+Closed the loop on the showcase started in session 15. Goal was simple: every reusable component in the codebase should appear in `/admin/showcase` with realistic variants. End state — ~110 components, 16 tabs, 0 typecheck errors.
+
+**Architectural refactor: per-tab file split**
+- Session 15 left `/admin/showcase/page.tsx` as a 1582-line monolith with 30 components. One TS error in any tab took down the whole page; reviewing/editing was painful at that size.
+- Refactored to `app/admin/showcase/tabs/*.tsx` — 16 focused files, 100-700 lines each. `page.tsx` is now a 45-line composer that imports each tab. `ShowcaseShell` updated to enumerate the new tab list.
+- Each tab is a `"use client"` component with its own imports, state hooks, and sample data — fully isolated. A breaking change to e.g. `ProfileCard` only fails `ProfileTab.tsx`'s typecheck.
+
+**Batch 1 — Primitives tab (15 UI atoms)**
+The most glaring gap from session 15: `components/ui/` had 15 atoms with zero coverage. Added `PrimitivesTab.tsx` with realistic variants for each:
+- Button (6 variants × 3 sizes + loading + icons + fullWidth)
+- Input (auth + search variants + password reveal + error/success/hint/loading/disabled)
+- Textarea (label + char count + autoResize + error)
+- Card (default/elevated/flat/outlined + pressable + Header/Body/Footer)
+- Badge + ReviewBadge (9 variants × 2 sizes + dot)
+- Avatar (5 sizes + verified + image)
+- AvatarImage (URL + 4-color initials fallback)
+- StarRating (read-only + interactive + half-star + sizes + showValue)
+- IconButton (3 variants × 3 sizes + badge dot/count)
+- FilterChip + FilterChipRow (interactive group + horizontal scroll + leading icon)
+- SortPills · Spinner · StatCard + InlineStat
+- FollowButton (default + dark + sizes + already-following)
+- WantToSeeButton · Skeleton + helpers (SkeletonText/Avatar/Card/Suggestion)
+
+Made `Primitives` the default tab. The 15 atoms now have first-class showcase coverage above the older Foundations tab.
+
+**Batch 2 — 4 new tabs + Detail modules expansion**
+Composed pieces that needed realistic mocks but no server context:
+- **Profile** (9 components): ProfileCard (own/other/no-bio) · BadgeDisplay (4 tiers all-earned/mixed/none) · Stats (mid/new/past-milestone) · CategoryStatCard · RowMenu (interactive 3-action) · FollowersPopupCentered · ProfilePopup · BookmarkedCard (3-state machine) · OwnSuggestionCard.
+- **Category** (7): CategoryCard (RowCard + LandscapeCard variants per category) · FeaturedCard · SubCategoryTabs · FilterRow · FilterBottomSheet (full-screen filter panel, opens for movies + hotels) · CategoryHeroStats · CategoryTopUsers (full layout with hero #1 user + 4 contributors).
+- **Submission/AI** (3): ProteínoIntelligence (idle/listening/matched/syncing color states) · AchievementProgress (8 milestones from 1st suggestion through Platinum unlock at 50) · ai/ProgressBar (with interactive drag).
+- **Recommendation** (5): Carousel · CarouselPortrait (with platform badges + live indicator) · CarouselLandscape (hotel + portrait flag) · BecauseYouLiked · CollectionRenderer (link-only — server component).
+- **Detail modules expanded** with 7 extras: ReviewCardFooter · OwnSuggestionActions · UserAvatarWithPopup · DeliverySelector · PlatformSelector · ItemGalleryViewer (with tabs) · ExtraRatingsRow.
+
+**Batch 3 — 3 final tabs (Home, Auth, Layout)**
+- **Home** (12 components): AIChips · MoviesTonightSection · SuggestedUsers · ContributionCTA · DailyPrompt · SupportSection · home/CategoryTiles · guest/SuggestionFeed · guest/HeroDiscover/Suggest/Personalise · guest/HowItWorks · guest/RegisterPromo · guest/CategoryTiles. The 3 hero screens are 733px tall — rendered at `scale(0.55)` so they fit the showcase grid.
+- **Auth** (5 atoms): AuthHeader · AuthDivider · AuthTrustBadge · OAuthButtons (login + register modes) · PasswordRuleList (interactive type-to-validate + 3 fixed states + hidden).
+- **Layout** (5 chrome + ReportLink): Header · BottomNav · FullScreenOverlay use the link-only pattern (fixed-position / require overlay context). FAB has a static visual approximation. MaintenanceBanner shows real renders. ReportLink is fully interactive (default + comment target + custom label with reported counter).
+
+**Decisions locked**
+- **Link-only fallback pattern** for any component that fakes a render: write a one-paragraph description + "see live" link instead. Faking server context (overlays, fixed-position chrome, server components) is brittle and misleading.
+- **Default tab is Primitives** — atoms first, compositions second. Mirrors how a designer would scan the system.
+- **Per-tab files** are the right granularity — folder-of-files beats single-file at this size.
+- **Showcase is a typecheck canary** — every breaking refactor of a shared component fails `tsc --noEmit` before it ships, because the showcase imports them.
+
+**Tooling notes**
+- `ShowcaseShell` tab list lives in `components/admin/showcase/ShowcaseShell.tsx` — adding a new tab needs an entry there + a new tab file + a render in `page.tsx`. 3-line ceremony.
+- `ShowcaseSection` accepts `name`, `filePath`, `description`, `contextLinks?`. `Variant` accepts `label`, `note?`, `dark?`. Both unchanged from session 15.
+- Sample data is inline per-tab — no shared fixtures, no DB calls.
+
+**What's left (small, deferred):**
+- LocationPicker / AddressMapSection still inline in SuggestionEditor (~174 lines). Extract → standalone reusable so it can render interactively in the showcase Admin tab.
+- Empty state primitive — shown as placeholder in Patterns tab. Used inline in 5+ places, would benefit from extraction.
+- Skeleton roll-out — primitive exists + is showcased, but only used on item gallery currently. Wire into category pages + profile + /reviews on initial load.
+- CategoryCard sweep — old card still in use; migrate to SuggestionCardPortrait/Landscape from session 15 across all 9 category pages.
 
 ### Session 15 — Reviews architecture + design system showcase ✅ (2026-05-07)
 
