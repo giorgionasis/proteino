@@ -100,18 +100,33 @@ export function CategoryMapView({
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
 
-    const map = new maplibregl.Map({
-      container: mapRef.current,
-      style: TILE_STYLE,
-      center: [24.5, 38.5],
-      zoom: 6,
-      attributionControl: false,
+    let map: Map;
+    try {
+      map = new maplibregl.Map({
+        container: mapRef.current,
+        style: TILE_STYLE,
+        center: [24.5, 38.5],
+        zoom: 6,
+        attributionControl: false,
+      });
+    } catch (err) {
+      console.error("[CategoryMapView] Failed to init MapLibre:", err);
+      return;
+    }
+
+    // Surface tile/style/runtime errors that would otherwise silently leave a blank map.
+    map.on("error", (e: any) => {
+      console.error("[CategoryMapView] map error:", e?.error ?? e);
     });
 
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
     map.on("load", () => {
+      // Force a resize in case the container had 0 dimensions during init
+      // (common when the parent uses dynamic-imported components or layout
+      // is still settling).
+      map.resize();
       const updateState = () => {
         const b = map.getBounds();
         setZoom(map.getZoom());
@@ -127,9 +142,14 @@ export function CategoryMapView({
       map.on("zoomend", updateState);
     });
 
+    // Also resize when the window resizes (orientation change, sidebar collapse, etc.)
+    const onResize = () => map.resize();
+    window.addEventListener("resize", onResize);
+
     mapInstance.current = map;
 
     return () => {
+      window.removeEventListener("resize", onResize);
       map.remove();
       mapInstance.current = null;
     };
