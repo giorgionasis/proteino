@@ -4,14 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CATEGORIES } from "@/constants/categories";
 
 const WIDGET_LABELS: Record<string, string> = {
-  "dropdown":         "Dropdown",
-  "search-dropdown":  "Search Dropdown",
+  "dropdown":         "Dropdown (single-select)",
+  "multi-dropdown":   "Multi-Dropdown (checkbox list)",
+  "search-dropdown":  "Search Dropdown (autocomplete)",
   "segmented":        "Segmented",
   "platform-cards":   "Platform Cards",
   "icon-cards":       "Icon Cards",
   "checkboxes":       "Checkboxes",
   "price-range":      "Price Range",
   "origin-cards":     "Origin Cards",
+  "region-picker":    "Region Picker (two-step)",
+  "awards-picker":    "Awards Picker (grouped)",
 };
 
 const WIDGET_VALUES = Object.keys(WIDGET_LABELS);

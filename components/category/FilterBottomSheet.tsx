@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import type { CategorySlug } from "@/types";
-import type { FilterDefinition } from "@/constants/filters";
+import type { FilterDefinition, CategoryFilters } from "@/constants/filters";
 import { CATEGORY_FILTERS } from "@/constants/filters";
 import { TwoStepListPicker, type TwoStepNode } from "@/components/filters/TwoStepListPicker";
 import { GroupedCheckboxList, type GroupedListGroup } from "@/components/filters/GroupedCheckboxList";
@@ -17,6 +17,10 @@ interface Props {
   onChange: (values: FilterValues) => void;
   resultCount: number;
   dataOptions?: Record<string, string[]>;
+  /** DB-driven filter config (admin-managed). Falls back to constants
+   *  in CATEGORY_FILTERS when undefined — relevant during the migration
+   *  from constants → DB or in dev environments without seed data. */
+  filterConfig?: CategoryFilters;
   /** Hierarchical region tree per category (food/bars/hotels/events). */
   regionTree?: TwoStepNode[];
   /** Awards taxonomy with counts (movies/series). */
@@ -26,9 +30,9 @@ interface Props {
 
 type SubPicker = "region" | "awards" | null;
 
-export function FilterBottomSheet({ open, onClose, category, values, onChange, resultCount, dataOptions, regionTree, awardsGroups, onComputeCount }: Props) {
+export function FilterBottomSheet({ open, onClose, category, values, onChange, resultCount, dataOptions, filterConfig, regionTree, awardsGroups, onComputeCount }: Props) {
   const [localValues, setLocalValues] = useState<FilterValues>(values);
-  const config = CATEGORY_FILTERS[category];
+  const config = filterConfig ?? CATEGORY_FILTERS[category];
   const [activeSort, setActiveSort] = useState(config.sortOptions[1] ?? config.sortOptions[0]);
   const [subPicker, setSubPicker] = useState<SubPicker>(null);
 

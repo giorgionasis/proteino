@@ -403,6 +403,7 @@ export function CategoryPageShell({
           onChange={setFilterValues}
           resultCount={filteredCount}
           dataOptions={filterData.options}
+          filterConfig={filterConfig}
           regionTree={regionTree}
           awardsGroups={awardsGroups}
           onComputeCount={computeCount}
