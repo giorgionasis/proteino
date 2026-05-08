@@ -296,16 +296,56 @@ export function CategoryPageShell({
     return value;
   }
 
+  // Build active-filter chips. For region: when ALL children of a parent
+  // are selected, collapse them into a single parent-name chip
+  // (`regionParent:<parentId>`); otherwise keep individual sub-area chips.
   const activeFiltersForMap = Object.entries(filterValues)
     .flatMap(([key, val]) => {
       if (!val) return [];
-      if (Array.isArray(val)) return val.map((v) => ({ id: `${key}:${v}`, label: chipLabelFor(key, v) }));
+      if (Array.isArray(val)) {
+        if (key === "region" && regionTree) {
+          const selected = new Set(val);
+          const out: { id: string; label: string }[] = [];
+          const consumed = new Set<string>();
+          for (const p of regionTree) {
+            const childIds = p.children.map((c) => c.id);
+            const allSelected = childIds.length > 0 && childIds.every((id) => selected.has(id));
+            if (allSelected) {
+              out.push({ id: `regionParent:${p.id}`, label: p.label });
+              for (const id of childIds) consumed.add(id);
+            }
+          }
+          for (const v of val) {
+            if (consumed.has(v)) continue;
+            out.push({ id: `${key}:${v}`, label: chipLabelFor(key, v) });
+          }
+          return out;
+        }
+        return val.map((v) => ({ id: `${key}:${v}`, label: chipLabelFor(key, v) }));
+      }
       if (val === "all" || val === "") return [];
       return [{ id: key, label: chipLabelFor(key, val) }];
     });
 
   const handleRemoveFilter = (chipId: string) => {
     const next = { ...filterValues };
+
+    // Aggregated parent-region chip: remove all child sub-area IDs at once.
+    if (chipId.startsWith("regionParent:")) {
+      const parentId = chipId.slice("regionParent:".length);
+      const parent = regionTree?.find((p) => p.id === parentId);
+      if (parent) {
+        const childIds = new Set(parent.children.map((c) => c.id));
+        const arr = next.region;
+        if (Array.isArray(arr)) {
+          next.region = arr.filter((v) => !childIds.has(v));
+          if ((next.region as string[]).length === 0) delete next.region;
+        }
+      }
+      setFilterValues(next);
+      return;
+    }
+
     if (chipId.includes(":")) {
       const [key, val] = chipId.split(":");
       const arr = next[key];

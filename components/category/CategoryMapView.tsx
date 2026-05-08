@@ -355,58 +355,78 @@ export function CategoryMapView({
         style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
       />
 
-      {/* "Εμφάνιση σε λίστα" floating button — top center */}
+      {/* "Λίστα" toggle — top left. Compact since the word is short. */}
       <button
         onClick={onSwitchToList}
-        className="absolute top-3 left-3 z-30 flex items-center justify-center gap-2 h-10 rounded-full active:opacity-80 transition-opacity select-none"
-        style={{ background: "rgba(63,63,70,0.92)", padding: "0 14px" }}
+        className="absolute top-3 left-3 z-30 flex items-center justify-center gap-1.5 h-10 px-4 rounded-full active:opacity-80 transition-opacity select-none"
+        style={{ background: "rgba(63,63,70,0.92)" }}
       >
         <ListToggleIcon />
         <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 13, color: "#fff", lineHeight: "120%" }}>
-          Εμφάνιση σε λίστα
+          Λίστα
         </span>
       </button>
 
-      {/* Activities toggle — top right, labeled pill so the user
-          actually understands what it does. Off: white bg + dark text.
-          On: coral bg + white text. */}
+      {/* Activities — labeled toggle with iOS-style knob so users see
+          immediately it's an on/off switch, not a one-shot button. */}
       <button
         onClick={() => setActivitiesOn((v) => !v)}
         aria-label="Δραστηριότητες"
         aria-pressed={activitiesOn}
-        className="absolute top-3 right-3 z-30 flex items-center gap-1.5 h-10 px-3 rounded-full active:opacity-80 transition-all select-none"
+        className="absolute top-3 right-3 z-30 flex items-center gap-2 h-10 pl-3 pr-1.5 rounded-full active:opacity-80 transition-all select-none"
         style={{
           background: activitiesOn ? "#FE6F5E" : "rgba(255,255,255,0.95)",
           boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
         }}
       >
-        <ActivitiesIcon color={activitiesOn ? "#fff" : "#27272a"} />
         <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 600, fontSize: 12, color: activitiesOn ? "#fff" : "#27272a", lineHeight: "120%", letterSpacing: "0.01em" }}>
           Δραστηριότητες
+        </span>
+        {/* Toggle knob — visible affordance that this is on/off */}
+        <span
+          className="relative shrink-0 transition-colors"
+          style={{
+            width: 30,
+            height: 18,
+            borderRadius: 999,
+            background: activitiesOn ? "rgba(255,255,255,0.4)" : "#d4d4d8",
+          }}
+        >
+          <span
+            className="absolute top-0.5 transition-all"
+            style={{
+              width: 14,
+              height: 14,
+              borderRadius: 999,
+              background: "#fff",
+              left: activitiesOn ? 14 : 2,
+              boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+            }}
+          />
         </span>
       </button>
 
       {/* "Search this area" pill — appears when user pans away from a
-          region-filtered view. Tap clears the region filter so the user
-          sees results in their current view. */}
+          region-filtered view. Solid coral CTA so it reads as a button
+          to tap, not an info chip. */}
       {hasRegionFilter && userPanned && onClearRegionFilter && (
         <button
           onClick={() => {
             onClearRegionFilter();
             setUserPanned(false);
           }}
-          className="absolute left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 h-11 px-5 rounded-full active:opacity-80 transition-opacity select-none"
+          className="absolute left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 h-11 pl-4 pr-3 rounded-full active:opacity-80 transition-opacity select-none"
           style={{
             top: 64,
-            background: "#fff",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.2), 0 1px 4px rgba(0,0,0,0.08)",
-            border: "1.5px solid #FE6F5E",
+            background: "#FE6F5E",
+            boxShadow: "0 6px 20px rgba(254,111,94,0.4), 0 2px 6px rgba(0,0,0,0.1)",
           }}
         >
-          <RefreshIcon />
-          <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 14, color: "#FE6F5E", lineHeight: "120%" }}>
+          <SearchHereIcon />
+          <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: "120%" }}>
             Αναζήτηση σε αυτή την περιοχή
           </span>
+          <ChevronWhiteIcon />
         </button>
       )}
 
@@ -417,33 +437,39 @@ export function CategoryMapView({
         </div>
       )}
 
-      {/* Floating bottom bar: compact filter pill + chip carousel that
-          extends to the right edge of the page (chips visibly cut off
-          at edge to signal scrollability). Filter button no longer
-          carries the "Φίλτρα" label — the slider icon + count badge are
-          enough; saves space for chips. */}
+      {/* Floating bottom bar.
+          - No filters yet: filter pill is centered with the "Φίλτρα" label
+            (inviting empty state).
+          - Filters applied: pill shrinks to icon + count, slides left to
+            make room for the chip carousel. Chips run to the right edge,
+            visibly cut off so the user knows it scrolls. */}
       {!selected && (
         <div
-          className="absolute left-0 right-0 z-30 flex items-center gap-3"
+          className={`absolute left-0 right-0 z-30 flex items-center gap-3 ${isFiltered ? "" : "justify-center"}`}
           style={{
             bottom: "calc(64px + env(safe-area-inset-bottom, 0px) + 28px)",
-            paddingLeft: 16,
+            paddingLeft: isFiltered ? 16 : 0,
           }}
         >
           <button
             onClick={onOpenFilters}
             aria-label="Φίλτρα"
-            className="shrink-0 flex items-center rounded-full active:opacity-80 transition-opacity select-none"
+            className="shrink-0 flex items-center rounded-full active:opacity-80 transition-all select-none"
             style={{
               background: "#18181B",
               boxShadow: "0px 4px 16px -3px rgba(0,0,0,0.4)",
-              paddingLeft: 14,
-              paddingRight: isFiltered ? 6 : 14,
+              paddingLeft: 16,
+              paddingRight: isFiltered ? 6 : 18,
               gap: 8,
               height: 44,
             }}
           >
             <FilterSliderIcon />
+            {!isFiltered && (
+              <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 16, color: "#FAFAFA", lineHeight: "20px", letterSpacing: "0.01em" }}>
+                Φίλτρα
+              </span>
+            )}
             {isFiltered && (
               <span
                 className="flex items-center justify-center rounded-full"
@@ -574,13 +600,22 @@ function ActivitiesIcon({ color }: { color: string }) {
   );
 }
 
-function RefreshIcon() {
+function SearchHereIcon() {
+  // Magnifying glass with a small location pin inside — reads as
+  // "search the area" not "loading".
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FE6F5E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-      <polyline points="21 3 21 8 16 8" />
-      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-      <polyline points="3 21 3 16 8 16" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="11" cy="11" r="7" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      <circle cx="11" cy="10" r="1.5" fill="#fff" stroke="none" />
+    </svg>
+  );
+}
+
+function ChevronWhiteIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m9 18 6-6-6-6" />
     </svg>
   );
 }
