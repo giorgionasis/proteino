@@ -267,12 +267,41 @@ export function CategoryPageShell({
     return result.length;
   }, [listItems, activeTab, category]);
 
+  // Build a lookup table from sub-region UUID → human label, so the
+  // active-filter chips don't show raw UUIDs ("e428a25e-c0ef-…") for
+  // region selections.
+  const regionLabelById = (() => {
+    const m = new Map<string, string>();
+    if (regionTree) {
+      for (const p of regionTree) {
+        for (const c of p.children) m.set(c.id, c.label);
+        m.set(p.id, p.label);
+      }
+    }
+    return m;
+  })();
+  const awardLabelById = (() => {
+    const m = new Map<string, string>();
+    if (awardsGroups) {
+      for (const g of awardsGroups) {
+        for (const it of g.items) m.set(it.id, `${g.label} · ${it.label}`);
+      }
+    }
+    return m;
+  })();
+
+  function chipLabelFor(filterId: string, value: string): string {
+    if (filterId === "region") return regionLabelById.get(value) ?? value;
+    if (filterId === "awards") return awardLabelById.get(value) ?? value;
+    return value;
+  }
+
   const activeFiltersForMap = Object.entries(filterValues)
     .flatMap(([key, val]) => {
       if (!val) return [];
-      if (Array.isArray(val)) return val.map((v) => ({ id: `${key}:${v}`, label: v }));
+      if (Array.isArray(val)) return val.map((v) => ({ id: `${key}:${v}`, label: chipLabelFor(key, v) }));
       if (val === "all" || val === "") return [];
-      return [{ id: key, label: val }];
+      return [{ id: key, label: chipLabelFor(key, val) }];
     });
 
   const handleRemoveFilter = (chipId: string) => {

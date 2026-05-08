@@ -142,17 +142,10 @@ export function CategoryMapView({
     // If the map already exists from a prior mount that we just rescued
     // from cleanup, keep using it.
     if (mapInstance.current) {
-      // eslint-disable-next-line no-console
-      console.log("[CategoryMapView] reusing existing map instance");
       return () => scheduleMapCleanup();
     }
 
-    if (!mapRef.current) {
-      console.warn("[CategoryMapView] mapRef.current is null, aborting init");
-      return;
-    }
-    // eslint-disable-next-line no-console
-    console.log("[CategoryMapView] container size before init:", mapRef.current.clientWidth, "x", mapRef.current.clientHeight);
+    if (!mapRef.current) return;
 
     let map: Map;
     try {
@@ -163,8 +156,6 @@ export function CategoryMapView({
         zoom: 6,
         attributionControl: false,
       });
-      // eslint-disable-next-line no-console
-      console.log("[CategoryMapView] map instance created");
     } catch (err) {
       console.error("[CategoryMapView] Failed to init MapLibre:", err);
       return;
@@ -179,8 +170,6 @@ export function CategoryMapView({
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
     map.on("load", () => {
-      // eslint-disable-next-line no-console
-      console.log("[CategoryMapView] map loaded; container size:", mapRef.current?.clientWidth, "x", mapRef.current?.clientHeight);
       // Force a resize in case the container had 0 dimensions during init
       // (common when the parent uses dynamic-imported components or layout
       // is still settling).
@@ -339,13 +328,7 @@ export function CategoryMapView({
         // `.absolute` class (CSS imported after = higher precedence). With
         // relative positioning, `inset-0` does nothing and the canvas-only
         // child contributes 0 to height. Inline styles beat both classes.
-        style={{
-          position: "absolute",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          left: 0,
-        }}
+        style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
       />
 
       {/* "Εμφάνιση σε λίστα" floating button — top center */}
@@ -431,48 +414,69 @@ export function CategoryMapView({
 
 function BottomCard({ item, category, onClose }: { item: CategoryItem; category: CategorySlug; onClose: () => void }) {
   return (
-    <div
-      className="absolute left-0 right-0 z-[1100] bg-white rounded-t-2xl shadow-xl"
-      style={{ bottom: "calc(64px + env(safe-area-inset-bottom, 0px))" }}
+    <Link
+      href={`/${category}/${item.slug ?? item.id}`}
+      // fixed (not absolute) so the card sits at viewport bottom and
+      // covers the BottomNav (z-40). z-50 places it on top.
+      className="fixed bottom-0 left-0 right-0 z-50 mx-auto bg-white rounded-t-2xl active:bg-zinc-50 transition-colors"
+      style={{
+        maxWidth: 390,
+        paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
+        boxShadow: "0 -8px 24px -4px rgba(0,0,0,0.18), 0 -2px 6px rgba(0,0,0,0.06)",
+      }}
     >
+      {/* Drag handle */}
+      <div className="flex justify-center pt-2 pb-1">
+        <div className="w-10 h-1 bg-zinc-300 rounded-full" />
+      </div>
+
       <button
-        onClick={onClose}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
         aria-label="Κλείσιμο"
-        className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200"
+        className="absolute top-3 right-3 w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#27272a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#27272a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 6 6 18M6 6l12 12" />
         </svg>
       </button>
-      <div className="flex gap-3 p-4 pr-12">
-        <div className="shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-zinc-200">
+
+      <div className="flex gap-3 px-4 pt-2 pb-4 pr-14">
+        <div
+          className="shrink-0 w-[88px] h-[88px] rounded-xl overflow-hidden flex items-center justify-center"
+          style={{ background: item.placeholder_color ?? "#e4e4e7" }}
+        >
           {item.cover_url ? (
             <img src={item.cover_url} alt={item.title} className="w-full h-full object-cover" />
           ) : (
-            <div className="w-full h-full" style={{ background: item.placeholder_color ?? "#a1a1aa" }} />
+            <span className="text-[13px] font-bold text-white/70 px-2 text-center line-clamp-2">{item.title}</span>
           )}
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-[15px] font-bold text-zinc-900 truncate">{item.title}</div>
-          {item.area && <div className="text-[13px] text-zinc-500 truncate mt-0.5">{item.area}</div>}
-          <div className="flex items-center gap-1 mt-1.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="#FE6F5E"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            <span className="text-[13px] font-semibold text-zinc-900">{item.avg_rating.toFixed(2)}</span>
-            <span className="text-[13px] text-zinc-500">({item.rating_count})</span>
+        <div className="flex-1 min-w-0 flex flex-col justify-between">
+          <div>
+            <div className="text-[16px] font-bold text-zinc-900 truncate leading-tight">{item.title}</div>
+            <div className="text-[13px] text-zinc-500 truncate mt-0.5">
+              {item.subcategory}{item.area ? ` · ${item.area}` : ""}
+            </div>
           </div>
-          <Link
-            href={`/${category}/${item.slug ?? item.id}`}
-            className="inline-flex items-center mt-2 text-[13px] font-semibold text-coral-600 active:opacity-70"
-            style={{ color: "#FE6F5E" }}
-          >
-            Δες περισσότερα
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FE6F5E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="ml-0.5">
-              <path d="m9 18 6-6-6-6" />
-            </svg>
-          </Link>
+          <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center gap-1">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#FE6F5E"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <span className="text-[14px] font-bold text-zinc-900">{item.avg_rating.toFixed(2)}</span>
+              <span className="text-[13px] text-zinc-500">({item.rating_count})</span>
+            </div>
+            <span
+              className="inline-flex items-center text-[13px] font-semibold"
+              style={{ color: "#FE6F5E" }}
+            >
+              Δες περισσότερα
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FE6F5E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="ml-0.5">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </span>
+          </div>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
