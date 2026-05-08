@@ -36,6 +36,20 @@ const CATEGORY_LABELS: Record<CategorySlug, string> = {
 
 const HAS_MAP: CategorySlug[] = ["food", "bars", "hotels", "theater", "events"];
 
+// Maps each category to the filter ID that's "owned" by SubCategoryTabs.
+// These filter values must never appear in `filterValues` — tabs are the
+// canonical surface. Without this, picking a tab AND having a stale
+// cuisine entry in filterValues double-filters or shows ghost chips.
+const TABS_OWNED_FILTER: Partial<Record<CategorySlug, string>> = {
+  food:    "cuisine",
+  movies:  "genre",
+  series:  "genre",
+  books:   "genre",
+  recipes: "type",
+  theater: "type",
+  events:  "event_type",
+};
+
 const SECTION_TITLES: Record<CategorySlug, [string, string]> = {
   food:    ["Δημοφιλή Μαγαζιά",          "Κορυφαίες Επιλογές"],
   bars:    ["Δημοφιλή Μπαρ & Καφέ",      "Κορυφαίες Επιλογές"],
@@ -229,19 +243,19 @@ export function CategoryPageShell({
   const filterConfig = filterConfigProp ?? CATEGORY_FILTERS[category];
   const hasMap       = HAS_MAP.includes(category);
 
-  // Count individual filter values, not filter entries. Two cuisines
-  // selected = count 2, not 1 — matches the chip count visible in the
-  // carousel + on the map view's filter button. (Region parent
-  // aggregation collapses N children into 1 chip on the map; the count
-  // here would say N which is a minor edge case — accept until we
-  // surface activeFiltersForMap-driven count, which requires reordering.)
-  const activeFilterCount = Object.values(filterValues).reduce<number>((sum, v) => {
+  // Count individual filter values, excluding the tabs-owned key (since
+  // tabs are a separate surface, not counted as "filters"). Two cuisines
+  // selected via bottom sheet would count 2, but cuisine is owned by
+  // tabs so we skip it. Matches the chip count visible in the carousel.
+  const activeFilterCount = Object.entries(filterValues).reduce<number>((sum, [key, v]) => {
+    if (key === TABS_OWNED_FILTER[category]) return sum;
     if (Array.isArray(v)) return sum + v.length;
     if (v && v !== "all" && v !== "") return sum + 1;
     return sum;
   }, 0);
 
   const listItems = items;
+  const tabsOwnedKey = TABS_OWNED_FILTER[category];
 
   const filteredItems = useMemo(() => {
     let result = listItems;
@@ -251,12 +265,15 @@ export function CategoryPageShell({
     }
 
     for (const [filterId, value] of Object.entries(filterValues)) {
+      // Skip the filter ID owned by SubCategoryTabs — activeTab handles
+      // it. If both are set, this avoids double-filtering / state drift.
+      if (filterId === tabsOwnedKey) continue;
       if (!value || (Array.isArray(value) && value.length === 0) || value === "all" || value === "") continue;
       result = result.filter((it) => matchesFilter(it, filterId, value, category));
     }
 
     return result;
-  }, [listItems, activeTab, filterValues, category]);
+  }, [listItems, activeTab, filterValues, category, tabsOwnedKey]);
 
   const filteredCount = filteredItems.length;
   const hasActiveFilters = activeTab !== "Όλα" || activeFilterCount > 0;
@@ -268,11 +285,12 @@ export function CategoryPageShell({
       result = result.filter((it) => ciEq(it.subcategory, activeTab));
     }
     for (const [filterId, value] of Object.entries(vals)) {
+      if (filterId === tabsOwnedKey) continue;
       if (!value || (Array.isArray(value) && value.length === 0) || value === "all" || value === "") continue;
       result = result.filter((it) => matchesFilter(it, filterId, value, category));
     }
     return result.length;
-  }, [listItems, activeTab, category]);
+  }, [listItems, activeTab, category, tabsOwnedKey]);
 
   // Build a lookup table from sub-region UUID → human label, so the
   // active-filter chips don't show raw UUIDs ("e428a25e-c0ef-…") for
@@ -310,7 +328,9 @@ export function CategoryPageShell({
   // in the map's bottom carousel — when the user taps 'Search this area'
   // they see the leftmost chips disappear (clear visual proof of the
   // action removing region filters specifically).
+  // Tabs-owned filter is filtered out so any stale value never produces a chip.
   const activeFiltersForMap = Object.entries(filterValues)
+    .filter(([key]) => key !== tabsOwnedKey)
     .sort(([a], [b]) => (a === "region" ? -1 : b === "region" ? 1 : 0))
     .flatMap(([key, val]) => {
       if (!val) return [];
