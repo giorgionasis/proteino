@@ -119,6 +119,16 @@ export function CategoryMapView({
   const [selected, setSelected] = useState<CategoryItem | null>(null);
   const [userPanned, setUserPanned] = useState(false);
   const [activitiesOn, setActivitiesOn] = useState(false);
+  // Chip IDs that are currently fading out (pre-removal). The chip stays
+  // in DOM during the ~250ms fade then is removed via state update.
+  const [removingChipIds, setRemovingChipIds] = useState<Set<string>>(new Set());
+  // True briefly while the "Search this area" pill is in its "✓ Έγινε"
+  // confirmation state, before unmounting.
+  const [searchHerePillConfirming, setSearchHerePillConfirming] = useState(false);
+  // When true, the next auto-fit useEffect will be skipped. Set when the
+  // user taps "Search this area" so the map keeps their current viewport
+  // instead of zooming out to fit the (now-larger) result set.
+  const skipNextFitRef = useRef(false);
 
   // Mark map mode active so the global FAB hides itself while the user is
   // browsing the map (suggest action doesn't fit map-browse context).
@@ -246,6 +256,15 @@ export function CategoryMapView({
   useEffect(() => {
     const map = mapInstance.current;
     if (!map) return;
+    // "Search this area" tap suppresses the very next fit so the user
+    // keeps their viewport. Without this, clearing the region filter
+    // would yank the map to fit ALL items — exactly what the user
+    // tapped the button to NOT happen.
+    if (skipNextFitRef.current) {
+      skipNextFitRef.current = false;
+      setUserPanned(false);
+      return;
+    }
     setUserPanned(false); // new fit cycle — clear any prior pan signal
     if (geoItems.length === 0) {
       map.fitBounds(GREECE_BOUNDS, { padding: 40, animate: true, duration: 600 });
@@ -408,25 +427,54 @@ export function CategoryMapView({
 
       {/* "Search this area" pill — appears when user pans away from a
           region-filtered view. Solid coral CTA so it reads as a button
-          to tap, not an info chip. */}
+          to tap. On tap: orchestrates a 3-step micro-interaction —
+          (1) pill morphs to "✓ Έγινε" confirmation, (2) region chips
+          fade out, (3) actual filter clears + map keeps current view. */}
       {hasRegionFilter && userPanned && onClearRegionFilter && (
         <button
           onClick={() => {
-            onClearRegionFilter();
-            setUserPanned(false);
+            // Identify which chips will be removed so we can fade them
+            // out before the underlying state update.
+            const regionChipIds = activeFilters
+              .filter((f) => f.id.startsWith("region:") || f.id.startsWith("regionParent:"))
+              .map((f) => f.id);
+            setRemovingChipIds(new Set(regionChipIds));
+            setSearchHerePillConfirming(true);
+            // Skip the very next auto-fit so the user keeps their viewport.
+            skipNextFitRef.current = true;
+            // After the fade animation, actually clear the filter (which
+            // also unmounts this pill via hasRegionFilter going false).
+            window.setTimeout(() => {
+              onClearRegionFilter();
+              setUserPanned(false);
+              setRemovingChipIds(new Set());
+              setSearchHerePillConfirming(false);
+            }, 280);
           }}
-          className="absolute left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 h-11 pl-4 pr-3 rounded-full active:opacity-80 transition-opacity select-none"
+          disabled={searchHerePillConfirming}
+          className="absolute left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 h-11 pl-4 pr-3 rounded-full active:opacity-80 transition-all select-none"
           style={{
             top: 64,
             background: "#FE6F5E",
             boxShadow: "0 6px 20px rgba(254,111,94,0.4), 0 2px 6px rgba(0,0,0,0.1)",
           }}
         >
-          <SearchHereIcon />
-          <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: "120%" }}>
-            Αναζήτηση σε αυτή την περιοχή
-          </span>
-          <ChevronWhiteIcon />
+          {searchHerePillConfirming ? (
+            <>
+              <CheckIcon />
+              <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: "120%" }}>
+                Έγινε
+              </span>
+            </>
+          ) : (
+            <>
+              <SearchHereIcon />
+              <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: "120%" }}>
+                Αναζήτηση σε αυτή την περιοχή
+              </span>
+              <ChevronWhiteIcon />
+            </>
+          )}
         </button>
       )}
 
@@ -483,22 +531,39 @@ export function CategoryMapView({
           {activeFilters.length > 0 && (
             <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar">
               <div className="flex items-center gap-2 pr-3" style={{ paddingRight: "calc(env(safe-area-inset-right, 0px) + 4px)" }}>
-                {activeFilters.map((f) => (
-                  <button
-                    key={f.id}
-                    onClick={() => onRemoveFilter?.(f.id)}
-                    className="shrink-0 flex items-center gap-2 rounded-full active:opacity-80 transition-opacity select-none"
-                    style={{ background: "#E4E4E7", paddingLeft: 16, paddingRight: 10, height: 40 }}
-                  >
-                    <span
-                      className="whitespace-nowrap"
-                      style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 14, color: "#3F3F46", lineHeight: "20px" }}
+                {activeFilters.map((f) => {
+                  const removing = removingChipIds.has(f.id);
+                  return (
+                    <button
+                      key={f.id}
+                      onClick={() => !removing && onRemoveFilter?.(f.id)}
+                      disabled={removing}
+                      className="shrink-0 flex items-center gap-2 rounded-full active:opacity-80 select-none"
+                      style={{
+                        background: "#E4E4E7",
+                        paddingLeft: 16,
+                        paddingRight: 10,
+                        height: 40,
+                        // Fade-out: pre-removal state. The chip stays in
+                        // DOM through the transition then is removed when
+                        // filter state updates ~280ms later.
+                        opacity: removing ? 0 : 1,
+                        transform: removing ? "translateX(-12px) scale(0.92)" : "translateX(0) scale(1)",
+                        transition: "opacity 250ms ease, transform 250ms ease, padding-left 250ms ease, padding-right 250ms ease, margin 250ms ease",
+                        marginLeft: removing ? -8 : 0,
+                        marginRight: removing ? -8 : 0,
+                      }}
                     >
-                      {f.label}
-                    </span>
-                    <CloseChipIcon />
-                  </button>
-                ))}
+                      <span
+                        className="whitespace-nowrap"
+                        style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 14, color: "#3F3F46", lineHeight: "20px" }}
+                      >
+                        {f.label}
+                      </span>
+                      <CloseChipIcon />
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -616,6 +681,14 @@ function ChevronWhiteIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M20 6 9 17l-5-5" />
     </svg>
   );
 }

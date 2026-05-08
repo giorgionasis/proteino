@@ -299,7 +299,12 @@ export function CategoryPageShell({
   // Build active-filter chips. For region: when ALL children of a parent
   // are selected, collapse them into a single parent-name chip
   // (`regionParent:<parentId>`); otherwise keep individual sub-area chips.
+  // Region chips ALWAYS come first in the output so they're the leftmost
+  // in the map's bottom carousel — when the user taps 'Search this area'
+  // they see the leftmost chips disappear (clear visual proof of the
+  // action removing region filters specifically).
   const activeFiltersForMap = Object.entries(filterValues)
+    .sort(([a], [b]) => (a === "region" ? -1 : b === "region" ? 1 : 0))
     .flatMap(([key, val]) => {
       if (!val) return [];
       if (Array.isArray(val)) {
