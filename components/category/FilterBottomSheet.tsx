@@ -251,6 +251,8 @@ function FilterSection({ filter, category, value, onChangeValue, onToggle, dataO
   switch (filter.widget) {
     case "dropdown":
       return <DropdownFilter filter={filter} value={(value as string) ?? ""} onChange={(v) => onChangeValue(v)} dataOptions={dataOptions} />;
+    case "multi-dropdown":
+      return <MultiDropdownFilter filter={filter} selected={(value as string[]) ?? []} onChange={(arr) => onChangeValue(arr)} dataOptions={dataOptions} />;
     case "search-dropdown":
       return <SearchDropdownFilter filter={filter} value={(value as string) ?? ""} onChange={(v) => onChangeValue(v)} suggestions={dataOptions} />;
     case "segmented":
@@ -407,6 +409,108 @@ function DropdownFilter({ filter, value, onChange, dataOptions }: {
                 }}
               >
                 {capitalize(opt)}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Multi-select Dropdown Filter ──────────────────────────── */
+
+function MultiDropdownFilter({ filter, selected, onChange, dataOptions }: {
+  filter: FilterDefinition;
+  selected: string[];
+  onChange: (arr: string[]) => void;
+  dataOptions?: string[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const options: string[] = filter.options
+    ? filter.options.map((o) => o.label)
+    : dataOptions ?? [];
+
+  function toggle(opt: string) {
+    const lower = opt.toLowerCase();
+    const already = selected.find((s) => s.toLowerCase() === lower);
+    if (already) {
+      onChange(selected.filter((s) => s.toLowerCase() !== lower));
+    } else {
+      onChange([...selected, opt]);
+    }
+  }
+
+  function summarize(): string {
+    if (selected.length === 0) return "Όλες";
+    if (selected.length === 1) return capitalize(selected[0]);
+    if (selected.length === 2) return `${capitalize(selected[0])}, ${capitalize(selected[1])}`;
+    return `${selected.length} επιλεγμένα`;
+  }
+
+  const summary = summarize();
+  const hasSelection = selected.length > 0;
+
+  return (
+    <div>
+      <p className="font-bold text-lg text-zinc-800 mb-4" style={{ fontFamily: "'Open Sans', sans-serif", lineHeight: "20px" }}>
+        {filter.label}
+      </p>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full h-[50px] rounded-xl border border-zinc-400 flex items-center justify-between px-4 active:bg-zinc-50 transition-colors"
+        style={{ maxWidth: 340 }}
+      >
+        <span
+          className="text-base truncate"
+          style={{
+            fontFamily: "'Open Sans', sans-serif",
+            fontWeight: hasSelection ? 700 : 600,
+            color: hasSelection ? "#27272A" : "#71717A",
+          }}
+        >
+          {summary}
+        </span>
+        <ChevronIcon rotated={expanded} />
+      </button>
+
+      {expanded && options.length > 0 && (
+        <div className="mt-2 border border-zinc-200 rounded-xl overflow-hidden max-h-[320px] overflow-y-auto bg-white" style={{ maxWidth: 340 }}>
+          {options.map((opt, i) => {
+            const isActive = selected.some((s) => s.toLowerCase() === opt.toLowerCase());
+            return (
+              <button
+                key={opt}
+                onClick={() => toggle(opt)}
+                className="w-full text-left flex items-center justify-between gap-3 px-4 py-3 active:bg-zinc-50 transition-colors"
+                style={{
+                  fontFamily: "'Open Sans', sans-serif",
+                  fontWeight: isActive ? 700 : 500,
+                  color: "#27272A",
+                  borderBottom: i < options.length - 1 ? "1px solid #E4E4E7" : "none",
+                  fontSize: 15,
+                }}
+              >
+                <span className="truncate flex-1 text-left">{capitalize(opt)}</span>
+                <span
+                  className="shrink-0 flex items-center justify-center transition-colors"
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 6,
+                    border: isActive ? "2px solid #18181B" : "2px solid #d4d4d8",
+                    background: isActive ? "#18181B" : "white",
+                  }}
+                  aria-checked={isActive}
+                  role="checkbox"
+                >
+                  {isActive && (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                  )}
+                </span>
               </button>
             );
           })}

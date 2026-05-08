@@ -2,6 +2,8 @@ import type { CategorySlug } from "@/types";
 
 export type FilterWidgetType =
   | "dropdown"
+  | "multi-dropdown"   // Inline multi-select with checkboxes (≤25 options). Auto-promotes
+                       // to drilldown picker when option count exceeds threshold (TODO).
   | "search-dropdown"
   | "segmented"
   | "platform-cards"
@@ -149,8 +151,8 @@ export const CATEGORY_FILTERS: Record<CategorySlug, CategoryFilters> = {
     hasNearby: true,
     bottomSheet: [
       { id: "region", label: "Περιοχή", widget: "region-picker" },
-      { id: "type", label: "Είδος", widget: "dropdown" },
-      { id: "cuisine", label: "Κουζίνα", widget: "dropdown" },
+      { id: "type", label: "Είδος", widget: "multi-dropdown" },
+      { id: "cuisine", label: "Κουζίνα", widget: "multi-dropdown" },
       {
         id: "delivery", label: "Delivery", widget: "platform-cards",
         options: [

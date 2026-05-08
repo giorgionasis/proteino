@@ -103,12 +103,20 @@ function matchesFilter(
 
   switch (filterId) {
     case "genre":
-    case "cuisine":
     case "event_type":
+      if (arr.length > 0) return arr.some((x) => ciEq(item.subcategory, x));
+      return ciEq(item.subcategory, v);
+
+    case "cuisine":
+      if (arr.length > 0) return arr.some((x) => ciEq(item.subcategory, x));
       return ciEq(item.subcategory, v);
 
     case "type":
-      if (category === "food") return ciEq(item.foodType, v);
+      if (category === "food") {
+        if (arr.length > 0) return arr.some((x) => ciEq(item.foodType, x));
+        return ciEq(item.foodType, v);
+      }
+      if (arr.length > 0) return arr.some((x) => ciEq(item.subcategory, x));
       return ciEq(item.subcategory, v);
 
     case "writer":
