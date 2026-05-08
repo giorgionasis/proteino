@@ -47,9 +47,19 @@ export function FilterBottomSheet({ open, onClose, category, values, onChange, r
     return () => { document.body.style.overflow = ""; };
   }, [open, values]);
 
+  // X close + Escape both apply the current selections then close. The
+  // count CTA at the bottom does the same — we removed the "discard
+  // changes" exit because users were confused (they saw the count
+  // updating live and assumed it had been applied; explicit cancel is
+  // rarely what they want here).
+  const handleCloseAndApply = useCallback(() => {
+    onChange(localValues);
+    onClose();
+  }, [onChange, localValues, onClose]);
+
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); },
-    [onClose],
+    (e: KeyboardEvent) => { if (e.key === "Escape") handleCloseAndApply(); },
+    [handleCloseAndApply],
   );
 
   useEffect(() => {
@@ -86,7 +96,8 @@ export function FilterBottomSheet({ open, onClose, category, values, onChange, r
       aria-hidden={!open}
       role="dialog"
       aria-label="Φίλτρα"
-      className="fixed inset-y-0 left-0 right-0 max-w-[390px] mx-auto z-50 bg-white flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform"
+      // z-60 so we cover map chrome (z-30) and the pin bottom card (z-50).
+      className="fixed inset-y-0 left-0 right-0 max-w-[390px] mx-auto z-[60] bg-white flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform"
       style={{ transform: open ? "translateY(0)" : "translateY(100%)" }}
     >
       <div className="shrink-0" style={{ height: "env(safe-area-inset-top, 0px)" }} />
@@ -98,7 +109,7 @@ export function FilterBottomSheet({ open, onClose, category, values, onChange, r
           Φίλτρα
         </span>
         <button
-          onClick={onClose}
+          onClick={handleCloseAndApply}
           className="w-12 h-12 flex items-center justify-center"
           aria-label="Κλείσιμο"
         >

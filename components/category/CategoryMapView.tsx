@@ -358,27 +358,32 @@ export function CategoryMapView({
       {/* "Εμφάνιση σε λίστα" floating button — top center */}
       <button
         onClick={onSwitchToList}
-        className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center justify-center gap-3 h-11 rounded-full active:opacity-80 transition-opacity select-none"
-        style={{ background: "rgba(63,63,70,0.9)", padding: "0 12px", width: 200 }}
+        className="absolute top-3 left-3 z-30 flex items-center justify-center gap-2 h-10 rounded-full active:opacity-80 transition-opacity select-none"
+        style={{ background: "rgba(63,63,70,0.92)", padding: "0 14px" }}
       >
         <ListToggleIcon />
-        <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: "120%" }}>
+        <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 13, color: "#fff", lineHeight: "120%" }}>
           Εμφάνιση σε λίστα
         </span>
       </button>
 
-      {/* Activities toggle — top right, compact icon button */}
+      {/* Activities toggle — top right, labeled pill so the user
+          actually understands what it does. Off: white bg + dark text.
+          On: coral bg + white text. */}
       <button
         onClick={() => setActivitiesOn((v) => !v)}
         aria-label="Δραστηριότητες"
         aria-pressed={activitiesOn}
-        className="absolute top-3 right-3 z-[1000] w-11 h-11 rounded-full flex items-center justify-center active:opacity-80 transition-all select-none"
+        className="absolute top-3 right-3 z-30 flex items-center gap-1.5 h-10 px-3 rounded-full active:opacity-80 transition-all select-none"
         style={{
           background: activitiesOn ? "#FE6F5E" : "rgba(255,255,255,0.95)",
           boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
         }}
       >
         <ActivitiesIcon color={activitiesOn ? "#fff" : "#27272a"} />
+        <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 600, fontSize: 12, color: activitiesOn ? "#fff" : "#27272a", lineHeight: "120%", letterSpacing: "0.01em" }}>
+          Δραστηριότητες
+        </span>
       </button>
 
       {/* "Search this area" pill — appears when user pans away from a
@@ -390,7 +395,7 @@ export function CategoryMapView({
             onClearRegionFilter();
             setUserPanned(false);
           }}
-          className="absolute left-1/2 -translate-x-1/2 z-[1001] flex items-center gap-2 h-11 px-5 rounded-full active:opacity-80 transition-opacity select-none"
+          className="absolute left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 h-11 px-5 rounded-full active:opacity-80 transition-opacity select-none"
           style={{
             top: 64,
             background: "#fff",
@@ -407,35 +412,42 @@ export function CategoryMapView({
 
       {/* Empty state badge */}
       {geoItems.length === 0 && items.length > 0 && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1000] bg-white/95 backdrop-blur px-4 py-2 rounded-full text-sm font-medium text-zinc-700 shadow-sm">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 bg-white/95 backdrop-blur px-4 py-2 rounded-full text-sm font-medium text-zinc-700 shadow-sm">
           Δεν υπάρχουν γεωκωδικοποιημένα στοιχεία για τα φίλτρα αυτά
         </div>
       )}
 
-      {/* Floating bottom bar: Φίλτρα + active chips */}
+      {/* Floating bottom bar: compact filter pill + chip carousel that
+          extends to the right edge of the page (chips visibly cut off
+          at edge to signal scrollability). Filter button no longer
+          carries the "Φίλτρα" label — the slider icon + count badge are
+          enough; saves space for chips. */}
       {!selected && (
         <div
-          className="absolute left-0 right-0 z-[1000] flex items-center justify-center gap-3 px-5"
-          style={{ bottom: "calc(64px + env(safe-area-inset-bottom, 0px) + 12px)" }}
+          className="absolute left-0 right-0 z-30 flex items-center gap-3"
+          style={{
+            bottom: "calc(64px + env(safe-area-inset-bottom, 0px) + 28px)",
+            paddingLeft: 16,
+          }}
         >
           <button
             onClick={onOpenFilters}
-            className="shrink-0 flex items-center gap-2 rounded-full active:opacity-80 transition-opacity select-none"
+            aria-label="Φίλτρα"
+            className="shrink-0 flex items-center rounded-full active:opacity-80 transition-opacity select-none"
             style={{
               background: "#18181B",
-              boxShadow: "0px 0px 20px -3px rgba(0,0,0,0.49)",
-              padding: "14px 16px",
+              boxShadow: "0px 4px 16px -3px rgba(0,0,0,0.4)",
+              paddingLeft: 14,
+              paddingRight: isFiltered ? 6 : 14,
+              gap: 8,
               height: 44,
             }}
           >
             <FilterSliderIcon />
-            <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 16, color: "#FAFAFA", lineHeight: "20px", letterSpacing: "0.01em" }}>
-              Φίλτρα
-            </span>
             {isFiltered && (
               <span
                 className="flex items-center justify-center rounded-full"
-                style={{ width: 28, height: 28, background: "#FFF2F1", fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 16, color: "#000", lineHeight: "20px" }}
+                style={{ width: 32, height: 32, background: "#FFF8F6", fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 16, color: "#18181B", lineHeight: "20px" }}
               >
                 {activeFilters.length}
               </span>
@@ -443,20 +455,25 @@ export function CategoryMapView({
           </button>
 
           {activeFilters.length > 0 && (
-            <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
-              {activeFilters.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => onRemoveFilter?.(f.id)}
-                  className="shrink-0 flex items-center gap-2 rounded-full active:opacity-80 transition-opacity select-none"
-                  style={{ background: "#E4E4E7", padding: "4px 16px", height: 44 }}
-                >
-                  <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 14, color: "#3F3F46", lineHeight: "20px" }}>
-                    {f.label}
-                  </span>
-                  <CloseChipIcon />
-                </button>
-              ))}
+            <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar">
+              <div className="flex items-center gap-2 pr-3" style={{ paddingRight: "calc(env(safe-area-inset-right, 0px) + 4px)" }}>
+                {activeFilters.map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => onRemoveFilter?.(f.id)}
+                    className="shrink-0 flex items-center gap-2 rounded-full active:opacity-80 transition-opacity select-none"
+                    style={{ background: "#E4E4E7", paddingLeft: 16, paddingRight: 10, height: 40 }}
+                  >
+                    <span
+                      className="whitespace-nowrap"
+                      style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 14, color: "#3F3F46", lineHeight: "20px" }}
+                    >
+                      {f.label}
+                    </span>
+                    <CloseChipIcon />
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -479,7 +496,8 @@ function BottomCard({ item, category, onClose }: { item: CategoryItem; category:
     <Link
       href={`/${category}/${item.slug ?? item.id}`}
       // fixed (not absolute) so the card sits at viewport bottom and
-      // covers the BottomNav (z-40). z-50 places it on top.
+      // covers the BottomNav (z-40). z-50 places it on top of map chrome
+      // but below the FilterBottomSheet (z-60).
       className="fixed bottom-0 left-0 right-0 z-50 mx-auto bg-white rounded-t-2xl active:bg-zinc-50 transition-colors"
       style={{
         maxWidth: 390,
