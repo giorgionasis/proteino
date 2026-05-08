@@ -8,7 +8,6 @@ import { SubCategoryTabs } from "./SubCategoryTabs";
 import { FilterRow } from "./FilterRow";
 import { FilterBottomSheet, type FilterValues } from "./FilterBottomSheet";
 import { CategoryCard, isPortraitCategory, type CategoryItem } from "./CategoryCard";
-import { CategoryHeroStats } from "./CategoryHeroStats";
 import { CategoryTopUsers, type ContributorUser, type TopUser } from "./CategoryTopUsers";
 import { CategorySuggestBox } from "./CategorySuggestBox";
 import { CarouselLandscape, type LandscapeItem } from "@/components/recommendation/CarouselLandscape";
@@ -42,7 +41,6 @@ const CATEGORY_LABELS: Record<CategorySlug, string> = {
 };
 
 const HAS_MAP: CategorySlug[] = ["food", "bars", "hotels", "theater", "events"];
-const HAS_HERO_STATS: CategorySlug[] = ["food", "bars", "hotels", "theater", "events"];
 
 const SECTION_TITLES: Record<CategorySlug, [string, string]> = {
   food:    ["Δημοφιλή Μαγαζιά",          "Κορυφαίες Επιλογές"],
@@ -236,7 +234,6 @@ export function CategoryPageShell({
   const tabs         = filterData.tabs;
   const filterConfig = filterConfigProp ?? CATEGORY_FILTERS[category];
   const hasMap       = HAS_MAP.includes(category);
-  const hasHeroStats = HAS_HERO_STATS.includes(category);
 
   const activeFilterCount = Object.values(filterValues).filter((v) =>
     Array.isArray(v) ? v.length > 0 : v && v !== "all"
@@ -434,23 +431,50 @@ export function CategoryPageShell({
 
       {/* Scrollable content */}
       <div className="flex-1 pb-10">
-        {/* Filter row */}
+        {/* Filter row — Φίλτρα button + 'Κοντά μου' only.
+            Quick-filter chips removed (duplicated bottom sheet). */}
         <FilterRow
-          quickFilters={filterConfig.quickFilters}
           hasNearby={filterConfig.hasNearby}
           activeCount={activeFilterCount}
           onOpenFilters={() => setFiltersOpen(true)}
           className="pt-2 pb-1"
         />
 
-        {/* Hero stats (count + map toggle) */}
-        {hasHeroStats && (
-          <CategoryHeroStats
-            count={displayCount}
-            categoryLabel={CATEGORY_LABELS[category]}
-            onToggleMap={() => setShowMap(true)}
-            hasMap={hasMap}
+        {/* Active filter chips — same UI as map view. Only rendered when
+            filters are applied. Tap X to remove (with fade animation). */}
+        {activeFiltersForMap.length > 0 && (
+          <ActiveChipsRow
+            chips={activeFiltersForMap}
+            onRemove={handleRemoveFilter}
           />
+        )}
+
+        {/* Open-map button — single prominent CTA replacing the old
+            CategoryHeroStats block. Only shown for venue categories
+            that have a map view available. */}
+        {hasMap && (
+          <div className="px-4 pt-2 pb-3">
+            <button
+              onClick={() => setShowMap(true)}
+              className="w-full h-12 flex items-center justify-center gap-2 rounded-full active:opacity-85 transition-opacity"
+              style={{
+                background: "#fff",
+                border: "1.5px solid #FE6F5E",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FE6F5E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+              <span className="text-[15px] font-bold" style={{ color: "#27272a", fontFamily: "'Open Sans',sans-serif" }}>
+                Άνοιγμα χάρτη
+              </span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FE6F5E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </button>
+          </div>
         )}
 
         {/* Items list */}
@@ -540,6 +564,84 @@ function EmptyState() {
       <span className="text-4xl">🔍</span>
       <p className="text-sm font-semibold text-zinc-800">Δεν βρέθηκαν αποτελέσματα</p>
       <p className="text-xs text-zinc-500">Δοκίμασε να αλλάξεις τα φίλτρα σου ή πρόσθεσε κάτι νέο.</p>
+    </div>
+  );
+}
+
+/* ── Active filter chips row ─────────────────────────────────
+   Same visual + animation as the map view's chip carousel.
+   Displayed below FilterRow on list view when filters are active.
+   Tap X → 350ms fade-out, then onRemove. */
+function ActiveChipsRow({ chips, onRemove }: {
+  chips: { id: string; label: string }[];
+  onRemove: (id: string) => void;
+}) {
+  const [removing, setRemoving] = useState<Set<string>>(new Set());
+
+  const handleRemove = (id: string) => {
+    if (removing.has(id)) return;
+    setRemoving((prev) => {
+      const next = new Set(Array.from(prev));
+      next.add(id);
+      return next;
+    });
+    window.setTimeout(() => {
+      onRemove(id);
+      setRemoving((prev) => {
+        const next = new Set(Array.from(prev));
+        next.delete(id);
+        return next;
+      });
+    }, 350);
+  };
+
+  return (
+    <div className="overflow-x-auto no-scrollbar pb-2 pt-1">
+      <div className="flex items-center gap-2 px-4">
+        {chips.map((chip) => {
+          const isRemoving = removing.has(chip.id);
+          return (
+            <button
+              key={chip.id}
+              onClick={() => !isRemoving && handleRemove(chip.id)}
+              disabled={isRemoving}
+              className="shrink-0 flex items-center gap-2 rounded-full active:opacity-80 select-none"
+              style={{
+                background: "#E4E4E7",
+                paddingLeft: 14,
+                paddingRight: 8,
+                height: 34,
+                opacity: isRemoving ? 0 : 1,
+                transform: isRemoving ? "translateX(-12px) scale(0.92)" : "translateX(0) scale(1)",
+                transition: "opacity 350ms ease, transform 350ms ease, padding 350ms ease, margin 350ms ease",
+                marginLeft: isRemoving ? -8 : 0,
+                marginRight: isRemoving ? -8 : 0,
+              }}
+            >
+              <span
+                className="whitespace-nowrap"
+                style={{
+                  fontFamily: "'Open Sans',sans-serif",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  color: "#3F3F46",
+                  lineHeight: "20px",
+                }}
+              >
+                {chip.label}
+              </span>
+              <span
+                className="flex items-center justify-center rounded-full"
+                style={{ width: 18, height: 18, background: "#FAFAFA" }}
+              >
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#3F3F46" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                  <path d="M5.17 5.17L10.83 10.83M10.83 5.17L5.17 10.83" />
+                </svg>
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -2,49 +2,69 @@
 
 import { MapPin } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
-import type { QuickFilterDef } from "@/constants/filters";
 
 interface FilterRowProps {
-  quickFilters:    QuickFilterDef[];
   hasNearby?:      boolean;
   activeCount?:    number;
   onOpenFilters:   () => void;
   className?:      string;
 }
 
+// Streamlined per design: Φίλτρα button + (optional) "Κοντά μου" only.
+// Quick-filter chips (Περιοχή/Είδος/etc.) removed because they duplicated
+// what the bottom sheet already exposes a tap away. The bottom sheet is
+// fast and easy enough — extra chips just clutter. "Κοντά μου" stays as
+// a one-tap geolocation action with no equivalent in the sheet.
+//
+// Φίλτρα button mirrors the map view's pattern: text+icon when no filters,
+// compact icon+count when filters are active.
 export function FilterRow({
-  quickFilters,
   hasNearby = false,
   activeCount = 0,
   onOpenFilters,
   className,
 }: FilterRowProps) {
+  const isFiltered = activeCount > 0;
   return (
     <div className={cn("flex gap-2 overflow-x-auto no-scrollbar px-4 py-3", className)}>
-      {/* ⊞ Filters button */}
       <button
         onClick={onOpenFilters}
+        aria-label="Φίλτρα"
         className={cn(
-          "shrink-0 inline-flex items-center gap-1.5 px-3 h-8 rounded-full",
-          "text-xs font-semibold border transition-colors active:opacity-80",
-          activeCount > 0
-            ? "bg-zinc-800 text-white border-zinc-800"
-            : "bg-white text-zinc-700 border-zinc-200",
+          "shrink-0 inline-flex items-center rounded-full transition-colors active:opacity-80",
+          isFiltered
+            ? "bg-zinc-800 border border-zinc-800"
+            : "bg-white border border-zinc-200",
         )}
+        style={{
+          height: 32,
+          paddingLeft: 12,
+          paddingRight: isFiltered ? 4 : 14,
+          gap: 6,
+        }}
       >
-        <FilterSliderIcon light={activeCount > 0} />
-        <span>Φίλτρα</span>
-        {activeCount > 0 && (
+        <FilterSliderIcon light={isFiltered} />
+        {!isFiltered && (
+          <span className="text-xs font-semibold text-zinc-700">Φίλτρα</span>
+        )}
+        {isFiltered && (
           <span
-            className="ml-0.5 w-5 h-5 flex items-center justify-center rounded-full text-[11px] font-bold leading-none"
-            style={{ backgroundColor: "#FFF2F1", color: "#000" }}
+            className="flex items-center justify-center rounded-full"
+            style={{
+              width: 24,
+              height: 24,
+              backgroundColor: "#FFF8F6",
+              color: "#000",
+              fontWeight: 700,
+              fontSize: 12,
+              lineHeight: 1,
+            }}
           >
             {activeCount}
           </span>
         )}
       </button>
 
-      {/* Κοντά μου — location categories */}
       {hasNearby && (
         <button
           className={cn(
@@ -57,23 +77,6 @@ export function FilterRow({
           Κοντά μου
         </button>
       )}
-
-      {/* Quick filter chips */}
-      {quickFilters.map((filter) => (
-        <button
-          key={filter.id}
-          className={cn(
-            "shrink-0 inline-flex items-center gap-1 px-3 h-8 rounded-full",
-            "text-xs font-medium border border-zinc-200 bg-white text-zinc-700",
-            "whitespace-nowrap transition-colors active:bg-zinc-50",
-          )}
-        >
-          {filter.label}
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400" aria-hidden>
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </button>
-      ))}
     </div>
   );
 }

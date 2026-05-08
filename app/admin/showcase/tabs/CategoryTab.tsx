@@ -480,42 +480,26 @@ function FilterRowShowcase() {
     <ShowcaseSection
       name="FilterRow"
       filePath="components/category/FilterRow.tsx"
-      description="Quick-filter chip strip below the SubCategoryTabs. ⊞ Filters button (with active count badge) opens the bottom sheet; optional 📍 Κοντά μου for food/bars; rest are dropdown chips."
+      description="Slim row below the SubCategoryTabs. Φίλτρα button (text+icon when empty, compact icon+count badge when filtered) opens the bottom sheet. Optional 📍 Κοντά μου for venue categories. Quick-filter dropdown chips were removed — they duplicated the bottom sheet's options without adding value."
       contextLinks={[{ label: "Live (food)", href: "/food" }]}
     >
       <Variant label="Default — no active filters">
         <div className="w-[400px] bg-white border-b border-zinc-100">
-          <FilterRow
-            quickFilters={[
-              { id: "platform", label: "Platform" },
-              { id: "year", label: "Εποχή" },
-            ]}
-            onOpenFilters={() => {}}
-          />
+          <FilterRow onOpenFilters={() => {}} />
         </div>
       </Variant>
       <Variant label="With active count + nearby">
         <div className="w-[400px] bg-white border-b border-zinc-100">
           <FilterRow
-            quickFilters={[
-              { id: "region", label: "Περιοχή" },
-              { id: "price", label: "Τιμή" },
-            ]}
             hasNearby
             activeCount={3}
             onOpenFilters={() => {}}
           />
         </div>
       </Variant>
-      <Variant label="Hotel quick filters">
+      <Variant label="Books — no nearby">
         <div className="w-[400px] bg-white border-b border-zinc-100">
-          <FilterRow
-            quickFilters={[
-              { id: "price-night", label: "Τιμή/νύχτα" },
-              { id: "stars", label: "Αστέρια" },
-            ]}
-            onOpenFilters={() => {}}
-          />
+          <FilterRow onOpenFilters={() => {}} />
         </div>
       </Variant>
     </ShowcaseSection>
