@@ -49,6 +49,65 @@ const JPEG_QUALITY = 85;
 export const MAX_INPUT_BYTES = 10 * 1024 * 1024;
 const MAX_INPUT_DIM = 5000;
 
+const FETCH_TIMEOUT_MS = 20_000;
+
+/**
+ * Upgrade common third-party CDN URLs to their largest size before the
+ * pipeline runs. We get a better source = better output. Idempotent.
+ *
+ * - TMDB: w500/w780/w1280/h632 etc. → original
+ * - Google Books: zoom=1 (thumbnail) → zoom=0 (full); strip edge-curl effect
+ * - Other URLs are returned unchanged.
+ */
+export function upgradeSourceUrl(url: string): string {
+  // TMDB images: image.tmdb.org/t/p/{size}/{path}
+  // Replace any w<NN> / h<NN> / original with original
+  if (/image\.tmdb\.org\/t\/p\//.test(url)) {
+    return url.replace(/\/t\/p\/[a-z0-9_]+\//, "/t/p/original/");
+  }
+  // Google Books image URLs
+  if (/books\.google\.com\/books\/content/.test(url)) {
+    return url
+      .replace(/(&|\?)zoom=\d+/, "$1zoom=0")
+      .replace(/(&|\?)edge=curl/, "");
+  }
+  return url;
+}
+
+/**
+ * Fetch an image URL into a Buffer with timeout + size-limit safeguards.
+ * Used by the URL-upload endpoint so external URLs (TMDB / Google Books /
+ * Google Places) flow through the same pipeline as direct uploads.
+ */
+export async function fetchImageBuffer(rawUrl: string): Promise<{ buffer: Buffer; contentType: string }> {
+  const url = upgradeSourceUrl(rawUrl);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      // Spoof a real UA — some CDNs (Google Books) reject default node fetch UA.
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; ProteinoBot/1.0)" },
+    });
+    if (!res.ok) {
+      throw new Error(`Fetch failed: HTTP ${res.status}`);
+    }
+    const contentType = res.headers.get("content-type") ?? "application/octet-stream";
+    if (!contentType.startsWith("image/")) {
+      throw new Error(`Source URL did not return an image (content-type: ${contentType})`);
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_INPUT_BYTES) {
+      throw new Error(`Source image too large (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(1)} MB). Max 10 MB.`);
+    }
+    return { buffer: Buffer.from(arrayBuffer), contentType };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 interface ProcessedVariant {
   variant: Variant | "og";
   buffer: Buffer;
