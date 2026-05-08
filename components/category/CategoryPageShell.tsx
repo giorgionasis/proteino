@@ -42,6 +42,8 @@ const CATEGORY_LABELS: Record<CategorySlug, string> = {
 
 const HAS_MAP: CategorySlug[] = ["food", "bars", "hotels", "theater", "events"];
 
+const PROTASEIS_LABEL = "Προτάσεις";
+
 const SECTION_TITLES: Record<CategorySlug, [string, string]> = {
   food:    ["Δημοφιλή Μαγαζιά",          "Κορυφαίες Επιλογές"],
   bars:    ["Δημοφιλή Μπαρ & Καφέ",      "Κορυφαίες Επιλογές"],
@@ -235,9 +237,17 @@ export function CategoryPageShell({
   const filterConfig = filterConfigProp ?? CATEGORY_FILTERS[category];
   const hasMap       = HAS_MAP.includes(category);
 
-  const activeFilterCount = Object.values(filterValues).filter((v) =>
-    Array.isArray(v) ? v.length > 0 : v && v !== "all"
-  ).length;
+  // Count individual filter values, not filter entries. Two cuisines
+  // selected = count 2, not 1 — matches the chip count visible in the
+  // carousel + on the map view's filter button. (Region parent
+  // aggregation collapses N children into 1 chip on the map; the count
+  // here would say N which is a minor edge case — accept until we
+  // surface activeFiltersForMap-driven count, which requires reordering.)
+  const activeFilterCount = Object.values(filterValues).reduce<number>((sum, v) => {
+    if (Array.isArray(v)) return sum + v.length;
+    if (v && v !== "all" && v !== "") return sum + 1;
+    return sum;
+  }, 0);
 
   const listItems = items;
 
@@ -412,7 +422,8 @@ export function CategoryPageShell({
   /* ── List view (default) ── */
   return (
     <div className="flex flex-col min-h-full">
-      {/* Sticky header */}
+      {/* Sticky slim header — back + category + count.
+          Stays compact on scroll; the bigger visual block below scrolls away. */}
       <InnerHeader
         title={CATEGORY_LABELS[category]}
         onBack={() => router.back()}
@@ -420,6 +431,19 @@ export function CategoryPageShell({
           <span className="text-sm font-semibold text-zinc-500">{formatCount(displayCount)}</span>
         }
       />
+
+      {/* Big visual stats block — non-sticky, scrolls away.
+          Number is prominent so users feel the breadth ('244 to discover'). */}
+      <div className="px-4 pt-3 pb-4">
+        <div className="text-[44px] font-extrabold leading-none text-zinc-900" style={{ fontFamily: "'Open Sans',sans-serif", letterSpacing: "-0.5px" }}>
+          {displayCount.toLocaleString("el-GR")}
+        </div>
+        <div className="mt-1.5 text-[13px] font-medium text-zinc-600 leading-tight">
+          {hasActiveFilters
+            ? `Φιλτραρισμένα από ${totalCount.toLocaleString("el-GR")} ${CATEGORY_LABELS[category]}`
+            : `${PROTASEIS_LABEL} να ανακαλύψεις σε ${CATEGORY_LABELS[category]}`}
+        </div>
+      </div>
 
       {/* Sticky sub-category tabs */}
       <SubCategoryTabs
@@ -431,39 +455,34 @@ export function CategoryPageShell({
 
       {/* Scrollable content */}
       <div className="flex-1 pb-10">
-        {/* Filter row — Φίλτρα button + 'Κοντά μου' only.
-            Quick-filter chips removed (duplicated bottom sheet). */}
+        {/* Filter row — Φίλτρα button + Κοντά μου + active chips inline.
+            Chips share the same horizontal scroll as the buttons to save
+            vertical space. Quick-filter dropdown chips removed earlier. */}
         <FilterRow
           hasNearby={filterConfig.hasNearby}
           activeCount={activeFilterCount}
+          activeChips={activeFiltersForMap}
+          onRemoveChip={handleRemoveFilter}
           onOpenFilters={() => setFiltersOpen(true)}
-          className="pt-2 pb-1"
+          className="pt-3 pb-2"
         />
 
-        {/* Active filter chips — same UI as map view. Only rendered when
-            filters are applied. Tap X to remove (with fade animation). */}
-        {activeFiltersForMap.length > 0 && (
-          <ActiveChipsRow
-            chips={activeFiltersForMap}
-            onRemove={handleRemoveFilter}
-          />
-        )}
-
-        {/* Open-map button — single prominent CTA replacing the old
-            CategoryHeroStats block. Only shown for venue categories
-            that have a map view available. */}
+        {/* Open-map button — compact pill, centered, ~220px wide.
+            Only shown for venue categories. */}
         {hasMap && (
-          <div className="px-4 pt-2 pb-3">
+          <div className="flex justify-center px-4 pt-1 pb-3">
             <button
               onClick={() => setShowMap(true)}
-              className="w-full h-12 flex items-center justify-center gap-2 rounded-full active:opacity-85 transition-opacity"
+              className="flex items-center justify-center gap-2 rounded-full active:opacity-85 transition-opacity"
               style={{
+                width: 220,
+                height: 44,
                 background: "#fff",
                 border: "1.5px solid #FE6F5E",
                 boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
               }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FE6F5E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FE6F5E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
                 <circle cx="12" cy="10" r="3" />
               </svg>
@@ -568,80 +587,3 @@ function EmptyState() {
   );
 }
 
-/* ── Active filter chips row ─────────────────────────────────
-   Same visual + animation as the map view's chip carousel.
-   Displayed below FilterRow on list view when filters are active.
-   Tap X → 350ms fade-out, then onRemove. */
-function ActiveChipsRow({ chips, onRemove }: {
-  chips: { id: string; label: string }[];
-  onRemove: (id: string) => void;
-}) {
-  const [removing, setRemoving] = useState<Set<string>>(new Set());
-
-  const handleRemove = (id: string) => {
-    if (removing.has(id)) return;
-    setRemoving((prev) => {
-      const next = new Set(Array.from(prev));
-      next.add(id);
-      return next;
-    });
-    window.setTimeout(() => {
-      onRemove(id);
-      setRemoving((prev) => {
-        const next = new Set(Array.from(prev));
-        next.delete(id);
-        return next;
-      });
-    }, 350);
-  };
-
-  return (
-    <div className="overflow-x-auto no-scrollbar pb-2 pt-1">
-      <div className="flex items-center gap-2 px-4">
-        {chips.map((chip) => {
-          const isRemoving = removing.has(chip.id);
-          return (
-            <button
-              key={chip.id}
-              onClick={() => !isRemoving && handleRemove(chip.id)}
-              disabled={isRemoving}
-              className="shrink-0 flex items-center gap-2 rounded-full active:opacity-80 select-none"
-              style={{
-                background: "#E4E4E7",
-                paddingLeft: 14,
-                paddingRight: 8,
-                height: 34,
-                opacity: isRemoving ? 0 : 1,
-                transform: isRemoving ? "translateX(-12px) scale(0.92)" : "translateX(0) scale(1)",
-                transition: "opacity 350ms ease, transform 350ms ease, padding 350ms ease, margin 350ms ease",
-                marginLeft: isRemoving ? -8 : 0,
-                marginRight: isRemoving ? -8 : 0,
-              }}
-            >
-              <span
-                className="whitespace-nowrap"
-                style={{
-                  fontFamily: "'Open Sans',sans-serif",
-                  fontWeight: 700,
-                  fontSize: 13,
-                  color: "#3F3F46",
-                  lineHeight: "20px",
-                }}
-              >
-                {chip.label}
-              </span>
-              <span
-                className="flex items-center justify-center rounded-full"
-                style={{ width: 18, height: 18, background: "#FAFAFA" }}
-              >
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#3F3F46" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                  <path d="M5.17 5.17L10.83 10.83M10.83 5.17L5.17 10.83" />
-                </svg>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
