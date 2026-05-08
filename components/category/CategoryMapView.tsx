@@ -7,6 +7,7 @@ import Supercluster from "supercluster";
 import Link from "next/link";
 import type { CategorySlug } from "@/types";
 import type { CategoryItem } from "./CategoryCard";
+import { useMapMode } from "@/hooks/useMapMode";
 
 interface ActiveFilter {
   id: string;
@@ -20,6 +21,11 @@ interface Props {
   activeFilters?: ActiveFilter[];
   onRemoveFilter?: (id: string) => void;
   onOpenFilters?: () => void;
+  /** True when at least one region sub-area is selected — drives the
+   *  "Search this area" hint when the user pans away from the filtered
+   *  bounds. Tapping the hint clears the region filter. */
+  hasRegionFilter?: boolean;
+  onClearRegionFilter?: () => void;
 }
 
 // Inline raster style — Carto Voyager raster tiles. Picked over vector
@@ -95,6 +101,8 @@ export function CategoryMapView({
   activeFilters = [],
   onRemoveFilter,
   onOpenFilters,
+  hasRegionFilter = false,
+  onClearRegionFilter,
 }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<Map | null>(null);
@@ -109,6 +117,15 @@ export function CategoryMapView({
   const [zoom, setZoom] = useState(6);
   const [bounds, setBounds] = useState<{ west: number; south: number; east: number; north: number } | null>(null);
   const [selected, setSelected] = useState<CategoryItem | null>(null);
+  const [userPanned, setUserPanned] = useState(false);
+  const [activitiesOn, setActivitiesOn] = useState(false);
+
+  // Mark map mode active so the global FAB hides itself while the user is
+  // browsing the map (suggest action doesn't fit map-browse context).
+  useEffect(() => {
+    useMapMode.getState().setActive(true);
+    return () => useMapMode.getState().setActive(false);
+  }, []);
 
   // Filter items down to those with valid coordinates — only pinnable ones go on the map.
   const geoItems = useMemo(
@@ -187,6 +204,12 @@ export function CategoryMapView({
       updateState();
       map.on("moveend", updateState);
       map.on("zoomend", updateState);
+
+      // Distinguish user-initiated movement from programmatic fit/fly.
+      // `originalEvent` is set only on real input events.
+      map.on("movestart", (e: any) => {
+        if (e?.originalEvent) setUserPanned(true);
+      });
     });
 
     // Also resize when the window resizes (orientation change, sidebar collapse, etc.)
@@ -223,6 +246,7 @@ export function CategoryMapView({
   useEffect(() => {
     const map = mapInstance.current;
     if (!map) return;
+    setUserPanned(false); // new fit cycle — clear any prior pan signal
     if (geoItems.length === 0) {
       map.fitBounds(GREECE_BOUNDS, { padding: 40, animate: true, duration: 600 });
       return;
@@ -342,6 +366,44 @@ export function CategoryMapView({
           Εμφάνιση σε λίστα
         </span>
       </button>
+
+      {/* Activities toggle — top right, compact icon button */}
+      <button
+        onClick={() => setActivitiesOn((v) => !v)}
+        aria-label="Δραστηριότητες"
+        aria-pressed={activitiesOn}
+        className="absolute top-3 right-3 z-[1000] w-11 h-11 rounded-full flex items-center justify-center active:opacity-80 transition-all select-none"
+        style={{
+          background: activitiesOn ? "#FE6F5E" : "rgba(255,255,255,0.95)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+        }}
+      >
+        <ActivitiesIcon color={activitiesOn ? "#fff" : "#27272a"} />
+      </button>
+
+      {/* "Search this area" pill — appears when user pans away from a
+          region-filtered view. Tap clears the region filter so the user
+          sees results in their current view. */}
+      {hasRegionFilter && userPanned && onClearRegionFilter && (
+        <button
+          onClick={() => {
+            onClearRegionFilter();
+            setUserPanned(false);
+          }}
+          className="absolute left-1/2 -translate-x-1/2 z-[1001] flex items-center gap-2 h-11 px-5 rounded-full active:opacity-80 transition-opacity select-none"
+          style={{
+            top: 64,
+            background: "#fff",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.2), 0 1px 4px rgba(0,0,0,0.08)",
+            border: "1.5px solid #FE6F5E",
+          }}
+        >
+          <RefreshIcon />
+          <span style={{ fontFamily: "'Open Sans',sans-serif", fontWeight: 700, fontSize: 14, color: "#FE6F5E", lineHeight: "120%" }}>
+            Αναζήτηση σε αυτή την περιοχή
+          </span>
+        </button>
+      )}
 
       {/* Empty state badge */}
       {geoItems.length === 0 && items.length > 0 && (
@@ -482,6 +544,27 @@ function BottomCard({ item, category, onClose }: { item: CategoryItem; category:
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[m]!);
+}
+
+function ActivitiesIcon({ color }: { color: string }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      {/* Bookmark / pin-flag composite — represents "things to do" */}
+      <path d="M12 22s-8-4.5-8-11.5a8 8 0 1 1 16 0c0 7-8 11.5-8 11.5z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FE6F5E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+      <polyline points="21 3 21 8 16 8" />
+      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+      <polyline points="3 21 3 16 8 16" />
+    </svg>
+  );
 }
 
 function ListToggleIcon() {

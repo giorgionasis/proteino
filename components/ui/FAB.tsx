@@ -3,12 +3,16 @@
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useOverlay } from "@/hooks/useOverlay";
+import { useMapMode } from "@/hooks/useMapMode";
 
 export function FAB({ className }: { className?: string }) {
   const { openSuggestion, overlay } = useOverlay();
+  const mapActive = useMapMode((s) => s.active);
 
-  // Hide when any overlay is open
+  // Hide when any overlay is open OR when the user is on a category map
+  // view (the suggest action doesn't fit the map-browse context).
   if (overlay !== null) return null;
+  if (mapActive) return null;
 
   return (
     // Constrained to the mobile column — mirrors max-w-lg container

@@ -335,6 +335,12 @@ export function CategoryPageShell({
           activeFilters={activeFiltersForMap}
           onRemoveFilter={handleRemoveFilter}
           onOpenFilters={() => setFiltersOpen(true)}
+          hasRegionFilter={Array.isArray(filterValues.region) && filterValues.region.length > 0}
+          onClearRegionFilter={() => {
+            const next = { ...filterValues };
+            delete next.region;
+            setFilterValues(next);
+          }}
         />
         <FilterBottomSheet
           open={filtersOpen}
