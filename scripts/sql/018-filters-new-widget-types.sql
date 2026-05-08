@@ -35,6 +35,18 @@ UPDATE category_filters SET widget = 'awards-picker'
 UPDATE category_filters SET widget = 'awards-picker'
   WHERE category = 'series' AND filter_id = 'awards';
 
+-- Bulk: convert single-select genre / type dropdowns across categories
+-- to multi-dropdown so users can OR multiple values in one filter.
+UPDATE category_filters SET widget = 'multi-dropdown'
+  WHERE (category, filter_id) IN (
+    ('movies',  'genre'),
+    ('series',  'genre'),
+    ('books',   'genre'),
+    ('recipes', 'type'),
+    ('theater', 'type'),
+    ('events',  'event_type')
+  );
+
 -- Sanity check (return rows after update):
 SELECT category, filter_id, label, widget, display_order, is_quick
 FROM category_filters
