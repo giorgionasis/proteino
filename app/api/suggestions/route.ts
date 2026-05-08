@@ -3,6 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import type { CategorySlug } from "@/types";
+import { processAndStoreItemImageFromUrl } from "@/lib/item-image-upload";
+
+// Node runtime: Sharp (used by the image pipeline kicked off after item
+// creation) has native bindings and can't run on Edge.
+export const runtime = "nodejs";
+// Pipeline can take 5–10s for poster + backdrop combined; allow headroom.
+export const maxDuration = 60;
 
 const GREEK_TO_LATIN: Record<string, string> = {
   "α":"a","β":"v","γ":"g","δ":"d","ε":"e","ζ":"z","η":"i","θ":"th",
@@ -315,6 +322,32 @@ export async function POST(req: NextRequest) {
       const { error: extErr } = await (admin.from(extTable) as any)
         .insert(buildVideoExtPayload(itemId, category, md));
       if (extErr) console.error(`[suggestions] insert ${extTable} for new ${itemId}:`, extErr.message);
+    }
+
+    // Image pipeline: when AI matched a TMDB / Books / Places result,
+    // run those URLs through Sharp → 4 WebP variants + OG JPEG → store
+    // in Supabase + update items.images jsonb. Done in parallel so the
+    // submission flow doesn't double its latency.
+    //
+    // Awaited so when /published is shown to the user the optimized URLs
+    // are already live (cover_url/poster_url/backdrop_url replaced).
+    // If pipeline fails, the item still has the original TMDB URLs as
+    // fallback (whitelisted in next.config.mjs), so the page still works.
+    const pipelineJobs: Promise<unknown>[] = [];
+    if (posterUrl) {
+      pipelineJobs.push(
+        processAndStoreItemImageFromUrl(admin, itemId, "poster", posterUrl)
+          .catch((e: any) => console.error(`[suggestions] pipeline poster ${itemId}:`, e?.message ?? e))
+      );
+    }
+    if (backdropUrl) {
+      pipelineJobs.push(
+        processAndStoreItemImageFromUrl(admin, itemId, "backdrop", backdropUrl)
+          .catch((e: any) => console.error(`[suggestions] pipeline backdrop ${itemId}:`, e?.message ?? e))
+      );
+    }
+    if (pipelineJobs.length > 0) {
+      await Promise.allSettled(pipelineJobs);
     }
   }
 
