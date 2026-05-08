@@ -3,7 +3,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { InnerHeader } from "@/components/layout/Header";
 import { SubCategoryTabs } from "./SubCategoryTabs";
 import { FilterRow } from "./FilterRow";
 import { FilterBottomSheet, type FilterValues } from "./FilterBottomSheet";
@@ -420,37 +419,62 @@ export function CategoryPageShell({
   }
 
   /* ── List view (default) ── */
+  const categoryLabel = CATEGORY_LABELS[category];
   return (
     <div className="flex flex-col min-h-full">
-      {/* Sticky slim header — back + category + count.
-          Stays compact on scroll; the bigger visual block below scrolls away. */}
-      <InnerHeader
-        title={CATEGORY_LABELS[category]}
-        onBack={() => router.back()}
-        rightSlot={
-          <span className="text-sm font-semibold text-zinc-500">{formatCount(displayCount)}</span>
-        }
-      />
-
-      {/* Big visual stats block — non-sticky, scrolls away.
-          Number is prominent so users feel the breadth ('244 to discover'). */}
-      <div className="px-4 pt-3 pb-4">
-        <div className="text-[44px] font-extrabold leading-none text-zinc-900" style={{ fontFamily: "'Open Sans',sans-serif", letterSpacing: "-0.5px" }}>
-          {displayCount.toLocaleString("el-GR")}
-        </div>
-        <div className="mt-1.5 text-[13px] font-medium text-zinc-600 leading-tight">
-          {hasActiveFilters
-            ? `Φιλτραρισμένα από ${totalCount.toLocaleString("el-GR")} ${CATEGORY_LABELS[category]}`
-            : `${PROTASEIS_LABEL} να ανακαλύψεις σε ${CATEGORY_LABELS[category]}`}
+      {/* Sticky welcome-card header. Two states:
+          • No filters: big total number + 'Προτάσεις να ανακαλύψεις σε X'
+          • Filtered:   '10 προτάσεις' inline + 'Από τις 244 σε Φαγητό'
+          Replaces both the slim InnerHeader and the separate stats block.
+          Always visible (sticky top-0). */}
+      <div
+        className="sticky top-0 z-30 bg-white border-b border-zinc-100"
+        style={{ minHeight: 96 }}
+      >
+        <div className="flex gap-2 px-3 pt-3 pb-3">
+          <button
+            onClick={() => router.back()}
+            aria-label="Πίσω"
+            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full active:bg-zinc-100 transition-colors"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#27272a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M19 12H5" />
+              <path d="m12 19-7-7 7-7" />
+            </svg>
+          </button>
+          <div className="flex-1 min-w-0 pt-0.5">
+            {hasActiveFilters ? (
+              <>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[30px] font-extrabold leading-none text-zinc-900" style={{ fontFamily: "'Open Sans',sans-serif", letterSpacing: "-0.4px" }}>
+                    {displayCount.toLocaleString("el-GR")}
+                  </span>
+                  <span className="text-[14px] font-semibold text-zinc-700 leading-tight">προτάσεις</span>
+                </div>
+                <div className="mt-2 text-[13px] font-medium text-zinc-500 leading-tight">
+                  Από τις {totalCount.toLocaleString("el-GR")} σε {categoryLabel}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-[44px] font-extrabold leading-none text-zinc-900" style={{ fontFamily: "'Open Sans',sans-serif", letterSpacing: "-0.6px" }}>
+                  {totalCount.toLocaleString("el-GR")}
+                </div>
+                <div className="mt-2 text-[13px] font-medium text-zinc-600 leading-tight">
+                  {PROTASEIS_LABEL} να ανακαλύψεις σε {categoryLabel}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Sticky sub-category tabs */}
+      {/* Sticky sub-category tabs — sit just below the welcome header. */}
       <SubCategoryTabs
         tabs={tabs}
         active={activeTab}
         onChange={setActiveTab}
-        className="top-14"
+        className="top-24"
       />
 
       {/* Scrollable content */}
