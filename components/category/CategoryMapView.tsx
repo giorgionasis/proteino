@@ -137,6 +137,28 @@ export function CategoryMapView({
     return () => useMapMode.getState().setActive(false);
   }, []);
 
+  // Removing a single filter chip: fade it out + suppress the next
+  // auto-fit so the map doesn't jump back to fit the larger result set.
+  // Same behavior we want on "Search this area" — applied to every
+  // individual chip dismissal too.
+  const handleChipRemoveAnimated = (chipId: string) => {
+    if (removingChipIds.has(chipId)) return; // already animating
+    setRemovingChipIds((prev) => {
+      const next = new Set(Array.from(prev));
+      next.add(chipId);
+      return next;
+    });
+    skipNextFitRef.current = true;
+    window.setTimeout(() => {
+      onRemoveFilter?.(chipId);
+      setRemovingChipIds((prev) => {
+        const next = new Set(Array.from(prev));
+        next.delete(chipId);
+        return next;
+      });
+    }, 350);
+  };
+
   // Filter items down to those with valid coordinates — only pinnable ones go on the map.
   const geoItems = useMemo(
     () => items.filter((i) => typeof i.lat === "number" && typeof i.lng === "number"),
@@ -449,7 +471,7 @@ export function CategoryMapView({
               setUserPanned(false);
               setRemovingChipIds(new Set());
               setSearchHerePillConfirming(false);
-            }, 280);
+            }, 350);
           }}
           disabled={searchHerePillConfirming}
           className="absolute left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 h-11 pl-4 pr-3 rounded-full active:opacity-80 transition-all select-none"
@@ -536,7 +558,7 @@ export function CategoryMapView({
                   return (
                     <button
                       key={f.id}
-                      onClick={() => !removing && onRemoveFilter?.(f.id)}
+                      onClick={() => !removing && handleChipRemoveAnimated(f.id)}
                       disabled={removing}
                       className="shrink-0 flex items-center gap-2 rounded-full active:opacity-80 select-none"
                       style={{
@@ -546,10 +568,10 @@ export function CategoryMapView({
                         height: 40,
                         // Fade-out: pre-removal state. The chip stays in
                         // DOM through the transition then is removed when
-                        // filter state updates ~280ms later.
+                        // filter state updates ~350ms later.
                         opacity: removing ? 0 : 1,
                         transform: removing ? "translateX(-12px) scale(0.92)" : "translateX(0) scale(1)",
-                        transition: "opacity 250ms ease, transform 250ms ease, padding-left 250ms ease, padding-right 250ms ease, margin 250ms ease",
+                        transition: "opacity 350ms ease, transform 350ms ease, padding-left 350ms ease, padding-right 350ms ease, margin 350ms ease",
                         marginLeft: removing ? -8 : 0,
                         marginRight: removing ? -8 : 0,
                       }}
