@@ -22,11 +22,6 @@ const CategoryMapView = dynamic(
 
 /* ── helpers ─────────────────────────────────────────────── */
 
-function formatCount(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(".", ",")}K`;
-  return n.toString();
-}
-
 const CATEGORY_LABELS: Record<CategorySlug, string> = {
   movies:  "Ταινίες",
   series:  "Σειρές",
@@ -40,8 +35,6 @@ const CATEGORY_LABELS: Record<CategorySlug, string> = {
 };
 
 const HAS_MAP: CategorySlug[] = ["food", "bars", "hotels", "theater", "events"];
-
-const PROTASEIS_LABEL = "Προτάσεις";
 
 const SECTION_TITLES: Record<CategorySlug, [string, string]> = {
   food:    ["Δημοφιλή Μαγαζιά",          "Κορυφαίες Επιλογές"],
@@ -422,52 +415,19 @@ export function CategoryPageShell({
   const categoryLabel = CATEGORY_LABELS[category];
   return (
     <div className="flex flex-col min-h-full">
-      {/* Sticky welcome-card header. Two states:
-          • No filters: big total number + 'Προτάσεις να ανακαλύψεις σε X'
-          • Filtered:   '10 προτάσεις' inline + 'Από τις 244 σε Φαγητό'
-          Replaces both the slim InnerHeader and the separate stats block.
-          Always visible (sticky top-0). */}
-      <div
-        className="sticky top-0 z-30 bg-white border-b border-zinc-100"
-        style={{ minHeight: 96 }}
-      >
-        <div className="flex gap-2 px-3 pt-3 pb-3">
-          <button
-            onClick={() => router.back()}
-            aria-label="Πίσω"
-            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full active:bg-zinc-100 transition-colors"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#27272a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M19 12H5" />
-              <path d="m12 19-7-7 7-7" />
-            </svg>
-          </button>
-          <div className="flex-1 min-w-0 pt-0.5">
-            {hasActiveFilters ? (
-              <>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-[30px] font-extrabold leading-none text-zinc-900" style={{ fontFamily: "'Open Sans',sans-serif", letterSpacing: "-0.4px" }}>
-                    {displayCount.toLocaleString("el-GR")}
-                  </span>
-                  <span className="text-[14px] font-semibold text-zinc-700 leading-tight">προτάσεις</span>
-                </div>
-                <div className="mt-2 text-[13px] font-medium text-zinc-500 leading-tight">
-                  Από τις {totalCount.toLocaleString("el-GR")} σε {categoryLabel}
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="text-[44px] font-extrabold leading-none text-zinc-900" style={{ fontFamily: "'Open Sans',sans-serif", letterSpacing: "-0.6px" }}>
-                  {totalCount.toLocaleString("el-GR")}
-                </div>
-                <div className="mt-2 text-[13px] font-medium text-zinc-600 leading-tight">
-                  {PROTASEIS_LABEL} να ανακαλύψεις σε {categoryLabel}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Sticky collapsing header.
+          - Top of page: full welcome card (96px tall, coral-50 wash, big
+            number with coral accent + caption).
+          - Scrolled: collapses to slim header (56px, plain white, back +
+            category name + count badge).
+          Toggles smoothly via CSS transitions on a single sticky div. */}
+      <CategoryWelcomeHeader
+        onBack={() => router.back()}
+        hasActiveFilters={hasActiveFilters}
+        displayCount={displayCount}
+        totalCount={totalCount}
+        categoryLabel={categoryLabel}
+      />
 
       {/* Sticky sub-category tabs — sit just below the welcome header. */}
       <SubCategoryTabs
@@ -607,6 +567,139 @@ function EmptyState() {
       <span className="text-4xl">🔍</span>
       <p className="text-sm font-semibold text-zinc-800">Δεν βρέθηκαν αποτελέσματα</p>
       <p className="text-xs text-zinc-500">Δοκίμασε να αλλάξεις τα φίλτρα σου ή πρόσθεσε κάτι νέο.</p>
+    </div>
+  );
+}
+
+/* ── Sticky collapsing welcome header ───────────────────────
+   Two states managed by scroll position:
+   - At top: full welcome card with coral wash, big coral number + caption
+   - Scrolled past 40px: slim white header with back + category + count
+   Uses opacity + transform CSS transitions for smooth state swap. */
+function CategoryWelcomeHeader({
+  onBack,
+  hasActiveFilters,
+  displayCount,
+  totalCount,
+  categoryLabel,
+}: {
+  onBack: () => void;
+  hasActiveFilters: boolean;
+  displayCount: number;
+  totalCount: number;
+  categoryLabel: string;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setCollapsed(window.scrollY > 40);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  return (
+    <div
+      className="sticky top-0 z-30 transition-all duration-200 ease-out"
+      style={{
+        background: collapsed ? "#fff" : "#FFF7F2",
+        borderBottom: collapsed ? "1px solid #e4e4e7" : "1px solid transparent",
+        height: 96,
+      }}
+    >
+      {/* Welcome state */}
+      <div
+        className="absolute inset-0 flex gap-2 px-3 pt-3 pb-3 transition-opacity duration-200"
+        style={{
+          opacity: collapsed ? 0 : 1,
+          pointerEvents: collapsed ? "none" : "auto",
+        }}
+      >
+        <button
+          onClick={onBack}
+          aria-label="Πίσω"
+          className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full active:bg-coral-100 transition-colors"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#27272a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M19 12H5" />
+            <path d="m12 19-7-7 7-7" />
+          </svg>
+        </button>
+        <div className="flex-1 min-w-0 pt-0.5">
+          {hasActiveFilters ? (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span
+                  className="text-[34px] font-extrabold leading-none"
+                  style={{
+                    fontFamily: "'Open Sans',sans-serif",
+                    letterSpacing: "-0.6px",
+                    color: "#FE6F5E",
+                  }}
+                >
+                  {displayCount.toLocaleString("el-GR")}
+                </span>
+                <span className="text-[15px] font-bold text-zinc-900 leading-tight">προτάσεις</span>
+              </div>
+              <div className="mt-2 text-[13px] font-medium text-zinc-600 leading-tight">
+                Από τις <span className="font-bold text-zinc-800">{totalCount.toLocaleString("el-GR")}</span> σε <span className="font-bold text-zinc-800">{categoryLabel}</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span
+                  className="text-[44px] font-extrabold leading-none"
+                  style={{
+                    fontFamily: "'Open Sans',sans-serif",
+                    letterSpacing: "-0.8px",
+                    color: "#FE6F5E",
+                  }}
+                >
+                  {totalCount.toLocaleString("el-GR")}
+                </span>
+                <span className="text-[15px] font-bold text-zinc-900 leading-tight">προτάσεις</span>
+              </div>
+              <div className="mt-2 text-[13px] font-medium text-zinc-600 leading-tight">
+                να ανακαλύψεις σε <span className="font-bold text-zinc-800">{categoryLabel}</span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Slim collapsed state: back + category + count badge */}
+      <div
+        className="absolute inset-0 flex items-center gap-2 px-3 transition-opacity duration-200"
+        style={{
+          opacity: collapsed ? 1 : 0,
+          pointerEvents: collapsed ? "auto" : "none",
+        }}
+      >
+        <button
+          onClick={onBack}
+          aria-label="Πίσω"
+          className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full active:bg-zinc-100 transition-colors"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#27272a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M19 12H5" />
+            <path d="m12 19-7-7 7-7" />
+          </svg>
+        </button>
+        <span className="flex-1 text-[16px] font-bold text-zinc-900 truncate">{categoryLabel}</span>
+        <span
+          className="shrink-0 px-3 h-7 inline-flex items-center justify-center rounded-full"
+          style={{
+            background: hasActiveFilters ? "#FFF5EC" : "#f4f4f5",
+            color: hasActiveFilters ? "#FE6F5E" : "#52525b",
+            fontFamily: "'Open Sans',sans-serif",
+            fontWeight: 700,
+            fontSize: 13,
+          }}
+        >
+          {displayCount.toLocaleString("el-GR")}
+        </span>
+      </div>
     </div>
   );
 }

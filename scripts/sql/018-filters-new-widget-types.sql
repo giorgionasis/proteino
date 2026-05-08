@@ -47,6 +47,23 @@ UPDATE category_filters SET widget = 'multi-dropdown'
     ('events',  'event_type')
   );
 
+-- Unpublish filters that duplicate the SubCategoryTabs row.
+-- The tabs row IS the cuisine/genre/type filter (it's literally those
+-- values rendered as tabs). Having them ALSO in the bottom sheet was
+-- redundant — two surfaces editing the same data without sync. Tabs
+-- handle this dimension; bottom sheet keeps non-overlapping filters
+-- (region, delivery, awards, etc.).
+UPDATE category_filters SET is_published = false
+  WHERE (category, filter_id) IN (
+    ('food',    'cuisine'),
+    ('movies',  'genre'),
+    ('series',  'genre'),
+    ('books',   'genre'),
+    ('recipes', 'type'),
+    ('theater', 'type'),
+    ('events',  'event_type')
+  );
+
 -- Sanity check (return rows after update):
 SELECT category, filter_id, label, widget, display_order, is_quick
 FROM category_filters
