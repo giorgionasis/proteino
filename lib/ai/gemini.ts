@@ -130,8 +130,11 @@ interface GeminiSubmissionExtraction {
 }
 
 const GEN_CONFIG: GenerationConfig = {
-  temperature: 0.2,        // factual extraction, low creativity
-  topP: 0.95,
+  // 0.1 (was 0.2) — extraction is factual, we want maximum determinism.
+  // Combined with the Postgres cache (lib/ai/cache-and-log.ts), repeat
+  // queries return identical results.
+  temperature: 0.1,
+  topP: 0.9,
   responseMimeType: "application/json",
 };
 

@@ -223,7 +223,7 @@ async function fetchVenueItems(
 ): Promise<Array<{ item: any; address: string | null }>> {
   const extTable = `item_${category}`;
   let q = (admin.from(extTable) as any)
-    .select(`item_id, address, items!inner(id, title, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, avg_rating, rating_count, suggestion_count, created_at, is_published)`)
+    .select(`item_id, address, items!inner(id, title, title_normalized, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, avg_rating, rating_count, suggestion_count, created_at, is_published)`)
     .limit(opts.limit);
   if (opts.regionId) q = q.eq("region_id", opts.regionId);
   const { data } = await q;
@@ -375,10 +375,28 @@ export async function GET(req: NextRequest) {
     "για", "στο", "στη", "στις", "στους", "και", "αυτο", "αυτη", "αυτος",
     "αυτη", "αυτα", "αυτες", "αυτους", "ειναι", "εχει", "εχω",
   ]);
-  const locationTokens = tokenize(q)
+  const allTokens = tokenize(q)
     .filter((t) => t.length >= 4)
     .map(foldGreek)
     .filter((t) => !STOPWORDS_FOLDED.has(t));
+
+  // Split tokens: anything matching the resolved/extracted LOCATION goes
+  // into locationTokens (filtered against address text); everything else
+  // is a refinement token (title / cuisine / type — filtered against
+  // title_normalized). Without this split, "ψαροταβερνα στο γαλατσι"
+  // matched any food venue in Galatsi because both tokens were treated
+  // as location tokens.
+  const locationFolded = region?.name
+    ? foldGreek(region.name)
+    : llmAnalysis?.location
+      ? foldGreek(llmAnalysis.location)
+      : "";
+  const locationTokens = locationFolded
+    ? allTokens.filter((t) => locationFolded.includes(t) || t.includes(locationFolded))
+    : allTokens;
+  const refinementTokens = locationFolded
+    ? allTokens.filter((t) => !(locationFolded.includes(t) || t.includes(locationFolded)))
+    : [];
   // Pure place-name queries (no detected category, just a token that
   // resolved to a known region row) imply the user wants venues in that
   // area — drop a default venue scope so we still return something.
@@ -454,6 +472,27 @@ export async function GET(req: NextRequest) {
       items = candidates.map((r) => r.item);
     }
 
+    // Refinement-token filter: when the user wrote something like
+    // "ψαροταβέρνα στο γαλάτσι", "ψαροταβερνα" is the type/cuisine
+    // intent. We keep ONLY items whose title_normalized contains a
+    // refinement token. If that wipes everything, we relax — better
+    // to show all Galatsi food than nothing — and flag with a fallback.
+    if (refinementTokens.length > 0 && items.length > 0) {
+      const beforeRefine = items.length;
+      const refined = items.filter((it: any) => {
+        const tn = (it.title_normalized ?? foldGreek(it.title ?? "")).toLowerCase();
+        return refinementTokens.some((t) => tn.includes(t));
+      });
+      if (refined.length > 0) {
+        items = refined;
+      } else if (beforeRefine > 0) {
+        // Refinement wiped everything; keep the broader set but the
+        // UI still shows the original results. (No flag needed — this
+        // is silent degradation; user sees fewer-than-expected hits
+        // for their type but at least sees the area.)
+      }
+    }
+
     // Step 3: only fall back to global-popular when the user did NOT
     // specify a location. If they did and we had no matches, the UI's
     // no_match flow (chips + "Πρότεινέ το πρώτος") is the right answer
@@ -513,6 +552,30 @@ export async function GET(req: NextRequest) {
       data = retry.data;
     }
     items = data ?? [];
+
+    // Cross-category title fallback. When Gemini guessed the wrong
+    // category for a proper-noun query (e.g. 'Άγριες ανεμώνες' is a
+    // book but Gemini said 'series' from the word's vibe), the
+    // category-filtered query above returns 0. Retry without the
+    // category filter — if a real title matches, it should win
+    // regardless of category. Fixes the "Gemini wrong category"
+    // failure mode where users see garbage from the wrong category.
+    if (items.length === 0 && categories.length > 0 && q.length >= 3) {
+      const widerQ = (admin.from("items") as any)
+        .select(
+          "id, title, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, avg_rating, rating_count, suggestion_count, created_at",
+        )
+        .eq("is_published", true)
+        .ilike("title_normalized", `%${foldedQ}%`)
+        .limit(20);
+      const { data: wider } = await widerQ;
+      if (wider && wider.length > 0) {
+        items = wider;
+        // We dropped the category filter — clear analysis.categories
+        // so the UI doesn't show a misleading CATEGORY pill.
+        analysis.categories = [];
+      }
+    }
 
     // People search — find movies/series/books where actor / director /
     // writer matches the query. Uses ilike on jsonb-cast-to-text + plain
