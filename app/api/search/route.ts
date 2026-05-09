@@ -363,9 +363,18 @@ export async function GET(req: NextRequest) {
     llmFailed = true;
   }
 
-  const detectedCats: CategorySlug[] = llmFailed
-    ? extractCategories(q)
-    : llmAnalysis?.categories ?? [];
+  // Category resolution priority:
+  //   1. Gemini's categories[] (when non-empty) — taxonomy-aware
+  //   2. Regex extraction (when Gemini returned empty OR threw)
+  //   3. [] — caller will NOT auto-expand to all venues. The route
+  //      below requires an explicit category for the venue branch
+  //      to fire, so 'no category detected' falls through to the
+  //      cross-category title search rather than returning random
+  //      venues from every category.
+  const detectedCats: CategorySlug[] =
+    !llmFailed && llmAnalysis && llmAnalysis.categories.length > 0
+      ? llmAnalysis.categories
+      : extractCategories(q);
   const categories: CategorySlug[] = noCategoryFilter
     ? []
     : categoriesParam.length > 0
@@ -444,15 +453,21 @@ export async function GET(req: NextRequest) {
   const refinementTokens = locationFolded
     ? allTokens.filter((t) => !(locationFolded.includes(t) || t.includes(locationFolded)))
     : [];
-  // Pure place-name queries (no detected category, just a token that
-  // resolved to a known region row) imply the user wants venues in that
-  // area — drop a default venue scope so we still return something.
-  // BUT: don't auto-promote arbitrary 4+ char tokens to "maybe a place
-  // name" because that would route any one-word lookup ("Anora") through
-  // the venue branch. Only widen when the *region table* matched.
+  // Pure place-name queries: ONLY broaden to all-venues when the user
+  // typed nothing else but a region name. If they wrote refinement
+  // tokens too (e.g. 'μεζεδοπωλειο αττικη' — where Gemini didn't know
+  // the type), we should NOT silently mix events + hotels + bars into
+  // the result. Better: require explicit category, fall through to
+  // empty + chip clarification.
+  //
+  // Rule: auto-expand to all venues only when query is JUST a region
+  // (no refinement tokens left after subtracting the region).
+  const isPureRegionQuery = !!region && allTokens.every((t) =>
+    locationFolded.includes(t) || t.includes(locationFolded)
+  );
   const venueCatsForFilter = venueCats.length > 0
     ? venueCats
-    : (region ? (Array.from(VENUE_CATEGORIES) as CategorySlug[]) : []);
+    : (region && isPureRegionQuery ? (Array.from(VENUE_CATEGORIES) as CategorySlug[]) : []);
 
   const useVenueBranch = venueCatsForFilter.length > 0;
 
@@ -531,19 +546,18 @@ export async function GET(req: NextRequest) {
 
     // Refinement-token filter: when the user wrote "ψαροταβέρνα στο
     // γαλάτσι", 'ψαροταβερνα' is the type/cuisine intent. Match against
-    // title_normalized AND the structured cuisine/type fields (cleaner
-    // signal than substring on title — a fish-taverna named 'Ο Σπύρος'
-    // with cuisine='Ψαροταβέρνα' will match the token even though
-    // title doesn't contain 'ψαρ').
+    // title_normalized AND the structured cuisine/type fields.
+    //
+    // If refinement wipes everything: previously we silently kept the
+    // broader set, which leaked unrelated stuff ('μεζεδοπωλειο αττικη'
+    // → all Attica venues including events). Now we return empty, let
+    // the no_match flow surface chips so the user can clarify.
     if (refinementTokens.length > 0 && items.length > 0) {
-      // Build a fast lookup from item id → cuisine/type strings on
-      // the matched candidate, so we can filter items[] by id.
       const meta = new Map<string, { cuisine: string | null; type: string | null }>();
       for (const c of candidates) {
         meta.set(c.item.id, { cuisine: c.cuisine, type: c.type });
       }
-      const beforeRefine = items.length;
-      const refined = items.filter((it: any) => {
+      items = items.filter((it: any) => {
         const tn = (it.title_normalized ?? foldGreek(it.title ?? "")).toLowerCase();
         const m = meta.get(it.id);
         const cuisine = m?.cuisine ? foldGreek(m.cuisine) : "";
@@ -552,11 +566,8 @@ export async function GET(req: NextRequest) {
           tn.includes(t) || cuisine.includes(t) || type.includes(t)
         );
       });
-      if (refined.length > 0) {
-        items = refined;
-      } else if (beforeRefine > 0) {
-        // Refinement wiped everything; keep the broader set silently.
-      }
+      // items now contains only refinement-matched rows (could be empty —
+      // honest empty is correct; UI shows no_match + chips).
     }
 
     // Step 3: only fall back to global-popular when the user did NOT

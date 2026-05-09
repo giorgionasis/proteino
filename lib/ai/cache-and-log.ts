@@ -20,7 +20,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * Prompt-version bump invalidates cache on prompt changes. Bump when
  * tweaking the system prompt in gemini.ts.
  */
-const PROMPT_VERSION = "v1";
+// v2 — taxonomy injection (DB-canonical values added to prompts).
+// Bumping invalidates all v1 cached results so the next call re-fetches
+// with the richer prompt.
+const PROMPT_VERSION = "v2";
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 interface CachedEntry {
