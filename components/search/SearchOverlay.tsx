@@ -356,6 +356,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     results,
     userHits,
     fallbackSuggestions,
+    conversationalPrompt,
     errorMessage,
     regionFallbackUsed,
     addressMatchUsed,
@@ -721,6 +722,19 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
         {/* No-match → fallback suggestions + chips + chat */}
         {isNoMatch && (
           <div className="space-y-4">
+            {conversationalPrompt && (
+              <div
+                className="rounded-2xl px-4 py-3.5"
+                style={{ background: "#FFF5EC", border: "1px solid rgba(254,111,94,0.15)" }}
+              >
+                <div className="text-[10px] font-bold tracking-[0.2em] uppercase mb-1" style={{ color: "#FE6F5E" }}>
+                  Proteino σε ρωτάει
+                </div>
+                <div className="text-[14px] font-medium text-zinc-800 leading-snug">
+                  {conversationalPrompt}
+                </div>
+              </div>
+            )}
             {fallbackSuggestions.length > 0 && (
               <div className="space-y-2.5">
                 <p className="text-[10px] font-bold text-zinc-400 tracking-[0.2em] uppercase px-1">

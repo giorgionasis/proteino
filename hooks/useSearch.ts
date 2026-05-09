@@ -29,6 +29,10 @@ interface UseSearchReturn {
   userHits: SearchUserHit[];
   /** Popular items in the inferred category for no-match fallback. */
   fallbackSuggestions: Item[];
+  /** Optional Gemini-generated follow-up question shown on no-match.
+   *  Null when LLM unavailable / no useful question. UI renders default
+   *  chips when this is null. */
+  conversationalPrompt: string | null;
   /** Set when state="error" — friendly Greek message the UI can render. */
   errorMessage: string | null;
   /** True when the route fell back to global-popular results because the
@@ -82,6 +86,7 @@ export function useSearch(): UseSearchReturn {
   const [results, setResults] = useState<Item[]>([]);
   const [userHits, setUserHits] = useState<SearchUserHit[]>([]);
   const [fallbackSuggestions, setFallbackSuggestions] = useState<Item[]>([]);
+  const [conversationalPrompt, setConversationalPrompt] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [regionFallbackUsed, setRegionFallbackUsed] = useState(false);
   const [addressMatchUsed, setAddressMatchUsed] = useState(false);
@@ -186,6 +191,27 @@ export function useSearch(): UseSearchReturn {
 
       const hasResults = (data.items?.length ?? 0) > 0 || (data.users?.length ?? 0) > 0;
       setState(hasResults ? "results" : "no_match");
+
+      // Conversational fallback: when no results, ask Gemini for a
+      // follow-up question. Fire-and-forget — the UI renders the
+      // default chips immediately, then this fills in the question
+      // shortly after if the model returns one.
+      if (!hasResults) {
+        void (async () => {
+          try {
+            const { getAIService } = await import("@/lib/ai");
+            const ai = getAIService();
+            if (!ai.conversationalSearchFallback) { setConversationalPrompt(null); return; }
+            const hint = data.intent?.categories?.[0] ?? undefined;
+            const prompt = await ai.conversationalSearchFallback(value, hint);
+            setConversationalPrompt(prompt);
+          } catch {
+            setConversationalPrompt(null);
+          }
+        })();
+      } else {
+        setConversationalPrompt(null);
+      }
     } catch (err) {
       // User-cancelled (new keystroke) — silent. Otherwise surface a real
       // error state with a friendly message + retry path. Timeouts and
@@ -351,6 +377,7 @@ export function useSearch(): UseSearchReturn {
     results,
     userHits,
     fallbackSuggestions,
+    conversationalPrompt,
     errorMessage,
     regionFallbackUsed,
     addressMatchUsed,

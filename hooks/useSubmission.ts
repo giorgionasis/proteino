@@ -103,6 +103,11 @@ export function useSubmission(): UseSubmissionReturn {
   const [duplicate, setDuplicate] = useState<DuplicateInfo | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Separate, longer debounce for the semantic quality tip — only fires
+  // when the user has paused for ~1.5s AND text is substantive (>60
+  // chars). Prevents one LLM call per keystroke while still feeling
+  // alive when they pause to think.
+  const semanticTipDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Matches the user explicitly rejected on the duplicate screen. AI won't
   // auto-lock on these again for the rest of this session — without this,
   // the same keystrokes would re-trigger the same match → same dup screen.
@@ -111,9 +116,31 @@ export function useSubmission(): UseSubmissionReturn {
   const setText = useCallback((value: string) => {
     setText_(value);
 
-    // Quality coach runs locally on every keystroke — independent of AI.
-    // The panel keeps evolving even after the match locks. Empty → null.
-    setQuality(value.trim() ? assessQuality(value) : null);
+    // Quality coach: regex runs locally on every keystroke (instant
+    // feedback, free, no LLM round-trip). Then ~1.5s after the user
+    // pauses, we ask Gemini for a semantic tip and replace the regex
+    // tip if the LLM gave us something more specific. Empty → null.
+    const localQuality = value.trim() ? assessQuality(value) : null;
+    setQuality(localQuality);
+
+    // Schedule the semantic tip request. Cancel any previous one.
+    if (semanticTipDebounceRef.current) clearTimeout(semanticTipDebounceRef.current);
+    if (value.trim().length >= 60) {
+      semanticTipDebounceRef.current = setTimeout(async () => {
+        try {
+          const { getAIService } = await import("@/lib/ai");
+          const ai = getAIService();
+          if (!ai.getSemanticQualityTip) return;
+          const tip = await ai.getSemanticQualityTip(value);
+          if (!tip) return;
+          // Replace the tip but preserve the local score/label/badge —
+          // those drive the colored progress bar and shouldn't flicker.
+          setQuality((prev) => prev ? { ...prev, tip } : prev);
+        } catch {
+          /* fail silently — regex tip stays */
+        }
+      }, 1500);
+    }
 
     if (!value.trim()) {
       setState("empty");

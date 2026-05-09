@@ -5,6 +5,16 @@ export interface AIService {
   analyzeSubmission(text: string): Promise<SubmissionAnalysis>;
   analyzeSearchQuery(query: string): Promise<SearchAnalysis>;
   scoreDescriptionQuality(text: string): Promise<number>;
+  /** Semantic-grade coaching tip. Fires when text is substantive enough
+   *  (~60+ chars) and the user has paused. Null when no useful tip
+   *  exists or the model is unavailable — caller falls back to the
+   *  regex-based tip from lib/ai/quality.ts. */
+  getSemanticQualityTip?(text: string): Promise<string | null>;
+  /** Conversational follow-up for empty search results. Given the user's
+   *  query and any extracted intent, return a short, actionable
+   *  Greek question that helps them narrow down. Null = no useful
+   *  question (caller renders default chips instead). */
+  conversationalSearchFallback?(query: string, hint?: string): Promise<string | null>;
   generateEmbedding(text: string): Promise<number[]>;
   rerankRecommendations(userId: string, candidates: Item[]): Promise<Item[]>;
 }
