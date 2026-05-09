@@ -25,22 +25,31 @@ const VALID_CATEGORIES: CategorySlug[] = [
 
 const SEARCH_PROMPT = `Είσαι assistant για το Proteino, μια ελληνική πλατφόρμα προτάσεων. Ο χρήστης γράφει ένα query σε ελληνικά (ή greeklish).
 
-Εξάγαγε δομημένη πρόθεση από το query. Επέστρεψε ΜΟΝΟ JSON με αυτή τη μορφή:
+Εξάγαγε δομημένη πρόθεση από το query. Επέστρεψε ΜΟΝΟ JSON ΑΥΤΉΣ ΤΗΣ ΑΚΡΙΒΏΣ ΜΟΡΦΉΣ:
 
 {
-  "intent": "<original query>",
+  "intent": "<original query verbatim>",
   "categories": [<one or more from: movies, series, books, food, recipes, bars, hotels, theater, events>],
-  "vibe": "<short vibe descriptor or null>",
-  "type": "<sub-type like 'cocktail-bar', 'sushi', 'comedy' or null>",
-  "location": "<Greek place name as it appears, or null>"
+  "vibe": "<MOOD/ATMOSPHERE descriptor only — cozy, romantic, lively, chill, family — ή null>",
+  "type": "<sub-type/genre/cuisine — sushi, italian, comedy, thriller, cocktail-bar, music-bar, vegan, rooftop, psychology — ή null>",
+  "decade": "<πχ '1990s', '2010s' ή null>",
+  "price": "<'budget' / 'mid' / 'high' ή null>",
+  "person": "<όνομα ηθοποιού/σκηνοθέτη/συγγραφέα — normalized στα ελληνικά ή στο πρωτότυπο όνομα>",
+  "location": "<Greek place name (πόλη/περιοχή/νησί) ή null>"
 }
 
-Κανόνες:
-- Αν το query είναι αμφίσημο, βάλε πολλαπλές categories
+ΚΡΙΣΙΜΟΙ ΚΑΝΟΝΕΣ:
+- "vibe" = ΜΟΝΟ συναίσθημα/ατμόσφαιρα. ΟΧΙ τύπος, ΟΧΙ θέμα, ΟΧΙ τιμή.
+  ΣΩΣΤΑ: "cozy", "romantic", "energetic", "chill", "family"
+  ΛΑΘΟΣ: "μουσική" (αυτό είναι type), "1990s" (decade), "φθηνά" (price), "ψυχολογίας" (type/genre)
+- "type" = είδος/κουζίνα/κατηγορία περιεχομένου. πχ "sushi", "comedy", "horror", "psychology", "music-bar", "rooftop"
+- "decade" = δεκαετία ή χρονιά (όπως "2010s")
+- "price" = "budget" (φθηνά/cheap), "mid", "high" (premium/ακριβά)
+- "person" = κύρια ονόματα (Nolan, Scorsese, Παπαδιαμάντης)
+- "location" = περιοχή/πόλη/νησί. ΟΧΙ "κοντά μου", ΟΧΙ μόνο "κέντρο"
 - Greeklish like "kalifeisi" → "Καλλιθέα", normalize στα ελληνικά
-- "νολαν" / "nolan" / "scorsese" → category: ["movies"]
-- "κοντά μου" → location: null (δεν είναι περιοχή)
-- Επιστροφή ΜΟΝΟ έγκυρου JSON, χωρίς markdown.`;
+- Multi-category όταν είναι αμφίσημο (πχ συνταγές + φαγητό)
+- Επιστροφή ΜΟΝΟ έγκυρου JSON, χωρίς markdown, χωρίς σχόλια.`;
 
 const SUBMISSION_PROMPT = `Είσαι assistant για το Proteino. Ο χρήστης περιγράφει κάτι που του άρεσε σε ελληνικά. Εξάγαγε δομημένα στοιχεία από το κείμενό του.
 
@@ -67,6 +76,9 @@ interface GeminiSearchExtraction {
   categories: string[];
   vibe: string | null;
   type: string | null;
+  decade: string | null;
+  price: string | null;
+  person: string | null;
   location: string | null;
 }
 
@@ -119,6 +131,9 @@ export class GeminiAIService implements AIService {
         location: parsed.location ?? null,
         categories,
         query,
+        decade: parsed.decade ?? null,
+        price: (parsed.price === "budget" || parsed.price === "mid" || parsed.price === "high") ? parsed.price : null,
+        person: parsed.person ?? null,
       };
     } catch (err) {
       console.error("[gemini.analyzeSearchQuery]", err);

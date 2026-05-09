@@ -21,22 +21,31 @@ const client = new GoogleGenerativeAI(KEY);
 
 const SEARCH_PROMPT = `Είσαι assistant για το Proteino, μια ελληνική πλατφόρμα προτάσεων. Ο χρήστης γράφει ένα query σε ελληνικά (ή greeklish).
 
-Εξάγαγε δομημένη πρόθεση από το query. Επέστρεψε ΜΟΝΟ JSON με αυτή τη μορφή:
+Εξάγαγε δομημένη πρόθεση από το query. Επέστρεψε ΜΟΝΟ JSON ΑΥΤΉΣ ΤΗΣ ΑΚΡΙΒΏΣ ΜΟΡΦΉΣ:
 
 {
-  "intent": "<original query>",
+  "intent": "<original query verbatim>",
   "categories": [<one or more from: movies, series, books, food, recipes, bars, hotels, theater, events>],
-  "vibe": "<short vibe descriptor or null>",
-  "type": "<sub-type like 'cocktail-bar', 'sushi', 'comedy' or null>",
-  "location": "<Greek place name as it appears, or null>"
+  "vibe": "<MOOD/ATMOSPHERE descriptor only — cozy, romantic, lively, chill, family — ή null>",
+  "type": "<sub-type/genre/cuisine — sushi, italian, comedy, thriller, cocktail-bar, music-bar, vegan — ή null>",
+  "decade": "<πχ '1990s', '2000s' ή null>",
+  "price": "<'budget' / 'mid' / 'high' ή null>",
+  "person": "<όνομα ηθοποιού/σκηνοθέτη/συγγραφέα ή null>",
+  "location": "<Greek place name (πόλη/περιοχή/νησί) ή null>"
 }
 
-Κανόνες:
-- Αν το query είναι αμφίσημο, βάλε πολλαπλές categories
+ΚΡΙΣΙΜΟΙ ΚΑΝΟΝΕΣ:
+- "vibe" = ΜΟΝΟ συναίσθημα/ατμόσφαιρα. ΟΧΙ τύπος, ΟΧΙ θέμα, ΟΧΙ τιμή.
+  ΣΩΣΤΑ: "cozy", "romantic", "energetic", "chill"
+  ΛΑΘΟΣ: "μουσική" (αυτό είναι type), "1990s" (αυτό είναι decade), "φθηνά" (αυτό είναι price), "ψυχολογίας" (αυτό είναι type/genre)
+- "type" = είδος/κουζίνα/κατηγορία περιεχομένου. πχ "sushi", "comedy", "horror", "psychology", "music-bar", "rooftop"
+- "decade" = δεκαετία ή χρονιά (όπως "2010")
+- "price" = "budget" (φθηνά/cheap), "mid", "high" (premium/ακριβά)
+- "person" = κύρια ονόματα (Nolan, Scorsese, Παπαδιαμάντης, Γκάγκος)
+- "location" = περιοχή/πόλη/νησί. ΟΧΙ "κοντά μου" (κενό), ΟΧΙ "κέντρο" χωρίς πόλη
 - Greeklish like "kalifeisi" → "Καλλιθέα", normalize στα ελληνικά
-- "νολαν" / "nolan" / "scorsese" → category: ["movies"]
-- "κοντά μου" → location: null (δεν είναι περιοχή)
-- Επιστροφή ΜΟΝΟ έγκυρου JSON, χωρίς markdown.`;
+- Multi-category όταν είναι αμφίσημο (πχ συνταγές + φαγητό)
+- Επιστροφή ΜΟΝΟ έγκυρου JSON, χωρίς markdown, χωρίς σχόλια.`;
 
 const SUBMISSION_PROMPT = `Είσαι assistant για το Proteino. Ο χρήστης περιγράφει κάτι που του άρεσε σε ελληνικά. Εξάγαγε δομημένα στοιχεία από το κείμενό του.
 
@@ -110,31 +119,36 @@ async function runOne(prompt, query) {
   };
 }
 
+// Free-tier throttling: gemini-2.5-flash is 5 RPM = one call per 12s.
+// Wait 13s between calls to leave a small buffer.
+const THROTTLE_MS = 13_000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function runWithThrottle(prompt, query, label) {
+  try {
+    const r = await runOne(prompt, query);
+    console.log(`${label}: "${query}"`);
+    console.log(`   ${r.elapsed}ms · ~${r.tokens.in}in/${r.tokens.out}out tokens`);
+    console.log(`   →`, JSON.stringify(r.parsed, null, 2).split("\n").map((l, i) => i === 0 ? l : "     " + l).join("\n"));
+    console.log();
+  } catch (e) {
+    const msg = String(e?.message ?? e).split("\n")[0];
+    console.log(`${label}: "${query}" → ERROR ${msg}\n`);
+  }
+}
+
 async function main() {
-  console.log("=== SEARCH QUERIES ===\n");
-  for (const q of SEARCH_QUERIES) {
-    try {
-      const r = await runOne(SEARCH_PROMPT, q);
-      console.log(`Q: "${q}"`);
-      console.log(`   ${r.elapsed}ms · ~${r.tokens.in}in/${r.tokens.out}out tokens`);
-      console.log(`   →`, JSON.stringify(r.parsed, null, 2).split("\n").map((l, i) => i === 0 ? l : "     " + l).join("\n"));
-      console.log();
-    } catch (e) {
-      console.log(`Q: "${q}" → ERROR ${e.message}\n`);
-    }
+  console.log("=== SEARCH QUERIES ===");
+  console.log(`(throttling ${THROTTLE_MS}ms between calls — free tier is 5 RPM)\n`);
+  for (let i = 0; i < SEARCH_QUERIES.length; i++) {
+    if (i > 0) await sleep(THROTTLE_MS);
+    await runWithThrottle(SEARCH_PROMPT, SEARCH_QUERIES[i], "Q");
   }
 
   console.log("\n=== SUBMISSION TEXTS ===\n");
-  for (const t of SUBMISSION_TEXTS) {
-    try {
-      const r = await runOne(SUBMISSION_PROMPT, t);
-      console.log(`T: "${t}"`);
-      console.log(`   ${r.elapsed}ms · ~${r.tokens.in}in/${r.tokens.out}out tokens`);
-      console.log(`   →`, JSON.stringify(r.parsed, null, 2).split("\n").map((l, i) => i === 0 ? l : "     " + l).join("\n"));
-      console.log();
-    } catch (e) {
-      console.log(`T: "${t}" → ERROR ${e.message}\n`);
-    }
+  for (let i = 0; i < SUBMISSION_TEXTS.length; i++) {
+    await sleep(THROTTLE_MS);
+    await runWithThrottle(SUBMISSION_PROMPT, SUBMISSION_TEXTS[i], "T");
   }
 }
 

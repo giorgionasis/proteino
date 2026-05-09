@@ -151,6 +151,12 @@ export interface SearchAnalysis {
   location: string | null;
   categories: CategorySlug[];
   query: string;
+  /** Extra dimensions populated by LLM providers (Gemini etc.). Mock
+   *  leaves them undefined. Used by /api/search to refine ranking when
+   *  present; regex fallback when not. */
+  decade?: string | null;
+  price?: "budget" | "mid" | "high" | null;
+  person?: string | null;
 }
 
 export type SearchPillType = "VIBE" | "TYPE" | "LOC" | "CATEGORY";
