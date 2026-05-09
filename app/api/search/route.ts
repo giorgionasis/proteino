@@ -124,25 +124,39 @@ function extractVibe(text: string): string | null {
 /** Categories that have lat/lng + region_id on their extension table. */
 const VENUE_CATEGORIES = new Set<CategorySlug>(["food", "bars", "hotels", "theater", "events"]);
 
+interface ResolvedRegion {
+  id: string;
+  name: string;
+  slug: string;
+  /** When this is a parent region with children in the regions table,
+   *  these are the child IDs. Used by the venue fetcher to expand the
+   *  region_id filter so 'Αττική' matches items tagged with 'Καλλιθέα',
+   *  'Πειραιάς', etc. — items reference SUB-regions, not parents. */
+  childIds: string[];
+}
+
 async function resolveLocation(
   admin: ReturnType<typeof createAdminClient>,
   text: string,
-): Promise<{ id: string; name: string; slug: string } | null> {
-  // Pre-fetch all regions once (the table is small — ~80 rows in our DB)
-  // and do the matching in JS so we can fold diacritics on both sides.
-  // Direct ilike against accented region names misses "αθηνα" → "Αθήνα".
+): Promise<ResolvedRegion | null> {
   const tokens = tokenize(text).filter((t) => t.length >= 4).map(foldGreek);
   if (tokens.length === 0) return null;
   const { data } = await (admin.from("regions") as any)
-    .select("id, name, slug")
+    .select("id, name, slug, parent_id")
     .order("display_order", { ascending: true })
     .limit(500);
   if (!data) return null;
-  for (const r of data as Array<{ id: string; name: string; slug: string }>) {
+  const all = data as Array<{ id: string; name: string; slug: string; parent_id: string | null }>;
+  for (const r of all) {
     const foldedName = foldGreek(r.name);
     const foldedSlug = r.slug.toLowerCase();
     if (tokens.some((tok) => foldedName.includes(tok) || foldedSlug.includes(tok))) {
-      return r;
+      // If this is a top-level region, gather its children so the
+      // venue fetcher can match items tagged to any sub-region.
+      const childIds = r.parent_id == null
+        ? all.filter((x) => x.parent_id === r.id).map((x) => x.id)
+        : [];
+      return { id: r.id, name: r.name, slug: r.slug, childIds };
     }
   }
   return null;
@@ -235,7 +249,7 @@ const TYPE_FIELDS: Record<string, string[]> = {
 async function fetchVenueItems(
   admin: ReturnType<typeof createAdminClient>,
   category: CategorySlug,
-  opts: { regionId?: string | null; limit: number },
+  opts: { regionIds?: string[] | null; limit: number },
 ): Promise<Array<{ item: any; address: string | null; cuisine: string | null; type: string | null }>> {
   const extTable = `item_${category}`;
   const typeFields = TYPE_FIELDS[category] ?? [];
@@ -243,7 +257,14 @@ async function fetchVenueItems(
   let q = (admin.from(extTable) as any)
     .select(`item_id, address, ${extraSelect}items!inner(id, title, title_normalized, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, avg_rating, rating_count, suggestion_count, created_at, is_published)`)
     .limit(opts.limit);
-  if (opts.regionId) q = q.eq("region_id", opts.regionId);
+  // Region filter: when caller passes 1 id → eq, multiple → in().
+  // Multiple is the parent-region case — items reference sub-regions,
+  // so 'Αττική' search needs to match all Attica children.
+  if (opts.regionIds && opts.regionIds.length > 0) {
+    q = opts.regionIds.length === 1
+      ? q.eq("region_id", opts.regionIds[0])
+      : q.in("region_id", opts.regionIds);
+  }
   const { data } = await q;
   return ((data ?? []) as any[])
     .map((row: any) => ({
@@ -451,9 +472,19 @@ export async function GET(req: NextRequest) {
     const limitPerCat = hasLocationContext
       ? Math.ceil(400 / venueCatsForFilter.length)
       : Math.ceil(60 / venueCatsForFilter.length);
+    // Build the region_id list. For a parent region match (e.g.
+    // 'Αττική'), expand to ALL its child region IDs so items tagged
+    // to 'Καλλιθέα' / 'Πειραιάς' etc. are included. Otherwise just
+    // the resolved region id.
+    const regionIds = region
+      ? region.childIds.length > 0
+        ? [region.id, ...region.childIds]
+        : [region.id]
+      : null;
+
     const arrays = await Promise.all(
       venueCatsForFilter.map((c) => fetchVenueItems(admin, c, {
-        regionId: region?.id ?? null,
+        regionIds,
         limit: limitPerCat,
       })),
     );
@@ -465,7 +496,7 @@ export async function GET(req: NextRequest) {
     if (candidates.length === 0 && region) {
       const fallbackArrays = await Promise.all(
         venueCatsForFilter.map((c) => fetchVenueItems(admin, c, {
-          regionId: null,
+          regionIds: null,
           limit: limitPerCat,
         })),
       );

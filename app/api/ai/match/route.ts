@@ -28,21 +28,29 @@ import { assessQuality } from "@/lib/ai/quality";
 
 // ── Heuristic helpers (used as a fallback + as the candidate generator) ──
 
+// `\b` is an ASCII-only word boundary in JS regex — it doesn't fire on
+// Greek letter transitions, so '\bσειρ' would never match 'τη σειρά'.
+// Greek roots are matched without \b; English alternatives keep \b only
+// for the ASCII tokens that benefit from it.
 const CATEGORY_KEYWORDS: Array<[CategorySlug, RegExp]> = [
-  ["series",  /\bσειρ|series|season|σεζόν|episode|επεισόδι/i],          // before movies (more specific)
-  ["movies",  /\bταινί|movie|film|cinema|σινε[μν]/i],
-  ["books",   /\bβιβλί|book|novel|μυθιστόρ|author|συγγραφέ/i],
-  ["recipes", /\bσυνταγ|recipe|μαγείρε|cook/i],
-  ["food",    /\bεστιατόρι|restaurant|φαγητό|δείπνο|γεύμα|τρώω|τρώμε/i],
-  ["bars",    /\bbar|μπαρ|καφέ|cafe|coffee|cocktail|wine/i],
-  ["hotels",  /\bξενοδοχ|hotel|διαμον|airbnb|stay/i],
-  ["theater", /\bθέατρ|theater|theatre|παράσταση|σκηνή/i],
-  ["events",  /\bsynaul|συναυλ|festival|έκθεση|event/i],
+  ["series",  /σειρ|σεζόν|επεισόδι|\bseries\b|\bseason\b|\bepisode\b/i],          // before movies (more specific)
+  ["movies",  /ταιν[ίι]|σινε[μν]|\bmovie\b|\bfilm\b|\bcinema\b/i],
+  ["books",   /βιβλ[ίι]|μυθιστόρ|συγγραφέ|\bbook\b|\bnovel\b|\bauthor\b/i],
+  ["recipes", /συνταγ|μαγείρε|\brecipe\b|\bcook\b/i],
+  ["food",    /εστιατόρι|φαγητό|δείπνο|γεύμα|τρώω|τρώμε|\brestaurant\b/i],
+  ["bars",    /μπαρ|καφέ|\bbar\b|\bcafe\b|\bcoffee\b|\bcocktail\b|\bwine\b/i],
+  ["hotels",  /ξενοδοχ|διαμον|\bhotel\b|\bairbnb\b|\bstay\b/i],
+  ["theater", /θέατρ|παράσταση|σκηνή|\btheater\b|\btheatre\b/i],
+  ["events",  /συναυλ|έκθεση|\bsynaul\b|\bfestival\b|\bevent\b/i],
 ];
 
-function detectCandidateCategory(text: string): CategorySlug {
+// Returns null when no keyword fires — caller should defer to
+// Gemini's category_hint or skip TMDB lookup entirely. Previously
+// silently defaulted to 'movies' which caused the 'I watched a series
+// → got a movie' bug when the σειρά keyword wasn't matched.
+function detectCandidateCategory(text: string): CategorySlug | null {
   for (const [cat, re] of CATEGORY_KEYWORDS) if (re.test(text)) return cat;
-  return "movies";
+  return null;
 }
 
 /**
@@ -356,10 +364,25 @@ export async function GET(req: NextRequest) {
       : titleHint
         ? [titleHint, ...regexCandidates.filter((c) => c.toLowerCase() !== titleHint.toLowerCase())]
         : regexCandidates;
+  // Category resolution priority:
+  //   1. Gemini's category_hint when confidence ≥ 70 (trust it — it
+  //      reads the full text semantically, not just keywords)
+  //   2. Regex detection when it fires
+  //   3. Gemini's category_hint as final fallback regardless of confidence
+  //   4. null — skip TMDB lookup, return raw match data
+  // This fixes 'I watched τη σειρά X → matched a movie' (regex \bσειρ
+  // didn't fire on Greek text → defaulted to movies → wrong TMDB index).
   const regexCategory = detectCandidateCategory(text);
-  const candidateCategory =
-    regexCategory ??
-    (categoryHint === "movies" || categoryHint === "series" ? categoryHint : null);
+  const isValidCat = (c: string | null): c is "movies" | "series" =>
+    c === "movies" || c === "series";
+  const candidateCategory: "movies" | "series" | null =
+    (confidenceHint >= 70 && isValidCat(categoryHint))
+      ? categoryHint
+      : isValidCat(regexCategory)
+        ? regexCategory
+        : isValidCat(categoryHint)
+          ? categoryHint
+          : null;
 
   // Try TMDB for movies/series. Other categories fall through with the
   // raw candidate (TODO: wire Google Books / Places / Ticketmaster the
