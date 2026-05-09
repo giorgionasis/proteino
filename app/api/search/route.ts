@@ -348,29 +348,31 @@ export async function GET(req: NextRequest) {
 
   const admin = createAdminClient();
 
-  // 1. Intent extraction — Gemini first (richer extraction: vibe, type,
-  //    decade, price, person, location), regex as fallback for missing
-  //    dimensions. Augmentation pattern: prefer LLM where set, fall back
-  //    to regex per-dimension.
+  // 1. Intent extraction — Gemini is the single source of truth. The
+  //    full DB taxonomy (categories, subcategories, cuisines, types,
+  //    top-level regions) is injected into Gemini's system prompt so
+  //    its structured output uses canonical DB values directly. Regex
+  //    extractors below only fire as emergency fallback when the LLM
+  //    call hard-errors (no API key / network down / parse fail).
   let llmAnalysis: SearchAnalysis | null = null;
+  let llmFailed = false;
   try {
     llmAnalysis = await getAIService().analyzeSearchQuery(q);
   } catch (err) {
-    console.error("[search] AI analyzeSearchQuery failed; falling back to regex:", err);
+    console.error("[search] AI analyzeSearchQuery failed; using regex fallback:", err);
+    llmFailed = true;
   }
 
-  const regexCats = extractCategories(q);
-  const detectedCats: CategorySlug[] =
-    llmAnalysis && llmAnalysis.categories.length > 0
-      ? llmAnalysis.categories
-      : regexCats;
+  const detectedCats: CategorySlug[] = llmFailed
+    ? extractCategories(q)
+    : llmAnalysis?.categories ?? [];
   const categories: CategorySlug[] = noCategoryFilter
     ? []
     : categoriesParam.length > 0
       ? (categoriesParam as CategorySlug[])
       : detectedCats;
 
-  const vibe = llmAnalysis?.vibe ?? extractVibe(q);
+  const vibe = llmFailed ? extractVibe(q) : (llmAnalysis?.vibe ?? null);
 
   // Region resolution: if Gemini gave us a location, use it as the lookup
   // text (more canonical than the raw query); else use the raw query.

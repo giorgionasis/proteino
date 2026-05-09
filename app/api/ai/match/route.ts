@@ -327,17 +327,12 @@ export async function GET(req: NextRequest) {
   const text = (url.searchParams.get("text") ?? "").trim();
 
   // Optional hints passed by GeminiAIService.analyzeSubmission. The
-  // confidence_hint drives candidate-list policy:
-  //   ≥70 → trust Gemini, use ONLY title_hint as the candidate. Skips
-  //         regex extraction entirely so noisy candidates ("Είδα",
-  //         "Ιστορία", "Βατικανό") can't beat the actual title in
-  //         TMDB's fuzzy scoring. This is the fix for "Έδωσα Conclave
-  //         and got something else" — Gemini extracts cleanly, regex
-  //         then injects 5 noise candidates, scoring picks one of them.
-  //   <70  → prepend title_hint to regex candidates (signal-not-force).
+  // route now treats Gemini as the source of truth — when titleHint /
+  // categoryHint are present they're used directly, no regex parallel
+  // path. Regex extractors are kept only as emergency fallback when
+  // Gemini returned nothing (no API key / network down / parse fail).
   const titleHint = url.searchParams.get("title_hint")?.trim() ?? null;
   const categoryHint = url.searchParams.get("category_hint")?.trim() ?? null;
-  const confidenceHint = parseInt(url.searchParams.get("confidence_hint") ?? "0", 10) || 0;
 
   const quality = assessQuality(text);
 
@@ -356,33 +351,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(empty);
   }
 
-  const regexCandidates = extractCandidateTitles(text);
-  // Confidence-tier policy on candidate sourcing:
-  const candidates =
-    titleHint && confidenceHint >= 70
-      ? [titleHint] // Trust Gemini fully — no regex noise.
-      : titleHint
-        ? [titleHint, ...regexCandidates.filter((c) => c.toLowerCase() !== titleHint.toLowerCase())]
-        : regexCandidates;
-  // Category resolution priority:
-  //   1. Gemini's category_hint when confidence ≥ 70 (trust it — it
-  //      reads the full text semantically, not just keywords)
-  //   2. Regex detection when it fires
-  //   3. Gemini's category_hint as final fallback regardless of confidence
-  //   4. null — skip TMDB lookup, return raw match data
-  // This fixes 'I watched τη σειρά X → matched a movie' (regex \bσειρ
-  // didn't fire on Greek text → defaulted to movies → wrong TMDB index).
-  const regexCategory = detectCandidateCategory(text);
+  // Candidate sourcing policy:
+  //   titleHint present (any confidence) → use ONLY titleHint
+  //     (Gemini saw the full text + DB taxonomy; regex injects noise
+  //      candidates like "Είδα", "Ιστορία", "Βατικάνο" that beat the
+  //      actual title in TMDB fuzzy scoring)
+  //   no titleHint → fall back to regex (Gemini gave nothing or was
+  //     unavailable — regex is the only signal we have)
+  const candidates = titleHint
+    ? [titleHint]
+    : extractCandidateTitles(text);
+  // Category resolution: Gemini's category_hint is authoritative when
+  // present (it read the full text + DB taxonomy). Regex only fires as
+  // emergency fallback when no hint at all. Old hybrid let regex's
+  // silent 'movies' default override Gemini's correct 'series' — bug
+  // user hit when typing 'τη σειρά X' and getting a movie.
   const isValidCat = (c: string | null): c is "movies" | "series" =>
     c === "movies" || c === "series";
   const candidateCategory: "movies" | "series" | null =
-    (confidenceHint >= 70 && isValidCat(categoryHint))
+    isValidCat(categoryHint)
       ? categoryHint
-      : isValidCat(regexCategory)
-        ? regexCategory
-        : isValidCat(categoryHint)
-          ? categoryHint
-          : null;
+      : isValidCat(detectCandidateCategory(text))
+        ? detectCandidateCategory(text) as "movies" | "series"
+        : null;
 
   // Try TMDB for movies/series. Other categories fall through with the
   // raw candidate (TODO: wire Google Books / Places / Ticketmaster the

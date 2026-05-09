@@ -2,6 +2,7 @@ import { GoogleGenerativeAI, type GenerationConfig } from "@google/generative-ai
 import type { Item, SubmissionAnalysis, SearchAnalysis, CategorySlug } from "@/types";
 import type { AIService } from "./index";
 import { assessQuality } from "./quality";
+import { getTaxonomy, renderTaxonomyForPrompt } from "./taxonomy";
 
 /**
  * Gemini-backed AIService.
@@ -151,10 +152,20 @@ export class GeminiAIService implements AIService {
       return { intent: query, vibe: null, type: null, location: null, categories: [], query };
     }
 
+    // Build full system prompt with DB taxonomy injected. getTaxonomy()
+    // is module-cached for 5min so this is a fast lookup after first call.
+    let fullPrompt = SEARCH_PROMPT;
+    try {
+      const taxonomy = await getTaxonomy();
+      fullPrompt = SEARCH_PROMPT + "\n\n" + renderTaxonomyForPrompt(taxonomy);
+    } catch {
+      // Taxonomy unavailable (DB down) — fall through with base prompt.
+    }
+
     try {
       const model = this.client.getGenerativeModel({
         model: MODEL_FLASH,
-        systemInstruction: SEARCH_PROMPT,
+        systemInstruction: fullPrompt,
         generationConfig: GEN_CONFIG,
       });
       const res = await model.generateContent(query);
@@ -199,11 +210,19 @@ export class GeminiAIService implements AIService {
       };
     }
 
+    let fullSubmissionPrompt = SUBMISSION_PROMPT;
+    try {
+      const taxonomy = await getTaxonomy();
+      fullSubmissionPrompt = SUBMISSION_PROMPT + "\n\n" + renderTaxonomyForPrompt(taxonomy);
+    } catch {
+      /* taxonomy unavailable — base prompt only */
+    }
+
     let extraction: GeminiSubmissionExtraction | null = null;
     try {
       const model = this.client.getGenerativeModel({
         model: MODEL_FLASH,
-        systemInstruction: SUBMISSION_PROMPT,
+        systemInstruction: fullSubmissionPrompt,
         generationConfig: GEN_CONFIG,
       });
       const res = await model.generateContent(text);
