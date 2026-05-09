@@ -11,9 +11,33 @@ export interface AIService {
 
 let _instance: AIService | null = null;
 
+/**
+ * Service factory. Picks the implementation based on env var presence:
+ *
+ *   GEMINI_API_KEY    → GeminiAIService (Gemini 2.5 Flash)
+ *   ANTHROPIC_API_KEY → AnthropicAIService (Claude Haiku 4.5) — TODO
+ *   else              → MockAIService
+ *
+ * Singleton — cached after first call. To swap providers in dev,
+ * change the env var and restart the dev server.
+ *
+ * Server-side only check. The Gemini key must never reach the client
+ * (using NEXT_PUBLIC_ prefix would expose it).
+ */
 export function getAIService(): AIService {
-  if (!_instance) {
-    _instance = new MockAIService() as AIService;
+  if (_instance) return _instance;
+
+  const geminiKey = typeof process !== "undefined" ? process.env.GEMINI_API_KEY : undefined;
+
+  if (geminiKey) {
+    // Lazy-load to avoid pulling the Gemini SDK into client bundles.
+    // (When called on the client, geminiKey is undefined, so this branch
+    // is only reachable server-side.)
+    const { GeminiAIService } = require("./gemini") as typeof import("./gemini");
+    _instance = new GeminiAIService(geminiKey);
+    return _instance!;
   }
-  return _instance!;
+
+  _instance = new MockAIService();
+  return _instance;
 }
