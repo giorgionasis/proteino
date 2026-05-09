@@ -216,19 +216,43 @@ async function fetchPeopleMatches(
 /** Items in a given category filtered by region via the extension table.
  *  Returns rows including the address column so the caller can do an
  *  address-text fallback when region_id is unset (most legacy rows). */
+// Extension-table fields per category that represent the "type" or
+// "cuisine" of a venue. Pulled alongside address so refinement-token
+// filtering can match cuisine/type, not just title.
+//   food: cuisine (Ελληνική, Ιταλική, ...) + type (Εστιατόριο, Ταβέρνα, ...)
+//   bars: type (Cocktail Bar, Wine Bar, ...)
+//   hotels: type (Ξενοδοχείο, Διαμέρισμα, ...)
+//   theater: type (Θέατρο, Μιούζικαλ, ...)
+//   events: event_type (Συναυλία, Φεστιβάλ, ...)
+const TYPE_FIELDS: Record<string, string[]> = {
+  food:    ["cuisine", "type"],
+  bars:    ["type"],
+  hotels:  ["type"],
+  theater: ["type"],
+  events:  ["event_type"],
+};
+
 async function fetchVenueItems(
   admin: ReturnType<typeof createAdminClient>,
   category: CategorySlug,
   opts: { regionId?: string | null; limit: number },
-): Promise<Array<{ item: any; address: string | null }>> {
+): Promise<Array<{ item: any; address: string | null; cuisine: string | null; type: string | null }>> {
   const extTable = `item_${category}`;
+  const typeFields = TYPE_FIELDS[category] ?? [];
+  const extraSelect = typeFields.length > 0 ? typeFields.join(", ") + ", " : "";
   let q = (admin.from(extTable) as any)
-    .select(`item_id, address, items!inner(id, title, title_normalized, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, avg_rating, rating_count, suggestion_count, created_at, is_published)`)
+    .select(`item_id, address, ${extraSelect}items!inner(id, title, title_normalized, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, avg_rating, rating_count, suggestion_count, created_at, is_published)`)
     .limit(opts.limit);
   if (opts.regionId) q = q.eq("region_id", opts.regionId);
   const { data } = await q;
   return ((data ?? []) as any[])
-    .map((row: any) => ({ item: row.items, address: row.address ?? null }))
+    .map((row: any) => ({
+      item: row.items,
+      address: row.address ?? null,
+      // Normalize the type/cuisine fields per category to a uniform shape.
+      cuisine: row.cuisine ?? null,
+      type: row.type ?? row.event_type ?? null,
+    }))
     .filter((r) => r.item && r.item.is_published);
 }
 
@@ -472,24 +496,33 @@ export async function GET(req: NextRequest) {
       items = candidates.map((r) => r.item);
     }
 
-    // Refinement-token filter: when the user wrote something like
-    // "ψαροταβέρνα στο γαλάτσι", "ψαροταβερνα" is the type/cuisine
-    // intent. We keep ONLY items whose title_normalized contains a
-    // refinement token. If that wipes everything, we relax — better
-    // to show all Galatsi food than nothing — and flag with a fallback.
+    // Refinement-token filter: when the user wrote "ψαροταβέρνα στο
+    // γαλάτσι", 'ψαροταβερνα' is the type/cuisine intent. Match against
+    // title_normalized AND the structured cuisine/type fields (cleaner
+    // signal than substring on title — a fish-taverna named 'Ο Σπύρος'
+    // with cuisine='Ψαροταβέρνα' will match the token even though
+    // title doesn't contain 'ψαρ').
     if (refinementTokens.length > 0 && items.length > 0) {
+      // Build a fast lookup from item id → cuisine/type strings on
+      // the matched candidate, so we can filter items[] by id.
+      const meta = new Map<string, { cuisine: string | null; type: string | null }>();
+      for (const c of candidates) {
+        meta.set(c.item.id, { cuisine: c.cuisine, type: c.type });
+      }
       const beforeRefine = items.length;
       const refined = items.filter((it: any) => {
         const tn = (it.title_normalized ?? foldGreek(it.title ?? "")).toLowerCase();
-        return refinementTokens.some((t) => tn.includes(t));
+        const m = meta.get(it.id);
+        const cuisine = m?.cuisine ? foldGreek(m.cuisine) : "";
+        const type = m?.type ? foldGreek(m.type) : "";
+        return refinementTokens.some((t) =>
+          tn.includes(t) || cuisine.includes(t) || type.includes(t)
+        );
       });
       if (refined.length > 0) {
         items = refined;
       } else if (beforeRefine > 0) {
-        // Refinement wiped everything; keep the broader set but the
-        // UI still shows the original results. (No flag needed — this
-        // is silent degradation; user sees fewer-than-expected hits
-        // for their type but at least sees the area.)
+        // Refinement wiped everything; keep the broader set silently.
       }
     }
 

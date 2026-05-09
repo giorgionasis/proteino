@@ -223,6 +223,9 @@ export class GeminiAIService implements AIService {
       if (extraction?.title) url.searchParams.set("title_hint", extraction.title);
       if (extraction?.category) url.searchParams.set("category_hint", extraction.category);
       if (extraction?.year_hint) url.searchParams.set("year_hint", String(extraction.year_hint));
+      if (typeof extraction?.confidence === "number") {
+        url.searchParams.set("confidence_hint", String(extraction.confidence));
+      }
 
       const res = await fetch(url.toString());
       if (res.ok) {

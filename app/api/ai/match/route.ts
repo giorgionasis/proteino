@@ -318,14 +318,18 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const text = (url.searchParams.get("text") ?? "").trim();
 
-  // Optional hints passed by GeminiAIService.analyzeSubmission. When set,
-  // we prepend the title hint to candidates so the LLM-extracted title
-  // is tried first (highest TMDB score wins anyway, but this is a
-  // signal that nudges the order). category_hint fills in when regex
-  // didn't detect — e.g. user wrote a vague description with no genre
-  // keyword but Gemini inferred 'movies' from context.
+  // Optional hints passed by GeminiAIService.analyzeSubmission. The
+  // confidence_hint drives candidate-list policy:
+  //   ≥70 → trust Gemini, use ONLY title_hint as the candidate. Skips
+  //         regex extraction entirely so noisy candidates ("Είδα",
+  //         "Ιστορία", "Βατικανό") can't beat the actual title in
+  //         TMDB's fuzzy scoring. This is the fix for "Έδωσα Conclave
+  //         and got something else" — Gemini extracts cleanly, regex
+  //         then injects 5 noise candidates, scoring picks one of them.
+  //   <70  → prepend title_hint to regex candidates (signal-not-force).
   const titleHint = url.searchParams.get("title_hint")?.trim() ?? null;
   const categoryHint = url.searchParams.get("category_hint")?.trim() ?? null;
+  const confidenceHint = parseInt(url.searchParams.get("confidence_hint") ?? "0", 10) || 0;
 
   const quality = assessQuality(text);
 
@@ -345,11 +349,13 @@ export async function GET(req: NextRequest) {
   }
 
   const regexCandidates = extractCandidateTitles(text);
-  // Prepend the LLM-extracted title (deduped). TMDB scoring still picks
-  // the best, so this is a signal not a force.
-  const candidates = titleHint
-    ? [titleHint, ...regexCandidates.filter((c) => c.toLowerCase() !== titleHint.toLowerCase())]
-    : regexCandidates;
+  // Confidence-tier policy on candidate sourcing:
+  const candidates =
+    titleHint && confidenceHint >= 70
+      ? [titleHint] // Trust Gemini fully — no regex noise.
+      : titleHint
+        ? [titleHint, ...regexCandidates.filter((c) => c.toLowerCase() !== titleHint.toLowerCase())]
+        : regexCandidates;
   const regexCategory = detectCandidateCategory(text);
   const candidateCategory =
     regexCategory ??
