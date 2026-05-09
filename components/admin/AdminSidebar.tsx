@@ -46,6 +46,7 @@ const NAV: NavEntry[] = [
   { label: "Reviews",  href: "/admin/reviews",  icon: <IconStar />, counterKey: "reportedReviews", counterTone: "red" },
   { label: "Reports",  href: "/admin/reports",  icon: <IconFlag />, counterKey: "pendingReports",  counterTone: "red" },
   { label: "Users",    href: "/admin/users",    icon: <IconUsers /> },
+  { label: "AI Usage", href: "/admin/ai-usage", icon: <IconSparkles /> },
   { label: "Showcase", href: "/admin/showcase", icon: <IconPalette /> },
   { label: "Settings", href: "/admin/settings", icon: <IconSettings /> },
 ];
@@ -245,6 +246,9 @@ function IconUsers() {
 }
 function IconAlert() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
+}
+function IconSparkles() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>;
 }
 function IconPalette() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r="0.5" fill="currentColor"/><circle cx="17.5" cy="10.5" r="0.5" fill="currentColor"/><circle cx="8.5" cy="7.5" r="0.5" fill="currentColor"/><circle cx="6.5" cy="12.5" r="0.5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c3.31 0 6-2.69 6-6 0-4.96-4.49-9-10-9z"/></svg>;

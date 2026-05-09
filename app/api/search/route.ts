@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { CategorySlug } from "@/types";
+import { getAIService } from "@/lib/ai";
+import type { CategorySlug, SearchAnalysis } from "@/types";
+
+// Sharp pipeline downstream is on Node runtime; the AIService factory is
+// also Node-only since it loads the Gemini SDK lazily.
+export const runtime = "nodejs";
 
 /**
  * Real DB-backed search. Replaces the 3-item mock from earlier sessions.
@@ -298,22 +303,41 @@ export async function GET(req: NextRequest) {
 
   const admin = createAdminClient();
 
-  // 1. Intent extraction
-  const detectedCats = extractCategories(q);
+  // 1. Intent extraction — Gemini first (richer extraction: vibe, type,
+  //    decade, price, person, location), regex as fallback for missing
+  //    dimensions. Augmentation pattern: prefer LLM where set, fall back
+  //    to regex per-dimension.
+  let llmAnalysis: SearchAnalysis | null = null;
+  try {
+    llmAnalysis = await getAIService().analyzeSearchQuery(q);
+  } catch (err) {
+    console.error("[search] AI analyzeSearchQuery failed; falling back to regex:", err);
+  }
+
+  const regexCats = extractCategories(q);
+  const detectedCats: CategorySlug[] =
+    llmAnalysis && llmAnalysis.categories.length > 0
+      ? llmAnalysis.categories
+      : regexCats;
   const categories: CategorySlug[] = noCategoryFilter
     ? []
     : categoriesParam.length > 0
       ? (categoriesParam as CategorySlug[])
       : detectedCats;
-  const vibe = extractVibe(q);
-  const region = await resolveLocation(admin, q);
+
+  const vibe = llmAnalysis?.vibe ?? extractVibe(q);
+
+  // Region resolution: if Gemini gave us a location, use it as the lookup
+  // text (more canonical than the raw query); else use the raw query.
+  const locationLookup = llmAnalysis?.location ?? q;
+  const region = await resolveLocation(admin, locationLookup);
   const intent = computeIntent(q, categories);
 
   const analysis: SearchAnalysisOut = {
     categories,
     vibe,
-    type: null,
-    location: region?.name ?? null,
+    type: llmAnalysis?.type ?? null,
+    location: region?.name ?? llmAnalysis?.location ?? null,
     intent,
   };
 

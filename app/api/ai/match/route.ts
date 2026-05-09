@@ -318,6 +318,15 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const text = (url.searchParams.get("text") ?? "").trim();
 
+  // Optional hints passed by GeminiAIService.analyzeSubmission. When set,
+  // we prepend the title hint to candidates so the LLM-extracted title
+  // is tried first (highest TMDB score wins anyway, but this is a
+  // signal that nudges the order). category_hint fills in when regex
+  // didn't detect — e.g. user wrote a vague description with no genre
+  // keyword but Gemini inferred 'movies' from context.
+  const titleHint = url.searchParams.get("title_hint")?.trim() ?? null;
+  const categoryHint = url.searchParams.get("category_hint")?.trim() ?? null;
+
   const quality = assessQuality(text);
 
   // Below 10 chars we don't even attempt a match — keep the user typing.
@@ -335,8 +344,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(empty);
   }
 
-  const candidates = extractCandidateTitles(text);
-  const candidateCategory = detectCandidateCategory(text);
+  const regexCandidates = extractCandidateTitles(text);
+  // Prepend the LLM-extracted title (deduped). TMDB scoring still picks
+  // the best, so this is a signal not a force.
+  const candidates = titleHint
+    ? [titleHint, ...regexCandidates.filter((c) => c.toLowerCase() !== titleHint.toLowerCase())]
+    : regexCandidates;
+  const regexCategory = detectCandidateCategory(text);
+  const candidateCategory =
+    regexCategory ??
+    (categoryHint === "movies" || categoryHint === "series" ? categoryHint : null);
 
   // Try TMDB for movies/series. Other categories fall through with the
   // raw candidate (TODO: wire Google Books / Places / Ticketmaster the

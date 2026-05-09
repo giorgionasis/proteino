@@ -34,7 +34,8 @@ export function getAIService(): AIService {
     // (When called on the client, geminiKey is undefined, so this branch
     // is only reachable server-side.)
     const { GeminiAIService } = require("./gemini") as typeof import("./gemini");
-    _instance = new GeminiAIService(geminiKey);
+    const { wrapWithCacheAndLog } = require("./cache-and-log") as typeof import("./cache-and-log");
+    _instance = wrapWithCacheAndLog(new GeminiAIService(geminiKey));
     return _instance!;
   }
 
