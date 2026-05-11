@@ -33,11 +33,26 @@ export default async function BookmarksPage({ params }: Props) {
   // (privacy default — opt-in sharing is a future feature).
   const targetUserId = isOwnProfile ? viewer!.id : profileUser.id;
 
-  const { data: rows } = await sb
+  // Try with `status` first (migration 023). Fall back to the
+  // legacy shape if the column doesn't exist yet — page still renders,
+  // all rows treated as "wishlist" by default. Lets us deploy the UI
+  // before the DB migration is applied.
+  let rows: any[] | null = null;
+  const withStatus = await sb
     .from("bookmarks")
-    .select("id, item_id, category, items(id, title, slug, cover_url, category, avg_rating, rating_count)")
+    .select("id, item_id, category, status, items(id, title, slug, cover_url, category, avg_rating, rating_count)")
     .eq("user_id", targetUserId)
     .order("created_at", { ascending: false });
+  if (withStatus.error?.code === "42703") {
+    const fallback = await sb
+      .from("bookmarks")
+      .select("id, item_id, category, items(id, title, slug, cover_url, category, avg_rating, rating_count)")
+      .eq("user_id", targetUserId)
+      .order("created_at", { ascending: false });
+    rows = fallback.data ?? null;
+  } else {
+    rows = withStatus.data ?? null;
+  }
 
   const items: BookmarkedItem[] = ((rows ?? []) as any[])
     .filter((b) => b.items)
@@ -45,6 +60,7 @@ export default async function BookmarksPage({ params }: Props) {
       id: b.id,
       itemId: b.item_id,
       category: b.items.category,
+      status: (b.status === "done" ? "done" : "wishlist") as "wishlist" | "done",
       title: b.items.title,
       cover_url: b.items.cover_url,
       avg_rating: b.items.avg_rating ?? 0,

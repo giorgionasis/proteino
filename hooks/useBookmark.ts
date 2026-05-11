@@ -1,63 +1,158 @@
 "use client";
 
 /**
- * useBookmark — toggle/persist bookmark state for a single item.
+ * useBookmark — track + mutate the bookmark row for a single item.
  *
- * Optimistic update: state flips immediately, then syncs with the server.
- * Reverts on failure.
+ * State model (matches `bookmarks.status` enum, migration 023):
+ *   - status = null       → not bookmarked
+ *   - status = 'wishlist' → saved, want to do
+ *   - status = 'done'     → saved, have done it
  *
- * Usage:
- *   const { bookmarked, toggle, busy } = useBookmark(itemId, category, initialBookmarked);
- *
- * `initialBookmarked` should come from a server-side fetch (so the initial
- * UI is correct without a flicker).
+ * Optimistic update: state flips immediately, then syncs with the
+ * server. Reverts on failure. Each action returns an `ok` flag so
+ * callers can show success/error toasts correctly (we never want a
+ * failed save to be mis-announced as "removed").
  */
 
 import { useState, useCallback } from "react";
+import { useAuthStore } from "@/stores/authStore";
+
+export type BookmarkStatus = "wishlist" | "done";
+
+export interface BookmarkUser {
+  handle:       string;
+  display_name: string | null;
+  avatar_url:   string | null;
+}
+
+export interface BookmarkContext {
+  categoryCount:    number;
+  todayCount:       number;
+  bookmarkers:      BookmarkUser[];
+  bookmarkersTotal: number;
+}
+
+interface ToggleResult {
+  ok:      boolean;
+  status:  BookmarkStatus | null;
+  context: BookmarkContext | null;
+}
+
+interface SetStatusResult {
+  ok:      boolean;
+  status:  BookmarkStatus;
+  context: BookmarkContext | null;
+}
+
+interface BookmarkAction {
+  status:      BookmarkStatus | null;
+  bookmarked:  boolean;
+  busy:        boolean;
+  /** Toggle save: null → wishlist, any → null. */
+  toggle:      () => Promise<ToggleResult>;
+  /** Move to a specific status. Materialises the row if missing. */
+  setStatus:   (next: BookmarkStatus) => Promise<SetStatusResult>;
+}
 
 export function useBookmark(
-  itemId: string,
-  category: string,
-  initialBookmarked = false
-) {
-  const [bookmarked, setBookmarked] = useState(initialBookmarked);
-  const [busy, setBusy] = useState(false);
+  itemId:        string,
+  category:      string,
+  initialStatus: BookmarkStatus | null = null,
+): BookmarkAction {
+  const [status, setLocalStatus]   = useState<BookmarkStatus | null>(initialStatus);
+  const [busy,   setBusy]          = useState(false);
+  const supabaseUser               = useAuthStore((s) => s.supabaseUser);
+  const isGuest                    = supabaseUser === null;
 
-  const toggle = useCallback(async () => {
-    if (busy) return;
-    const next = !bookmarked;
-    setBookmarked(next);   // optimistic
+  const toggle = useCallback(async (): Promise<ToggleResult> => {
+    if (busy) return { ok: false, status, context: null };
+    if (isGuest) {
+      // No-op for guests — the GuestPromptModal handles the prompt
+      // upstream (see useGuestGuard wrappers in detail pages).
+      return { ok: false, status, context: null };
+    }
+
+    const next: BookmarkStatus | null = status === null ? "wishlist" : null;
+    const prev = status;
+    setLocalStatus(next);
     setBusy(true);
 
     try {
-      let res: Response;
-      if (next) {
-        res = await fetch("/api/bookmarks", {
+      if (next === "wishlist") {
+        const res = await fetch("/api/bookmarks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ item_id: itemId, category }),
+          body: JSON.stringify({ item_id: itemId, category, status: "wishlist" }),
         });
-      } else {
-        const url = new URL("/api/bookmarks", window.location.origin);
-        url.searchParams.set("item_id", itemId);
-        res = await fetch(url.toString(), { method: "DELETE" });
-      }
-      if (!res.ok) {
-        if (res.status === 401) {
-          // Not logged in — reset state & redirect to login
-          setBookmarked(false);
-          window.location.href = "/login?redirect=" + encodeURIComponent(window.location.pathname);
-          return;
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          console.error("[useBookmark] POST failed", { status: res.status, body });
+          throw new Error(body?.error ?? `save_failed_${res.status}`);
         }
-        throw new Error(`Bookmark ${next ? "save" : "remove"} failed`);
+        if (body.status === "wishlist" || body.status === "done") {
+          setLocalStatus(body.status);
+        }
+        return {
+          ok:      true,
+          status:  body.status ?? "wishlist",
+          context: body.context ?? null,
+        };
       }
+
+      const url = new URL("/api/bookmarks", window.location.origin);
+      url.searchParams.set("item_id", itemId);
+      const res = await fetch(url.toString(), { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error("[useBookmark] DELETE failed", { status: res.status, body });
+        throw new Error(body?.error ?? `delete_failed_${res.status}`);
+      }
+      return { ok: true, status: null, context: null };
     } catch (e) {
-      // Revert optimistic update on failure
-      setBookmarked(!next);
+      console.warn("[useBookmark] toggle failed, reverting", e);
+      setLocalStatus(prev);
+      return { ok: false, status: prev, context: null };
     } finally {
       setBusy(false);
     }
-  }, [bookmarked, busy, itemId, category]);
+  }, [status, busy, isGuest, itemId, category]);
 
-  return { bookmarked, toggle, busy };
+  const setStatus = useCallback(async (nextStatus: BookmarkStatus): Promise<SetStatusResult> => {
+    if (busy) return { ok: false, status: status ?? nextStatus, context: null };
+    if (isGuest) {
+      return { ok: false, status: nextStatus, context: null };
+    }
+
+    const prev = status;
+    setLocalStatus(nextStatus);
+    setBusy(true);
+
+    try {
+      const res = await fetch("/api/bookmarks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: itemId, category, status: nextStatus }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error("[useBookmark] PATCH failed", { status: res.status, body });
+        throw new Error(body?.error ?? `patch_failed_${res.status}`);
+      }
+      return { ok: true, status: nextStatus, context: null };
+    } catch (e) {
+      console.warn("[useBookmark] setStatus failed, reverting", e);
+      setLocalStatus(prev);
+      return { ok: false, status: prev ?? nextStatus, context: null };
+    } finally {
+      setBusy(false);
+    }
+  }, [status, busy, isGuest, itemId, category]);
+
+  return {
+    status,
+    bookmarked: status !== null,
+    busy,
+    toggle,
+    setStatus,
+  };
 }

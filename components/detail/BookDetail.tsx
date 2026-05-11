@@ -8,6 +8,12 @@ import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
 import { useReview } from "@/hooks/useReview";
+import { useGuestGuard } from "@/hooks/useGuestGuard";
+import { GuestPromptModal } from "@/components/guest/GuestPromptModal";
+import { useBookmark } from "@/hooks/useBookmark";
+import { BookmarkStatusChips } from "@/components/detail/BookmarkStatusChips";
+import { BookmarkSavedModal, type BookmarkSaveResult } from "@/components/detail/BookmarkSavedModal";
+import { useToast } from "@/components/ui/Toast";
 import { OwnSuggestionActions } from "@/components/detail/OwnSuggestionActions";
 import { ReviewCard } from "@/components/detail/ReviewCard";
 import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
@@ -42,7 +48,22 @@ function formatDate(iso: string): string {
 export function BookDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
   const [userRating, setUserRating] = useState(data.myReview?.rating ?? 0);
-  const { save: saveReview, busy: reviewBusy, savedRating } = useReview(data.item.id, { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null });
+  const bookmark = useBookmark(data.item.id, "books", data.bookmarkStatus);
+  const { show: showToast, toast } = useToast();
+  const [savedModal, setSavedModal] = useState<BookmarkSaveResult | null>(null);
+  const { save: saveReview, busy: reviewBusy, savedRating } = useReview(
+    data.item.id,
+    { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null },
+    {
+      onSaved: () => {
+        if (bookmark.status === "wishlist") {
+          bookmark.setStatus("done");
+          showToast("Μετακινήθηκε στα Διάβασα ✓");
+        }
+      },
+    },
+  );
+  const { requireAuth: requireAuthRating, modalProps: ratingGuardProps } = useGuestGuard("να βαθμολογήσεις");
   const [userText, setUserText] = useState(data.myReview?.reflection ?? "");
   const [authorBioExpanded, setAuthorBioExpanded] = useState(false);
 
@@ -98,10 +119,11 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
         onBack={() => router.back()}
         rightSlot={
           <DetailHeaderActions
-            itemId={data.item.id}
             category="books"
-            isBookmarked={data.isBookmarked}
+            bookmark={bookmark}
             shareTitle={data.item.title}
+            onSaved={(r) => setSavedModal(r)}
+            onToast={showToast}
           />
         }
       />
@@ -197,6 +219,11 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
         </div>
       )}
 
+      {/* Bookmark status chips — always visible, save affordance + state setter. */}
+      <div className="px-6 mt-8">
+        <BookmarkStatusChips category="books" bookmark={bookmark} onToast={showToast} />
+      </div>
+
       {/* ── Community Ratings ──────────────────────────────────── */}
       <div className="mt-8 py-8 flex flex-col items-center gap-[42px]"
         style={{ background: "linear-gradient(180deg,#fff 0%,#F2F2F7 10%,#F7F7FA 91%,#fff 100%)" }}>
@@ -255,7 +282,7 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
                   className="w-full rounded-[12px] border border-zinc-300 px-4 py-3 text-[14px] text-zinc-800 placeholder:text-zinc-400 focus:border-coral-600 focus:outline-none resize-none"
                 />
                   <button
-                  onClick={() => saveReview(userRating, userText.trim() || null)}
+                  onClick={() => requireAuthRating(() => saveReview(userRating, userText.trim() || null))}
                   disabled={reviewBusy || userRating === savedRating}
                   className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
                 >
@@ -305,6 +332,14 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
         </div>
       )}
 
+      <GuestPromptModal {...ratingGuardProps} />
+      <BookmarkSavedModal
+        open={savedModal !== null}
+        result={savedModal}
+        category="books"
+        onClose={() => setSavedModal(null)}
+      />
+      {toast}
     </div>
   );
 }

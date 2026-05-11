@@ -9,6 +9,12 @@ import { InnerHeader } from "@/components/layout/Header";
 import { ExpandableText } from "@/components/ui/ExpandableText";
 import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
 import { useReview } from "@/hooks/useReview";
+import { useGuestGuard } from "@/hooks/useGuestGuard";
+import { GuestPromptModal } from "@/components/guest/GuestPromptModal";
+import { useBookmark } from "@/hooks/useBookmark";
+import { BookmarkStatusChips } from "@/components/detail/BookmarkStatusChips";
+import { BookmarkSavedModal, type BookmarkSaveResult } from "@/components/detail/BookmarkSavedModal";
+import { useToast } from "@/components/ui/Toast";
 import { OwnSuggestionActions } from "@/components/detail/OwnSuggestionActions";
 import { ReviewCard } from "@/components/detail/ReviewCard";
 import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
@@ -59,7 +65,27 @@ function formatDates(dates: unknown): string {
 export function EventDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
   const [userRating, setUserRating] = useState(data.myReview?.rating ?? 0);
-  const { save: saveReview, busy: reviewBusy, savedRating } = useReview(data.item.id, { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null });
+  const bookmark = useBookmark(data.item.id, "events", data.bookmarkStatus);
+  const { show: showToast, toast } = useToast();
+  const [savedModal, setSavedModal] = useState<BookmarkSaveResult | null>(null);
+  const { save: saveReview, busy: reviewBusy, savedRating } = useReview(
+    data.item.id,
+    { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null },
+    {
+      onSaved: () => {
+        if (bookmark.status === "wishlist") {
+          bookmark.setStatus("done");
+          showToast("Μετακινήθηκε στα Πήγα ✓");
+        }
+      },
+    },
+  );
+  const { requireAuth: requireAuthRating, modalProps: ratingGuardProps } = useGuestGuard("να βαθμολογήσεις");
+  const gatedSaveReview = async (r: number, t: string | null) => {
+    let p: Promise<unknown> = Promise.resolve();
+    requireAuthRating(() => { p = saveReview(r, t); });
+    return p;
+  };
   const [userText, setUserText] = useState(data.myReview?.reflection ?? "");
 
   const { item, extension: ext, suggestions } = data;
@@ -112,10 +138,11 @@ export function EventDetail({ data }: { data: ItemDetailData }) {
         onBack={() => router.back()}
         rightSlot={
           <DetailHeaderActions
-            itemId={data.item.id}
             category="events"
-            isBookmarked={data.isBookmarked}
+            bookmark={bookmark}
             shareTitle={data.item.title}
+            onSaved={(r) => setSavedModal(r)}
+            onToast={showToast}
           />
         }
       />
@@ -212,8 +239,21 @@ export function EventDetail({ data }: { data: ItemDetailData }) {
         </>
       )}
 
+      {/* Bookmark status chips — always visible, save affordance + state setter. */}
+      <div className="px-6 mt-8">
+        <BookmarkStatusChips category="events" bookmark={bookmark} onToast={showToast} />
+      </div>
+
       {/* Community */}
-      <CommunitySection ratings={ratingDistribution} ratingCount={ratingCount} isTopRated={isTopRated} topRatedNoun="Η εκδήλωση" communityRating={avgRating} reviews={reviews} userRating={userRating} setUserRating={setUserRating} saveReview={saveReview} userText={userText} setUserText={setUserText} reviewBusy={reviewBusy} savedRating={savedRating} question="Με πόσα αστέρια θα βαθμολογούσες την εκδήλωση;" mySuggestion={mySuggestion} itemTitle={title} itemSlug={item.slug} />
+      <CommunitySection ratings={ratingDistribution} ratingCount={ratingCount} isTopRated={isTopRated} topRatedNoun="Η εκδήλωση" communityRating={avgRating} reviews={reviews} userRating={userRating} setUserRating={setUserRating} saveReview={gatedSaveReview} userText={userText} setUserText={setUserText} reviewBusy={reviewBusy} savedRating={savedRating} question="Με πόσα αστέρια θα βαθμολογούσες την εκδήλωση;" mySuggestion={mySuggestion} itemTitle={title} itemSlug={item.slug} />
+      <GuestPromptModal {...ratingGuardProps} />
+      <BookmarkSavedModal
+        open={savedModal !== null}
+        result={savedModal}
+        category="events"
+        onClose={() => setSavedModal(null)}
+      />
+      {toast}
     </div>
   );
 }

@@ -39,6 +39,8 @@ export type ItemDetailData = {
   nearbyActivities?: NearbyActivity[];
   /** True if the current user has bookmarked this item. False for guests. */
   isBookmarked: boolean;
+  /** Current bookmark status — null = not bookmarked, 'wishlist' | 'done' = saved. */
+  bookmarkStatus: "wishlist" | "done" | null;
   /** Current user's existing review (rating + optional reflection), or null. */
   myReview: { rating: number; reflection: string | null } | null;
   /** Auth uid of the viewer, or null for guests. Used to detect own-suggestion. */
@@ -192,17 +194,41 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
 
   // Initial bookmark + own-review state for the current user
   let isBookmarked = false;
+  let bookmarkStatus: ItemDetailData["bookmarkStatus"] = null;
   let myReview: ItemDetailData["myReview"] = null;
   let currentUserId: string | null = null;
   try {
     const { data: { user } } = await sb.auth.getUser();
     if (user) {
       currentUserId = user.id;
-      const [bmRes, rRes] = await Promise.all([
-        sb.from("bookmarks").select("id").eq("user_id", user.id).eq("item_id", item.id).maybeSingle(),
-        sb.from("reviews").select("rating, reflection").eq("user_id", user.id).eq("item_id", item.id).maybeSingle(),
-      ]);
-      isBookmarked = !!bmRes.data;
+      // Try with `status` column (migration 023). Falls back to a
+      // status-less select if the column isn't present yet — bookmark
+      // is then treated as "wishlist" by default.
+      let bm: { id: string; status?: string } | null = null;
+      const bmWithStatus = await sb
+        .from("bookmarks")
+        .select("id, status")
+        .eq("user_id", user.id)
+        .eq("item_id", item.id)
+        .maybeSingle();
+      if (bmWithStatus.error?.code === "42703") {
+        const fallback = await sb
+          .from("bookmarks")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("item_id", item.id)
+          .maybeSingle();
+        bm = (fallback.data as any) ?? null;
+      } else {
+        bm = (bmWithStatus.data as any) ?? null;
+      }
+      const rRes = await sb.from("reviews").select("rating, reflection").eq("user_id", user.id).eq("item_id", item.id).maybeSingle();
+      isBookmarked = !!bm;
+      if (bm) {
+        bookmarkStatus = (bm.status === "wishlist" || bm.status === "done")
+          ? (bm.status as "wishlist" | "done")
+          : "wishlist";
+      }
       const r = rRes.data as any;
       myReview = r ? { rating: Number(r.rating), reflection: r.reflection ?? null } : null;
     }
@@ -231,6 +257,7 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     }),
     nearbyActivities,
     isBookmarked,
+    bookmarkStatus,
     myReview,
     currentUserId,
     ratingDistribution,

@@ -11,7 +11,7 @@
  *   await save(4, "Πολύ καλό");  // rating mandatory, text optional
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 interface ReviewResult {
   review_id: string;
@@ -24,11 +24,26 @@ interface InitialReview {
   reflection: string | null;
 }
 
-export function useReview(itemId: string, initial: InitialReview = { rating: null, reflection: null }) {
+interface Options {
+  /** Fires after a successful save; receives the server result + the saved rating/reflection. */
+  onSaved?: (result: ReviewResult, rating: number, reflection: string | null) => void;
+}
+
+export function useReview(
+  itemId:   string,
+  initial:  InitialReview = { rating: null, reflection: null },
+  options:  Options        = {},
+) {
   const [busy, setBusy] = useState(false);
   const [savedRating, setSavedRating] = useState<number | null>(initial.rating);
   const [savedReflection, setSavedReflection] = useState<string | null>(initial.reflection);
   const [error, setError] = useState<string | null>(null);
+
+  // Stash the latest onSaved in a ref so callers can pass fresh
+  // closures each render (e.g. one that reads from a bookmark store)
+  // without re-creating the memoized `save` function.
+  const onSavedRef = useRef<Options["onSaved"]>(options.onSaved);
+  useEffect(() => { onSavedRef.current = options.onSaved; }, [options.onSaved]);
 
   const save = useCallback(
     async (rating: number, reflection: string | null = null): Promise<ReviewResult | null> => {
@@ -62,6 +77,7 @@ export function useReview(itemId: string, initial: InitialReview = { rating: nul
         const body = (await res.json()) as ReviewResult;
         setSavedRating(rating);
         setSavedReflection(reflection);
+        onSavedRef.current?.(body, rating, reflection);
         return body;
       } catch {
         setError("Σφάλμα δικτύου. Δοκίμασε ξανά.");

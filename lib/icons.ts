@@ -81,6 +81,14 @@ export const ICON_PATHS = {
   "play":             "/icons/ui/play.svg",
   "follow":           "/icons/ui/follow.svg",
   "followed":         "/icons/ui/followed.svg",
+  "bookmark-add":     "/icons/ui/bookmark-add.svg",
+  "bookmark-added":   "/icons/ui/bookmark-added.svg",
+
+  // ── Leaderboard ─────────────────────────────────────────────────────
+  "leaderboard-first":   "/icons/leaderboard/first.svg",
+  "leaderboard-second":  "/icons/leaderboard/second.svg",
+  "leaderboard-third":   "/icons/leaderboard/third.svg",
+  "leaderboard-trophy":  "/icons/leaderboard/trophy.svg",
 
   // ── Admin-specific ──────────────────────────────────────────────────
   "admin-placeholder-upload": "/icons/admin/placeholder-upload.svg",

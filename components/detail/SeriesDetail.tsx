@@ -7,7 +7,13 @@ import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { ExpandableText } from "@/components/ui/ExpandableText";
 import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
+import { BookmarkStatusChips } from "@/components/detail/BookmarkStatusChips";
+import { BookmarkSavedModal, type BookmarkSaveResult } from "@/components/detail/BookmarkSavedModal";
+import { useBookmark } from "@/hooks/useBookmark";
 import { useReview } from "@/hooks/useReview";
+import { useGuestGuard } from "@/hooks/useGuestGuard";
+import { GuestPromptModal } from "@/components/guest/GuestPromptModal";
+import { useToast } from "@/components/ui/Toast";
 import { OwnSuggestionActions } from "@/components/detail/OwnSuggestionActions";
 import { ReviewCard } from "@/components/detail/ReviewCard";
 import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
@@ -51,7 +57,25 @@ function formatDate(iso: string): string {
 export function SeriesDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
   const [userRating,   setUserRating]   = useState(data.myReview?.rating ?? 0);
-  const { save: saveReview, busy: reviewBusy, savedRating } = useReview(data.item.id, { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null });
+  const bookmark = useBookmark(data.item.id, "series", data.bookmarkStatus);
+  const { show: showToast, toast } = useToast();
+  const [savedModal, setSavedModal] = useState<BookmarkSaveResult | null>(null);
+  const { save: saveReview, busy: reviewBusy, savedRating } = useReview(
+    data.item.id,
+    { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null },
+    {
+      onSaved: () => {
+        // Rating implies "you've done this" — auto-flip the bookmark
+        // from wishlist → done so the chips below the hero reflect
+        // reality. If not bookmarked at all, leave it alone.
+        if (bookmark.status === "wishlist") {
+          bookmark.setStatus("done");
+          showToast("Μετακινήθηκε στα Είδα ✓");
+        }
+      },
+    },
+  );
+  const { requireAuth: requireAuthRating, modalProps: ratingGuardProps } = useGuestGuard("να βαθμολογήσεις");
   const [userText, setUserText] = useState(data.myReview?.reflection ?? "");
 
   const { item, extension: ext, suggestions } = data;
@@ -102,10 +126,11 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
         onBack={() => router.back()}
         rightSlot={
           <DetailHeaderActions
-            itemId={data.item.id}
             category="series"
-            isBookmarked={data.isBookmarked}
+            bookmark={bookmark}
             shareTitle={data.item.title}
+            onSaved={(r) => setSavedModal(r)}
+            onToast={showToast}
           />
         }
       />
@@ -135,6 +160,7 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
           <span className="text-[15px] font-medium text-zinc-600">{ratingCount} αξιολογήσεις</span>
         </div>
       </div>
+
 
       {/* Information */}
       <div className="mt-8">
@@ -194,6 +220,12 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
       </div>
 
 
+      {/* Bookmark status chips — always visible, doubles as a save
+          affordance + a state setter. */}
+      <div className="px-6 mt-8">
+        <BookmarkStatusChips category="series" bookmark={bookmark} onToast={showToast} />
+      </div>
+
       {/* Community ratings */}
       <div className="mt-8 py-8 flex flex-col items-center gap-[42px]"
         style={{ background: "linear-gradient(180deg,#fff 0%,#F2F2F7 10%,#F7F7FA 91%,#fff 100%)" }}>
@@ -252,7 +284,7 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
                   className="w-full rounded-[12px] border border-zinc-300 px-4 py-3 text-[14px] text-zinc-800 placeholder:text-zinc-400 focus:border-coral-600 focus:outline-none resize-none"
                 />
                   <button
-                  onClick={() => saveReview(userRating, userText.trim() || null)}
+                  onClick={() => requireAuthRating(() => saveReview(userRating, userText.trim() || null))}
                   disabled={reviewBusy || userRating === savedRating}
                   className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
                 >
@@ -292,6 +324,14 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
         </div>
       </div>
 
+      <GuestPromptModal {...ratingGuardProps} />
+      <BookmarkSavedModal
+        open={savedModal !== null}
+        result={savedModal}
+        category="series"
+        onClose={() => setSavedModal(null)}
+      />
+      {toast}
     </div>
   );
 }

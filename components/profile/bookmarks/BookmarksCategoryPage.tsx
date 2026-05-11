@@ -1,16 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RowMenu } from "@/components/profile/RowMenu";
 import { ConfirmDeleteDialog } from "@/components/profile/ConfirmDeleteDialog";
 import { DeleteSuccessDialog } from "@/components/profile/DeleteSuccessDialog";
+import { useToast } from "@/components/ui/Toast";
+import { statusChipLabel } from "@/lib/bookmarks/labels";
+import type { BookmarkStatus } from "@/hooks/useBookmark";
 
 export interface BookmarkedItem {
   id: string;
   itemId: string;
   category: string;
+  status: BookmarkStatus;
   title: string;
   cover_url: string | null;
   avg_rating: number;
@@ -25,6 +29,8 @@ interface Props {
   total: number;
 }
 
+type ActiveTab = Record<string, BookmarkStatus>;
+
 export function BookmarksCategoryPage({ handle, isOwnProfile, groups: initialGroups, total: initialTotal }: Props) {
   const router = useRouter();
   const [groups, setGroups] = useState(initialGroups);
@@ -33,6 +39,21 @@ export function BookmarksCategoryPage({ handle, isOwnProfile, groups: initialGro
   const [pendingDelete, setPendingDelete] = useState(false);
   const [showDeleteSuccess, setShowDeleteSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { show: showToast, toast } = useToast();
+
+  // Per-category active tab. Defaults to whichever sub-list has more
+  // items so the user lands on something non-empty. Empty categories
+  // collapse to the wishlist tab by default.
+  const initialTabs: ActiveTab = useMemo(() => {
+    const t: ActiveTab = {};
+    for (const g of initialGroups) {
+      const wish = g.items.filter((i) => i.status === "wishlist").length;
+      const done = g.items.filter((i) => i.status === "done").length;
+      t[g.category] = done > wish ? "done" : "wishlist";
+    }
+    return t;
+  }, [initialGroups]);
+  const [activeTab, setActiveTab] = useState<ActiveTab>(initialTabs);
 
   async function confirmDelete() {
     if (!deleting || pendingDelete) return;
@@ -58,6 +79,31 @@ export function BookmarksCategoryPage({ handle, isOwnProfile, groups: initialGro
       setError("Σφάλμα δικτύου. Δοκίμασε ξανά.");
     } finally {
       setPendingDelete(false);
+    }
+  }
+
+  async function moveToStatus(b: BookmarkedItem, next: BookmarkStatus) {
+    if (b.status === next) return;
+    try {
+      const res = await fetch("/api/bookmarks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: b.itemId, category: b.category, status: next }),
+      });
+      if (!res.ok) {
+        setError("Δεν έγινε η μετακίνηση. Δοκίμασε ξανά.");
+        return;
+      }
+      setGroups((gs) =>
+        gs.map((grp) => ({
+          ...grp,
+          items: grp.items.map((i) => (i.id === b.id ? { ...i, status: next } : i)),
+        }))
+      );
+      setActiveTab((t) => ({ ...t, [b.category]: next }));
+      showToast(`Μετακινήθηκε στα ${statusChipLabel(b.category, next)} ✓`);
+    } catch {
+      setError("Σφάλμα δικτύου. Δοκίμασε ξανά.");
     }
   }
 
@@ -98,51 +144,89 @@ export function BookmarksCategoryPage({ handle, isOwnProfile, groups: initialGro
 
           {error && <p className="px-6 text-[12px] text-coral-700">{error}</p>}
 
-          {groups.map((g) => (
-            <section key={g.category} className="space-y-3">
-              <div className="flex items-center justify-between px-6">
-                <h2 className="text-[15px] font-bold text-zinc-700 uppercase tracking-[0.1px]">
-                  {g.icon} {g.label}
-                </h2>
-                <span className="text-xs text-zinc-500">{g.items.length}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6">
-                {g.items.map((b) => (
-                  <div key={b.id} className="relative">
-                    <Link href={b.href} className="group block">
-                      <div className="aspect-[4/5] rounded-xl bg-zinc-100 border border-zinc-200 overflow-hidden mb-2">
-                        {b.cover_url ? (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <img src={b.cover_url} alt={b.title} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-zinc-300 text-2xl">
-                            {g.icon}
+          {groups.map((g) => {
+            const wishlistItems = g.items.filter((i) => i.status === "wishlist");
+            const doneItems     = g.items.filter((i) => i.status === "done");
+            const tab           = activeTab[g.category] ?? "wishlist";
+            const visibleItems  = tab === "wishlist" ? wishlistItems : doneItems;
+
+            return (
+              <section key={g.category} className="space-y-3">
+                <div className="flex items-center justify-between px-6">
+                  <h2 className="text-[15px] font-bold text-zinc-700 uppercase tracking-[0.1px]">
+                    {g.icon} {g.label}
+                  </h2>
+                  <span className="text-xs text-zinc-500">{g.items.length}</span>
+                </div>
+
+                {/* Sub-tabs — Wishlist | Done. Always show both even if
+                    one side is empty, so the user knows the affordance
+                    exists. The count after each label communicates the
+                    split at a glance. */}
+                <div className="px-6">
+                  <div className="inline-flex rounded-[10px] bg-zinc-100 p-1 gap-1">
+                    <SubTab
+                      active={tab === "wishlist"}
+                      label={statusChipLabel(g.category, "wishlist")}
+                      count={wishlistItems.length}
+                      onClick={() => setActiveTab((t) => ({ ...t, [g.category]: "wishlist" }))}
+                    />
+                    <SubTab
+                      active={tab === "done"}
+                      label={statusChipLabel(g.category, "done")}
+                      count={doneItems.length}
+                      onClick={() => setActiveTab((t) => ({ ...t, [g.category]: "done" }))}
+                    />
+                  </div>
+                </div>
+
+                {visibleItems.length === 0 ? (
+                  <p className="px-6 text-[13px] text-zinc-400 italic">
+                    Δεν έχεις τίποτα εδώ ακόμα.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4 px-6">
+                    {visibleItems.map((b) => (
+                      <div key={b.id} className="relative">
+                        <Link href={b.href} className="group block">
+                          <div className="aspect-[4/5] rounded-xl bg-zinc-100 border border-zinc-200 overflow-hidden mb-2">
+                            {b.cover_url ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img src={b.cover_url} alt={b.title} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-zinc-300 text-2xl">
+                                {g.icon}
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-sm font-semibold text-zinc-800 line-clamp-2 leading-tight">{b.title}</p>
+                          {b.avg_rating > 0 && (
+                            <p className="text-xs text-amber-600 mt-1">
+                              ★ {b.avg_rating.toFixed(1)}
+                              {b.rating_count > 0 && <span className="text-zinc-400"> ({b.rating_count})</span>}
+                            </p>
+                          )}
+                        </Link>
+                        {isOwnProfile && (
+                          <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm rounded-full">
+                            <RowMenu
+                              items={[
+                                { label: "Δες το αντικείμενο", onClick: () => { window.location.href = b.href; } },
+                                b.status === "wishlist"
+                                  ? { label: `Μετακίνηση στα ${statusChipLabel(b.category, "done")}`, onClick: () => moveToStatus(b, "done") }
+                                  : { label: `Μετακίνηση στα ${statusChipLabel(b.category, "wishlist")}`, onClick: () => moveToStatus(b, "wishlist") },
+                                { label: "Αφαίρεση από αγαπημένα", onClick: () => setDeleting(b), danger: true },
+                              ]}
+                            />
                           </div>
                         )}
                       </div>
-                      <p className="text-sm font-semibold text-zinc-800 line-clamp-2 leading-tight">{b.title}</p>
-                      {b.avg_rating > 0 && (
-                        <p className="text-xs text-amber-600 mt-1">
-                          ★ {b.avg_rating.toFixed(1)}
-                          {b.rating_count > 0 && <span className="text-zinc-400"> ({b.rating_count})</span>}
-                        </p>
-                      )}
-                    </Link>
-                    {isOwnProfile && (
-                      <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm rounded-full">
-                        <RowMenu
-                          items={[
-                            { label: "Δες το αντικείμενο", onClick: () => { window.location.href = b.href; } },
-                            { label: "Αφαίρεση από αγαπημένα", onClick: () => setDeleting(b), danger: true },
-                          ]}
-                        />
-                      </div>
-                    )}
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
-          ))}
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
 
@@ -165,7 +249,28 @@ export function BookmarksCategoryPage({ handle, isOwnProfile, groups: initialGro
           onClose={() => setShowDeleteSuccess(false)}
         />
       )}
+
+      {toast}
     </div>
+  );
+}
+
+function SubTab({ active, label, count, onClick }: { active: boolean; label: string; count: number; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={
+        "h-9 px-3.5 rounded-[8px] text-[13px] font-semibold transition-all active:scale-[0.97] " +
+        (active
+          ? "bg-white text-zinc-900 shadow-sm"
+          : "bg-transparent text-zinc-500")
+      }
+    >
+      {label}
+      <span className={"ml-1.5 text-[12px] " + (active ? "text-coral-600" : "text-zinc-400")}>
+        {count}
+      </span>
+    </button>
   );
 }
 
