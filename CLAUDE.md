@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-11 (session 17 — search v2 / regions admin / food tabs flip / admin UI revamp / motion sprints)
+**Last meaningful update:** 2026-05-11 (session 19 — guest guard / bookmark v2 + orbit microinteraction / profile redesign)
 
 ---
 
@@ -1063,7 +1063,7 @@ The single source of truth for visual review + design QA. Open `/admin/showcase`
 | **Foundations** | 4 | UserBadge · OutlinedPill · Icon · AllReviewsButton |
 | **Cards** | 7 | ReviewCard · SuggestionCardPortrait/Landscape · CarouselSection · RatingBox · SuggesterCard · BookmarkIcon |
 | **Detail modules** | 16 | RatingCard · BookingAvailabilityCard · ActivityCard · PublicBookAd · AuthorCard · AmenitiesRow · NutritionRow · DurationCard · PlatformLinksCard · ReviewCardFooter · OwnSuggestionActions · UserAvatarWithPopup · DeliverySelector · PlatformSelector · ItemGalleryViewer · ExtraRatingsRow |
-| **Profile** | 9 | ProfileCard · BadgeDisplay · Stats · CategoryStatCard · RowMenu · FollowersPopupCentered · ProfilePopup · BookmarkedCard · OwnSuggestionCard |
+| **Profile** | 11 | ProfileCard · BadgeDisplay · Stats · ProfileScoreCard · ProfileVotesCard · CategoryStatCard · RowMenu · FollowersPopupCentered · ProfilePopup · BookmarkedCard · OwnSuggestionCard |
 | **Category** | 7 | CategoryCard (4 variants) · FeaturedCard · SubCategoryTabs · FilterRow · FilterBottomSheet · CategoryHeroStats · CategoryTopUsers |
 | **Home** | 12 | AIChips · MoviesTonightSection · SuggestedUsers · ContributionCTA · DailyPrompt · SupportSection · home/CategoryTiles · guest/SuggestionFeed · guest/HeroDiscover/Suggest/Personalise · guest/HowItWorks · guest/RegisterPromo · guest/CategoryTiles |
 | **Submission/AI** | 3 | ProteínoIntelligence · AchievementProgress · ai/ProgressBar |
@@ -1245,3 +1245,116 @@ components/admin/ui/
 - **Conditional mount kills exit animations.** `{open && <Popup>}` unmounts the popup the instant `open` flips to false — the exit animation never plays. Pattern: always render the component, let it manage its own `mounted` state internally with a delayed unmount (`setTimeout` matching transition duration).
 - **CSS animations need a property change to fire.** Setting `style={{ animation: 'slideUp …' }}` on first mount may not animate if the property is already applied. Use CSS transitions on a state-toggled property (`transform`, `opacity`) instead — `requestAnimationFrame` gap between mount and "show" state lets the browser commit the start frame before applying the target.
 - **`animate-in slide-in-from-bottom` (no suffix) has no translation.** From `tailwindcss-animate`, suffix-less variants don't translate by any specific distance — they're effectively just fades. Use `slide-in-from-bottom-N` (Tailwind spacing) or the project's own `slideUp` keyframe (which animates `translateY(100%) ↔ 0`).
+
+---
+
+## 32. Bookmark v2 + orbit microinteraction (session 19)
+> ✅ Shipped — apply migrations 023 + 025 in Supabase to activate the status column + GRANT/RLS fix
+
+Bookmarks are now a two-state model: **`wishlist`** ("I want to read/watch/visit") and **`done`** ("I read/watched/visited it"). Stored on `bookmarks.status` (CHECK constraint, default `'wishlist'`). Both states surface as always-visible mutually-exclusive chips below the hero on every detail page.
+
+### Schema (`scripts/sql/023-bookmarks-status.sql`, `025-bookmarks-update-policy.sql`)
+- 023 adds `bookmarks.status` enum (`'wishlist'`|`'done'`) + index on `(user_id, status)`.
+- 025 adds the missing `GRANT SELECT/INSERT/UPDATE/DELETE ON public.bookmarks TO authenticated` + `bookmarks_own_update` UPDATE policy. Migration 012 originally created the table without GRANTs or a row-level UPDATE policy → every PATCH returned `permission denied for table bookmarks`. Root-cause fix.
+
+### Behaviour rules
+- **Default save = `wishlist`.** When the user taps the top-right bookmark IconButton, the item lands on the wishlist list. Their wishlist + done count is tracked separately per category.
+- **Rating an item auto-flips wishlist → done.** `useReview`'s `onSaved` callback wakes a `setStatus('done')` on the bookmark controller. Matches the intuition "I rated it ⇒ I clearly experienced it." Reverse flip is never automatic; user must do it manually via the chips.
+- **Chips are always visible.** Discoverability beats minimalism — first-time users see both states inline instead of having to discover them via menu. Active chip gets the heart icon (wishlist) or check icon (done); inactive chip is outlined.
+- **Per-category labels.** `lib/bookmarks/labels.ts` maps `{ category }` → `{ wishlist, done }`. Books: "Θέλω να διαβάσω" / "Διάβασα". Movies/Series: "Θέλω να δω" / "Είδα". Food/Bars: "Θέλω να πάω" / "Πήγα". Recipes: "Θέλω να φτιάξω" / "Έφτιαξα".
+- **Celebration on first save.** `BookmarkSavedModal` (portal-mounted slide-up) replaces the toast for the first bookmark. Shows the avatar stack of other bookmarkers (up to 9 + "+N"), category-specific headline, 5s auto-dismiss. On subsequent saves of the same item, no modal — the orbit + bounce + chip update suffice.
+
+### `useBookmark` controller contract
+```typescript
+interface BookmarkController {
+  status:     'wishlist' | 'done' | null;  // null = not bookmarked
+  bookmarked: boolean;                      // = status !== null
+  busy:       boolean;
+  toggle():     Promise<{ ok: boolean; status: BookmarkStatus | null; context?: BookmarkContext }>;
+  setStatus(s: BookmarkStatus): Promise<{ ok: boolean }>;
+}
+```
+Toggle returns explicit status so callers don't have to derive it from optimistic state. Context carries the bookmarker avatar stack for the modal.
+
+### Orbit microinteraction (`hooks/useBookmarkOrbit.ts`)
+On SAVE only (not on remove), the hero cover image clones and flies a quadratic Bezier arc into the bookmark IconButton. Tunable constants:
+
+```typescript
+const DURATION_MS = 700;     // total flight time
+const ARC_HEIGHT  = 220;     // px lift at the control point
+const KEYFRAMES   = 24;      // path smoothness
+const FADE_START  = 0.97;    // near-zero fade — shrinkage handles the disappearance
+const END_PX      = 1;       // final clone size at icon centre — collapses to a point
+```
+
+Discovery is DOM-based: hero wrapper carries `data-orbit-source`, IconButton carries `data-orbit-target`. No React refs through props. Honours `prefers-reduced-motion` (falls back to 200ms straight fade).
+
+### Bookmark bounce (`bookmark-bounce` keyframe)
+Defined in `tailwind.config.ts`:
+```typescript
+bookmarkBounce: {
+  "0%":   { transform: "scale(1)" },
+  "30%":  { transform: "scale(1.35)" },
+  "55%":  { transform: "scale(0.88)" },
+  "75%":  { transform: "scale(1.08)" },
+  "100%": { transform: "scale(1)" },
+},
+// "bookmark-bounce": "bookmarkBounce 520ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards"
+```
+Applied to the **whole 36px IconButton circle** (not just the inner icon). Wrapper has a `key={popKey}` that increments on every visual flip, forcing the animation to re-fire.
+
+### Orchestration in `DetailHeaderActions.tsx`
+```
+SAVE:
+  setOrbiting(true)                              // visual lag — icon stays unfilled
+  fly()           ┐  parallel
+  toggle()        ┘
+  await fly()                                    // wait ~700ms for the arc
+  setOrbiting(false)                             // icon flips to bookmark-added, bounces
+  await toggle().result                          // ensure API write succeeded
+  if (!ok) toast(error); return
+  await sleep(600)                               // hold so bounce plays before modal
+  onSaved(result)                                // open BookmarkSavedModal
+
+REMOVE:
+  await toggle()                                 // instant, no orbit
+```
+
+### Detail-page integration (all 9 pages)
+Each detail page wraps its hero cover with `data-orbit-source`, renders `<DetailHeaderActions … onSaved={setSavedModal} />` in the header, renders `<BookmarkStatusChips … />` above the rating box, and renders `<BookmarkSavedModal open={!!savedModal} … />` at the end.
+
+---
+
+## 33. Profile screen visuals (session 19)
+> ✅ Shipped — 6 SVGs in `public/icons/profile/`, 2 new card components
+
+The profile hero badge + stats row + scoring cards were redesigned to match the Figma spec.
+
+### Badge area
+- Uses the design-system `<Icon name="badge-verified">` hexagon (replaces the previous inline `TealShieldIcon` SVG that was hand-coded on a one-off basis).
+- Flanked by **two leaf-wreath SVGs** (`profile-leaves-left` + `profile-leaves-right`) — 127×134px each, faded zinc-100 fill. The previous hand-drawn dot-decoration columns are deleted.
+- Layout switched from `items-end justify-start` to `items-center justify-center` so the badge sits visually centred between the leaves.
+
+### Stats row icons
+- Suggestions: `profile-suggestions` (pencil SVG from the Figma spec) — replaces an inline `<PencilIcon>` SVG.
+- Reviews: `profile-reviews-star` — replaces the inline `<StarIcon>` SVG.
+- Bookmarks icon kept (still uses an inline outline SVG; design didn't ship a new asset).
+
+### Two new card components
+| Component | Title | Big number | Icon | Link |
+|---|---|---|---|---|
+| `ProfileScoreCard` | Συνολική Βαθμολογία | `score.toFixed(2)` | `profile-rating-leaves` (gold laurel) | "Δες και τις N τις βαθμολογίες" |
+| `ProfileVotesCard` | Θετικές ψήφοι | `votes` (int) | `profile-thumb-up` | "Δες όλες τις αξιολογήσεις" |
+
+- Both expose an `ⓘ` info-icon next to the title with an optional `onInfo` callback — placeholder for future tooltip explaining how the score / vote count is computed.
+- 260px min-width, identical visual rhythm, scroll horizontally in the stats strip.
+- Score uses `avg_quality_score` from `users` (shows "—" when 0).
+- Votes count is summed server-side from `reviews.vote_up` for the profile owner, passed as `voteUpCount` prop. New SELECT in `app/(main)/profile/[handle]/page.tsx`.
+
+### Dead code removed from `UserProfile.tsx`
+The following inline helpers became unreferenced after the redesign and were deleted: `PencilIcon`, `FlameIcon`, `ThumbUpSmall`, `ThumbUpBigIcon`, `StarIcon`, `RatingBarRow`. Net change: ~110 lines removed, ~50 lines added.
+
+### Showcase coverage
+Both new cards have full showcase coverage at `/admin/showcase` → Profile tab with 3 variants each:
+- `ProfileScoreCard`: healthy (4.56, 213 ratings) / new user (0, 0) / perfect (5.00, 3)
+- `ProfileVotesCard`: 27 votes / 0 votes / 1,247 votes (volume test)

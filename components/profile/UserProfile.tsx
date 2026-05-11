@@ -8,25 +8,11 @@ import { createClient } from "@/lib/supabase/client";
 import { useOverlay } from "@/hooks/useOverlay";
 import { FollowersPopupCentered } from "@/components/profile/FollowersPopupCentered";
 import { AvatarImage } from "@/components/ui/AvatarImage";
+import { Icon } from "@/components/ui/Icon";
+import { ProfileScoreCard } from "@/components/profile/ProfileScoreCard";
+import { ProfileVotesCard } from "@/components/profile/ProfileVotesCard";
 
 /* ── Inline icons ──────────────────────────────────────────── */
-
-function StarIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size * 0.93} viewBox="0 0 13 12" fill="none" aria-hidden>
-      <path d="M6.5 1L8.04 4.26L11.75 4.72L9.13 7.24L9.81 10.94L6.5 9.14L3.19 10.94L3.87 7.24L1.25 4.72L4.96 4.26L6.5 1Z" fill="#27272A" />
-    </svg>
-  );
-}
-
-function PencilIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path d="M11.333 2a1.885 1.885 0 0 1 2.667 2.667L4.667 14H2v-2.667L11.333 2Z" stroke="#71717A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.333 3.667l2 2" stroke="#71717A" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 function BookmarkIcon({ size = 16 }: { size?: number }) {
   return (
@@ -41,37 +27,6 @@ function PlusCircleIcon() {
     <svg width="19" height="19" viewBox="0 0 19 19" fill="none" aria-hidden>
       <circle cx="9.5" cy="9.5" r="8.5" stroke="#FAFAFA" strokeWidth="1.5" />
       <path d="M9.5 5.5v8M5.5 9.5h8" stroke="#FAFAFA" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function FlameIcon() {
-  return (
-    <svg width="25" height="24" viewBox="0 0 25 24" fill="none" aria-hidden>
-      <path d="M13 2C13 2 7.5 8.5 7.5 13.5C7.5 16.5 10 19 13 19C16 19 18.5 16.5 18.5 13.5C18.5 8.5 13 2 13 2Z" fill="#FF9F00" />
-      <path d="M13 10C13 10 10.5 12.5 10.5 14.5C10.5 16 11.6 17.2 13 17.2C14.4 17.2 15.5 16 15.5 14.5C15.5 12.5 13 10 13 10Z" fill="#FF7816" />
-      <path d="M8.5 13.5C8.5 16 10 18 10 18C8 18.5 5 18 4 15.5C3.5 14 5.5 12 8 11C7.5 11.5 7.5 13.5 8.5 13.5Z" fill="#FDBF00" />
-    </svg>
-  );
-}
-
-function ThumbUpSmall() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14Z" fill="#FFBA9F" />
-      <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" fill="#E0A58D" />
-    </svg>
-  );
-}
-
-function ThumbUpBigIcon() {
-  return (
-    <svg width="120" height="120" viewBox="0 0 120 120" fill="none" aria-hidden>
-      <path d="M33 57H21C18.8 57 17 58.8 17 61V97C17 99.2 18.8 101 21 101H33C35.2 101 37 99.2 37 97V61C37 58.8 35.2 57 33 57Z" fill="#FFBA9F" />
-      <path d="M22 99.5h11" stroke="#E0A58D" strokeWidth="3" strokeLinecap="round" />
-      <path d="M37 63L56 27C58.5 21.5 64.5 20.5 68.5 24.5L70 26C73 29 73.5 35 71 39L62 57H91C94 57 97 59.5 97.5 63L99 76C99.5 81.5 96 87 91 87.5H71.5L72.5 95C73 100.5 69 105 63.5 105H52C48 105 44 102.5 42 98L37 79V63Z" fill="#FFBA9F" />
-      <circle cx="26" cy="42" r="14" fill="#FDCD56" />
-      <path d="M26 34l2 5.5 5.8.3-4.7 3.4 1.7 5.5-4.8-2.7-4.8 2.7 1.7-5.5-4.7-3.4 5.8-.3z" fill="white" />
     </svg>
   );
 }
@@ -133,30 +88,6 @@ function SectionHeader({ title }: { title: string }) {
   );
 }
 
-/* ── Rating bar row ─────────────────────────────────────────── */
-function RatingBarRow({ stars, percent }: { stars: number; percent: number }) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center gap-1 shrink-0" style={{ width: 28 }}>
-        <span className="text-base font-semibold text-zinc-800">{stars}</span>
-        <StarIcon size={12} />
-      </div>
-      <div
-        className="relative flex-1 rounded-full overflow-hidden"
-        style={{ height: 10, backgroundColor: "#E1E1E2", boxShadow: "inset 1px 1px 4px 0px rgba(0,0,0,0.25)" }}
-      >
-        <div
-          className="h-full rounded-full bg-[#019371]"
-          style={{ width: `${percent}%`, boxShadow: "0px 1px 5px 0px rgba(0, 48, 84, 0.3)" }}
-        />
-      </div>
-      <span className="text-base font-bold text-zinc-800 shrink-0 text-right" style={{ width: 32 }}>
-        {percent}%
-      </span>
-    </div>
-  );
-}
-
 /* ── Progress bar (342×170) ─────────────────────────────────── */
 function ProgressBar({ avatar, name }: { avatar?: string | null; name?: string }) {
   return (
@@ -213,6 +144,7 @@ export function UserProfile({
   followingCount  = 0,
   level           = 1,
   avgQualityScore = 0,
+  voteUpCount     = 0,
   topSuggestion,
 }: {
   handle?:         string;
@@ -226,6 +158,7 @@ export function UserProfile({
   followingCount?: number;
   level?:          number;
   avgQualityScore?: number;
+  voteUpCount?:    number;
   topSuggestion?: {
     title: string;
     subtitle: string;
@@ -295,46 +228,20 @@ export function UserProfile({
       </div>
 
       {/* ── 2. Badge Row ────────────────────────────────────── */}
-      <div className="flex items-end justify-start px-5 mt-2">
-        {/* Left decorative circles */}
-        <div className="relative shrink-0" style={{ width: 100, height: 134 }}>
-          {([
-            { x: 4, y: 23, r: 13 }, { x: 30, y: 27, r: 12 }, { x: 29, y: 50, r: 12 },
-            { x: 37, y: 68, r: 12 }, { x: 47, y: 86, r: 12 }, { x: 24, y: 4, r: 12 },
-            { x: 0, y: 44, r: 14 }, { x: 1, y: 65, r: 15 }, { x: 7, y: 85, r: 15 },
-            { x: 21, y: 103, r: 15 },
-          ] as { x: number; y: number; r: number }[]).map((c, i) => (
-            <div
-              key={i}
-              className="absolute rounded-full bg-zinc-100"
-              style={{ left: c.x, top: c.y, width: c.r * 1.6, height: c.r * 1.6 }}
-            />
-          ))}
-        </div>
+      <div className="flex items-center justify-center px-5 mt-2">
+        {/* Left wreath leaves */}
+        <Icon name="profile-leaves-left" width={127} height={134} alt="" className="shrink-0" />
 
-        {/* Main badge (single — current level) */}
+        {/* Main badge (design-system verified hexagon + label) */}
         <div className="flex flex-col items-center gap-4 shrink-0 z-10 -mx-6">
-          <TealShieldIcon size={70} uid="badge" />
+          <Icon name="badge-verified" width={84} height={94} alt="" />
           <p className="text-[18px] font-bold text-zinc-700 text-center leading-[130%] whitespace-pre-line">
             {"Verified\nMember"}
           </p>
         </div>
 
-        {/* Right decorative circles */}
-        <div className="relative shrink-0" style={{ width: 100, height: 134 }}>
-          {([
-            { x: 56, y: 23, r: 13 }, { x: 32, y: 27, r: 12 }, { x: 33, y: 50, r: 12 },
-            { x: 24, y: 68, r: 12 }, { x: 14, y: 86, r: 12 }, { x: 38, y: 4, r: 12 },
-            { x: 58, y: 44, r: 14 }, { x: 54, y: 65, r: 15 }, { x: 47, y: 85, r: 15 },
-            { x: 33, y: 103, r: 15 },
-          ] as { x: number; y: number; r: number }[]).map((c, i) => (
-            <div
-              key={i}
-              className="absolute rounded-full bg-zinc-100"
-              style={{ left: c.x, top: c.y, width: c.r * 1.6, height: c.r * 1.6 }}
-            />
-          ))}
-        </div>
+        {/* Right wreath leaves */}
+        <Icon name="profile-leaves-right" width={127} height={134} alt="" className="shrink-0" />
       </div>
 
       {/* ── 3. GeneralStats ─────────────────────────────────── */}
@@ -346,7 +253,7 @@ export function UserProfile({
           {/* Suggestions — taps → suggestions overview */}
           <Link href={`/profile/${handle}/suggestions`} className="flex-1 flex flex-col items-center gap-4 active:opacity-70 transition-opacity">
             <div className="flex flex-col items-center gap-3">
-              <PencilIcon />
+              <Icon name="profile-suggestions" width={16} height={16} alt="" />
               <span className="text-[13px] font-medium text-zinc-500 tracking-[0.6%] uppercase">ΠΡΟΤΑΣΕΙΣ</span>
             </div>
             <span className="text-[24px] font-bold text-zinc-800 leading-none">{suggestionCount}</span>
@@ -358,7 +265,7 @@ export function UserProfile({
           {/* Reviews — taps → reviews overview */}
           <Link href={`/profile/${handle}/reviews`} className="flex-1 flex flex-col items-center gap-4 active:opacity-70 transition-opacity">
             <div className="flex flex-col items-center gap-3">
-              <StarIcon size={15} />
+              <Icon name="profile-reviews-star" width={15} height={14} alt="" />
               <span className="text-[13px] font-medium text-zinc-500 tracking-[0.6%] uppercase">ΑΞΙΟΛΟΓΗΣΕΙΣ</span>
             </div>
             <span className="text-[24px] font-bold text-zinc-800 leading-none">{ratingCount}</span>
@@ -400,40 +307,15 @@ export function UserProfile({
       {/* ── 5. Statistics (horizontal scroll) ──────────────── */}
       <div className="mt-6 overflow-x-auto">
         <div className="flex gap-5 px-5 pb-1 w-max">
-          {/* Rating card */}
-          <div
-            className="shrink-0 flex flex-col gap-5 rounded-lg border border-zinc-300 bg-white"
-            style={{ padding: "24px 20px", minWidth: 220 }}
-          >
-            <div className="flex items-end gap-1">
-              <span className="text-base font-semibold text-zinc-800">Η βαθμολογία σου</span>
-              <StarIcon size={12} />
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-[36px] font-extrabold text-zinc-800 leading-none">{avgQualityScore > 0 ? avgQualityScore.toFixed(2) : "—"}</span>
-              <FlameIcon />
-            </div>
-            <p className="text-sm font-semibold text-zinc-600 underline">
-              Δες και τις 5 τις βαθμολογίες σου
-            </p>
-          </div>
-
-          {/* Votes card */}
-          <div
-            className="shrink-0 flex flex-col gap-5 rounded-lg border border-zinc-300 bg-white"
-            style={{ padding: "24px 20px", minWidth: 220 }}
-          >
-            <div className="flex items-center gap-1">
-              <span className="text-base font-semibold text-zinc-800">Θετικές ψήφοι</span>
-              <ThumbUpSmall />
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-[36px] font-extrabold text-zinc-800 leading-none">—</span>
-              <ThumbUpSmall />
-            </div>
-            <p className="text-sm font-semibold text-zinc-600 underline">Δες όλες τις αξιολογήσεις σου</p>
-          </div>
-
+          <ProfileScoreCard
+            score={avgQualityScore}
+            count={ratingCount}
+            href={`/profile/${handle}/reviews`}
+          />
+          <ProfileVotesCard
+            votes={voteUpCount}
+            href={`/profile/${handle}/reviews`}
+          />
           <div className="w-1 shrink-0" />
         </div>
       </div>

@@ -179,6 +179,13 @@ const config: Config = {
           "60%":  { transform: "scale(1.1)" },
           "100%": { transform: "scale(1)",  opacity: "1" },
         },
+        bookmarkBounce: {
+          "0%":   { transform: "scale(1)" },
+          "30%":  { transform: "scale(1.35)" },
+          "55%":  { transform: "scale(0.88)" },
+          "75%":  { transform: "scale(1.08)" },
+          "100%": { transform: "scale(1)" },
+        },
       },
       animation: {
         "slide-up":   "slideUp 280ms cubic-bezier(0.32, 0.72, 0, 1) forwards",
@@ -191,7 +198,8 @@ const config: Config = {
         "star-fill":  "starFill 200ms ease",
         shake:        "shake 500ms cubic-bezier(0.36, 0.07, 0.19, 0.97)",
         "draw-check": "drawCheck 500ms ease forwards",
-        "scale-in":   "scaleIn 400ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards",
+        "scale-in":        "scaleIn 400ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards",
+        "bookmark-bounce": "bookmarkBounce 520ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards",
       },
     },
   },

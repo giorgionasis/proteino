@@ -90,6 +90,14 @@ export const ICON_PATHS = {
   "leaderboard-third":   "/icons/leaderboard/third.svg",
   "leaderboard-trophy":  "/icons/leaderboard/trophy.svg",
 
+  // ── Profile screen ──────────────────────────────────────────────────
+  "profile-leaves-left":   "/icons/profile/leaves-left.svg",
+  "profile-leaves-right":  "/icons/profile/leaves-right.svg",
+  "profile-suggestions":   "/icons/profile/suggestions.svg",
+  "profile-reviews-star":  "/icons/profile/reviews-star.svg",
+  "profile-rating-leaves": "/icons/profile/rating-leaves.svg",
+  "profile-thumb-up":      "/icons/profile/thumb-up.svg",
+
   // ── Admin-specific ──────────────────────────────────────────────────
   "admin-placeholder-upload": "/icons/admin/placeholder-upload.svg",
   "admin-link-card":          "/icons/admin/link-card.png",

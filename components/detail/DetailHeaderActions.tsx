@@ -83,14 +83,17 @@ export function DetailHeaderActions({ category, bookmark, shareTitle, onSaved, o
 
         await orbitPromise;
         setOrbiting(false);
-        // visualBookmarked will now sync to bookmarked via the effect
+        // visualBookmarked will now sync to bookmarked via the effect,
+        // triggering the 520ms `bookmark-bounce` animation on the icon button.
 
         const result = await togglePromise;
         if (!result.ok) {
           onToast?.("Κάτι πήγε στραβά. Δοκίμασε ξανά.");
           return;
         }
-        // Open the celebration modal after the orbit + save settle.
+        // Hold for ~600ms so the bookmark-bounce on the icon plays out
+        // before the celebration modal slides over it.
+        await new Promise<void>((resolve) => setTimeout(resolve, 600));
         if (result.status) {
           onSaved?.({ status: result.status, context: result.context });
         }
@@ -106,14 +109,14 @@ export function DetailHeaderActions({ category, bookmark, shareTitle, onSaved, o
 
   return (
     <>
-      <IconButton
-        onClick={handleToggle}
-        aria-label="Αποθήκευση"
-        data-orbit-target
+      <span
+        key={popKey}
+        className={popKey > 0 ? "inline-flex animate-bookmark-bounce" : "inline-flex"}
       >
-        <span
-          key={popKey}
-          className={popKey > 0 ? "inline-flex animate-pop-in" : "inline-flex"}
+        <IconButton
+          onClick={handleToggle}
+          aria-label="Αποθήκευση"
+          data-orbit-target
         >
           <Icon
             name={visualBookmarked ? "bookmark-added" : "bookmark-add"}
@@ -121,8 +124,8 @@ export function DetailHeaderActions({ category, bookmark, shareTitle, onSaved, o
             height={20}
             alt=""
           />
-        </span>
-      </IconButton>
+        </IconButton>
+      </span>
 
       <IconButton
         onClick={share}

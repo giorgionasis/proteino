@@ -1,12 +1,40 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-11 (session 17 — search v2 + multi-language + regions admin + food tabs flip + admin UI revamp + motion sprints + popup fixes)
+Last updated: 2026-05-11 (session 19 — guest guard + bookmark v2 + orbit microinteraction + profile redesign)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 17 finished:**
+**Current state — session 19 (current) finished:**
+
+- ✅ **Bookmark orbit microinteraction — final tune.** Hero cover clones and flies a quadratic Bezier from its position into the bookmark IconButton at the top-right. **Shrinks continuously to ~1px at the icon centre** (`END_PX = 1` in `hooks/useBookmarkOrbit.ts`) — the clone collapses into a point rather than landing icon-sized. Bounce on landing is now the new `bookmark-bounce` animation (520ms, `1.0 → 1.35 → 0.88 → 1.08 → 1.0` with `ease-pop`), applied to the **whole 36px IconButton circle** (not just the inner icon). After the bounce, a **600ms beat** is held before the celebration modal slides up — gives the spring time to settle visually. Unbookmark stays instant.
+- ✅ **Profile screen — badge + stats + cards redesign.** `UserProfile.tsx`:
+  - Badge area now uses the design-system `badge-verified` hexagon flanked by the two leaf-wreath SVGs (`profile-leaves-left` + `profile-leaves-right`). Hand-drawn dot-decoration columns deleted.
+  - Stats row icons swapped to the design SVGs: `profile-suggestions` (pencil) and `profile-reviews-star`.
+  - Two new extracted components: **`ProfileScoreCard`** ("Συνολική Βαθμολογία" — score + gold leaves + "Δες και τις N τις βαθμολογίες") and **`ProfileVotesCard`** ("Θετικές ψήφοι" — sum of vote_up + thumbs-up + "Δες όλες τις αξιολογήσεις"). Both have an `ⓘ` info icon next to the title with an `onInfo` hook for future tooltips.
+  - 6 new SVGs added to `public/icons/profile/` + registered in `lib/icons.ts`.
+  - `app/(main)/profile/[handle]/page.tsx` now sums `reviews.vote_up` server-side and passes `voteUpCount` into the profile.
+  - Dead inline helpers removed: `PencilIcon`, `FlameIcon`, `ThumbUpSmall`, `ThumbUpBigIcon`, `StarIcon`, `RatingBarRow`.
+  - Both new cards added to `/admin/showcase` → Profile tab (3 variants each: healthy / empty / extreme).
+- ✅ **Guest action gating across all 9 detail pages.** New `useGuestGuard` hook + `GuestPromptModal` (portal, slide-up). Wired on bookmark, rating-save, FollowButton (gates itself so every caller inherits). Submission flow is guest-gated at the FAB level.
+- ✅ **Bookmarks v2 — wishlist/done two-state model.**
+  - **Migration 023** adds `bookmarks.status` enum (`'wishlist' | 'done'`, default `'wishlist'`) + CHECK constraint + index on (user_id, status).
+  - **Migration 024** adds `get_leaderboard(p_period, p_category, p_viewer)` RPC with fast unfiltered path + filtered aggregate path.
+  - **Migration 025** adds `GRANT SELECT/INSERT/UPDATE/DELETE` on `bookmarks` + missing `bookmarks_own_update` RLS policy — root cause of the earlier "permission denied for table bookmarks" 500s.
+  - **`BookmarkStatusChips`** below the hero on every detail page — always visible, mutually exclusive, heart icon on active wishlist, check icon on active done, per-category labels via `lib/bookmarks/labels.ts`.
+  - **`BookmarkSavedModal`** — celebration card on first save with avatar stack of other bookmarkers + category-specific copy + 5s auto-dismiss. Replaces the old toast.
+  - `hooks/useBookmark.ts` returns `{ status, bookmarked, busy, toggle, setStatus }` + action results carry `{ ok, status, context }`. API POST/PATCH fail-soft when status column missing (42703).
+  - `useReview` `onSaved` callback now auto-flips bookmark wishlist → done when a user rates an item.
+- ✅ **Leaderboard wired to real data.** `/api/leaderboard` reads the new RPC; viewer row gets coral fill + "Εσύ" pill. Provided SVGs for first/second/third + trophy added to `public/icons/leaderboard/`.
+
+**Previous state — sessions 18 (parts 1 + 2):**
+
+- ✅ **Session 18 part 1** — Admin write revalidation + ISR + `<ExpandableText>` sweep. Admin POST/PATCH routes call `revalidatePath` for affected detail pages so edits show up immediately on next nav. `<ExpandableText>` primitive built and rolled out across detail-page plot/description sections.
+- ✅ **Session 18 part 2** — Avatar upload (Supabase Storage `avatars/` bucket + presigned URL flow), full personalization settings page (`/profile/[handle]/settings/personalization` — reuses `<InterestsSelector>` from onboarding), notifications settings page (per-type push/email toggles).
+- ✅ **AI provider switched to Gemini Flash-Lite** through the same `AIService` abstraction. Search intent extraction + submission match + quality coach + conversational fallback all routed through Gemini. AI cache + usage log tables + cost dashboard at `/admin/ai-usage`. Phase A is effectively shipped — see PROGRESS §1 sessions 18-19 entries.
+
+**Previous state — session 17 finished:**
 
 - ✅ **Search v2 — structured-filter engine.** Gemini extraction extended with `genre`, `channel`, `status`, `period`, `duration_min/max`, `person` alongside the existing `type` + `location`. `app/api/search/route.ts` now composes these into per-category Postgres queries (`fetchByStructuredFilters`). 4 of 7 example queries work end-to-end (κωμωδίες netflix · παιδικά κάτω από 90 λεπτά · ολοκληρωμένες σειρές · sebastian fitzek). The other 3 are confirmed **data gaps**, not code: no theater plays carry "Μπέζος" actor, no events have `event_type` matching "συναυλία", no food items have `cuisine="Ιταλική"`. See §3 Phase A for next steps.
 - ✅ **Multi-language title search.** Migration 020 adds `items.original_title` + generated `original_title_normalized` (Greek accent-folded) + index. Admin field added in `SuggestionEditor` for movies/series/books. Search `app/api/search/route.ts` ilikes both columns so "Lucifer" finds "Λούσιφερ" and vice versa.
@@ -97,6 +125,79 @@ See §3 for the full ordered roadmap.
 ---
 
 ## 1. COMPLETED
+
+### Session 19 — Guest guard + bookmark v2 + orbit + profile redesign ✅ (2026-05-11)
+
+The session that finally made the platform *feel* — every action has weight and reward.
+
+**Guest action gating (new `useGuestGuard` + `GuestPromptModal`).** A single hook that gates anonymous users from any logged-in action and shows a contextual "Πρέπει να συνδεθείς για να …" modal with a Login/Register CTA pair. Wired across:
+- Bookmark save (`DetailHeaderActions`)
+- Rating save (all 9 detail page rate-this-item forms)
+- Follow (`FollowButton` gates itself so every consumer inherits)
+- Submission FAB (already gated, modal is now consistent)
+
+The modal is portal-mounted, slide-up, dismissible by tap-outside or close button.
+
+**Bookmarks v2 — wishlist/done two-state model.**
+
+The mental model: bookmark = the user's relationship to an item. For books that's "want to read" vs "read it"; for movies "want to watch" vs "watched"; for restaurants "want to go" vs "went". Two states, per-category labels, mutually exclusive, both surfaced inline.
+
+- **Migration 023** — `bookmarks.status` enum (`'wishlist' | 'done'`, default `'wishlist'`).
+- **Migration 025** — `GRANT SELECT/INSERT/UPDATE/DELETE on bookmarks TO authenticated` + missing `bookmarks_own_update` RLS policy. Migration 012 had created the table without GRANTs or an UPDATE policy → every PATCH returned "permission denied for table bookmarks" 500. Root-cause fix.
+- **`BookmarkStatusChips`** — always-visible chip pair above the rating box on all 9 detail pages. Heart icon on the active wishlist chip, check icon on the active done chip. Labels per-category via `lib/bookmarks/labels.ts` (Θέλω να δω / Έχω δει for movies, Θέλω να διαβάσω / Διάβασα for books, etc.).
+- **`BookmarkSavedModal`** — celebration card on first save. Shows the avatar stack of other bookmarkers (up to 9 + "+N"), category-specific headline, 5s auto-dismiss. Replaces the toast on save.
+- **`hooks/useBookmark.ts`** — controller now exposes `{ status, bookmarked, busy, toggle, setStatus }`. Action functions return `{ ok, status, context }` where `context` is the bookmarker avatar stack for the modal.
+- **API `app/api/bookmarks/route.ts`** — POST returns the new status + context. PATCH for status transition with upsert fallback. Both fail soft when the status column is missing (Postgres error 42703 → ignore status, treat as wishlist).
+- **`useReview` `onSaved`** auto-flips bookmark `wishlist → done` whenever the user rates an item — matches the "I rated it ⇒ I clearly experienced it" intuition.
+
+**Bookmark orbit microinteraction.** The hero cover image clones, flies a parabolic Bezier path into the bookmark IconButton at the top-right of the header, and **shrinks continuously to ~1px at the icon centre** so it collapses into a point rather than landing icon-sized.
+
+- `hooks/useBookmarkOrbit.ts` — element discovery via `data-orbit-source` (hero wrapper) + `data-orbit-target` (IconButton); no React refs needed. Web Animations API. Quadratic Bezier with `ARC_HEIGHT = 220px` lift. Five tunable constants at the top of the file.
+- `DURATION_MS = 700`, `KEYFRAMES = 24`, `FADE_START = 0.97` (near-zero fade — shrinkage handles the disappearance), `END_PX = 1` (shrink-to-point).
+- `tailwindcss-animate` keyframe `bookmarkBounce`: `1.0 → 1.35 → 0.88 → 1.08 → 1.0` over 520ms with `ease-pop`. Applied to the **whole 36px IconButton circle** via a `key`'d wrapper that re-mounts on the visual flip.
+- `DetailHeaderActions.tsx` orchestration: `setOrbiting(true)` → kick off `fly()` + `toggle()` in parallel → await orbit → `setOrbiting(false)` (triggers icon flip + bounce) → await API result → **wait 600ms** so the bounce plays out → open `BookmarkSavedModal`. Unbookmark skips the orbit entirely.
+- Respects `prefers-reduced-motion` — falls back to a 200ms straight-line fade.
+
+**Leaderboard wired to real data.**
+
+- **Migration 024** — `get_leaderboard(p_period text, p_category text, p_viewer uuid)` RPC. Fast unfiltered path reads `users.suggestion_count`; filtered path aggregates `suggestions` joined to `items`. Returns the requesting viewer's row + the top N around them.
+- New leaderboard icons: `leaderboard-first` / `-second` / `-third` / `-trophy` from user's SVG set, registered in `lib/icons.ts`.
+- `components/leaderboard/LeaderboardPage.tsx` removed mocks; fetches `/api/leaderboard`; viewer row gets coral fill + "Εσύ" pill.
+
+**Profile screen redesign.** `UserProfile.tsx`:
+
+- Badge area: **design-system `badge-verified` hexagon** (no more inline `TealShieldIcon` SVG) flanked by **two leaf-wreath SVGs** (`profile-leaves-left` + `profile-leaves-right`). The old hand-drawn dot-decoration columns are deleted.
+- Stats row: suggestions/reviews icons swapped to design-spec SVGs (`profile-suggestions` + `profile-reviews-star`).
+- **Two new extracted components**:
+  - **`ProfileScoreCard`** — "Συνολική Βαθμολογία" with score + `profile-rating-leaves` gold-laurel icon + "Δες και τις N τις βαθμολογίες" link.
+  - **`ProfileVotesCard`** — "Θετικές ψήφοι" with sum-of-vote_up + `profile-thumb-up` icon + "Δες όλες τις αξιολογήσεις" link.
+  - Both include an `ⓘ` info icon next to the title with an `onInfo` callback for future tooltips.
+- Server-side: `app/(main)/profile/[handle]/page.tsx` now SELECTs `reviews.vote_up` for the profile owner and sums them into `voteUpCount`.
+- Dead inline helpers removed (`PencilIcon`, `FlameIcon`, `ThumbUpSmall`, `ThumbUpBigIcon`, `StarIcon`, `RatingBarRow`).
+- Both cards added to `/admin/showcase` Profile tab with 3 variants each (healthy / empty / extreme).
+- 6 new SVGs added: `public/icons/profile/{leaves-left,leaves-right,suggestions,reviews-star,rating-leaves,thumb-up}.svg`.
+
+### Session 18 — Admin revalidation + avatar upload + personalization + Gemini integration ✅ (2026-05-09)
+
+**Part 1 — Admin write revalidation + ISR + ExpandableText sweep.**
+- Admin POST/PATCH routes now call `revalidatePath('/<category>/<slug>')` on save so edited detail pages reflect the change immediately on next navigation. No more "I edited it but the site still shows the old text."
+- `<ExpandableText>` primitive built (max-height animation, "Περισσότερα" toggle) + rolled out across plot / description sections on all 9 detail pages.
+
+**Part 2 — Avatar upload + personalization + notifications.**
+- Avatar upload wired to Supabase Storage `avatars/` bucket. Upload UX in `/profile/[handle]/settings/edit` — drag/drop or tap to pick + preview + crop.
+- Personalization settings page reuses `<InterestsSelector>` from onboarding (different header/footer).
+- Notifications settings page — per-type push/email toggles persisted to `user_notification_preferences` jsonb.
+
+**Gemini integration (across both halves of session 18).**
+- `lib/ai/gemini.ts` implementation of the existing `AIService` interface. Drop-in swap via `getAIService()` (picks Gemini when `GEMINI_API_KEY` is set, falls back to mock otherwise).
+- Search intent extraction routed through Gemini Flash-Lite — full structured `SearchAnalysis` schema (category, genre, channel, status, period, duration, person, type, location).
+- Submission match upgrade: Gemini extracts `{ title, category, year_hint, actor_hint, … confidence }` from the full reflection text; TMDB / Books / Places confirms.
+- Quality coach + conversational fallback both wired through Gemini.
+- AI cache table (migration 019) + usage log + cost dashboard at `/admin/ai-usage` showing daily token spend + top expensive queries.
+- Prompt versioning via `PROMPT_VERSION` constant (currently `v6`); bumping invalidates all stale cache entries.
+- Free tier: 20 requests/day on `gemini-2.5-flash-lite`. Paid tier needed for production — enable billing at https://aistudio.google.com.
+
+This effectively **shipped Phase A** (the original "Anthropic Claude Haiku integration") through Gemini instead. Cost is even lower than the original projection (~$0.0001/search at paid tier vs ~$0.0005 with Anthropic). Decision logged in §3.
 
 ### Session 16 — Design system completion ✅ (2026-05-07)
 
@@ -808,56 +909,34 @@ Still on legacy layout (Priority 1 remaining): Series, Food, Bars, Hotels, Recip
 
 ## 3. WHAT NEEDS TO BE BUILT NEXT (in order)
 
-### Phase A — Anthropic Claude Haiku integration (LOCKED, awaiting API key)
+### Phase A — LLM integration ✅ SHIPPED (via Gemini, not Anthropic)
 
-User is buying credits as Individual plan. Once `ANTHROPIC_API_KEY` lands in `.env.local`, this is the next session's work. Full architecture documented in **AI.md §12**.
+Originally specced for Anthropic Claude Haiku 4.5. Pivoted to **Gemini Flash-Lite** during sessions 17-18 — same `AIService` interface, drop-in swap, ~5× cheaper at the per-call level (~$0.0001/search at paid tier). All four targeted user-reported failures (νολαν / leonardo di caprio / γαλάτσι μπαρ / generic-reflection coaching) are resolved.
 
-**Why this is Priority 1:**
-The regex-based extraction has hit its ceiling. Real user-reported failures that ONLY LLM solves:
-- `νολαν` → 0 (Greek transliteration of Nolan)
-- `leonardo di caprio` (with space) → 0 (DB stores "Leonardo DiCaprio" as one word)
-- `γαλάτσι μπαρ` → silent fall-through (sub-region not in regions table, no clarifying question)
-- `ωραία ταινία` reflection → generic regex tip vs. semantic "Πες ποια σκηνή σε άγγιξε"
-- Mini-chat is theatrical — same regex search wrapped in chat UI
+**Shipped:**
+- `lib/ai/gemini.ts` (matches the `AIService` interface; mock + anthropic stubs remain swappable)
+- Search intent extraction → structured `SearchAnalysis` schema with category/genre/channel/status/period/duration/person/type/location
+- Submission match upgrade — full-text Gemini extract → TMDB/Books/Places confirm
+- Quality coach + conversational fallback
+- Cache table (migration 019) + usage log + `/admin/ai-usage` cost dashboard
+- Prompt versioning (`PROMPT_VERSION = "v6"`)
 
-**Cost projection (locked):**
-- Per-call: ~$0.0005 search / ~$0.004 submission with prompt caching
-- At 100K DAU + 3 searches/day + 30K submissions/month: **~$3,500/month** (~3% of projected revenue)
-- At 1K DAU starting point: ~$30/month
-- Self-hosted analysis (rejected for now): worse Greek quality, 3-6 weeks setup, not worth it pre-50K DAU
+**Still pending under Phase A:**
+- 🛑 **Apply migrations 019 / 020 / 021 / 023 / 024 / 025** in the live DB (all idempotent).
+- 🛑 **Enable paid Gemini tier** — free tier is 20 req/day. Cost at paid tier ~$0.0001/search.
+- ⏳ Other-category external API match (#16): Google Books for books, Google Places for food/bars/hotels (admin side wired; user-side submission flow still falls back to heuristic), Ticketmaster for theater/events.
 
-**Build plan (4 days, sequential):**
+### Phase A.5 — Immediate audit-gap punch list (post-session 19)
 
-**Day 1 — Foundation**
-- `lib/ai/anthropic.ts` implementing existing `AIService` interface (mock is the contract — drop-in swap)
-- `lib/ai/index.ts` updated to pick implementation by env var presence (`ANTHROPIC_API_KEY` → Anthropic, else Mock)
-- Anthropic SDK (`npm install @anthropic-ai/sdk`)
-- System prompt files in `lib/ai/prompts/` — one per task: searchIntent, submissionMatch, qualityCoach, conversation
-- Prompt caching enabled by default (`cache_control: { type: "ephemeral" }` on system blocks)
+After session 19's bookmark v2 + leaderboard data wiring, several audit gaps remain. In priority order:
 
-**Day 2 — Search intent extraction (highest UX impact)**
-- `/api/search` calls Haiku to extract `{ category, actors, directors, location, vibe, time, ambiguity_level }` from user query
-- Replaces the regex-based extraction. Falls back to current regex if Anthropic call fails (graceful degradation).
-- DB query uses structured filters (actors[] jsonb path, region_id, etc.) instead of ilike-on-title
-- Solves: `νολαν`, `leonardo di caprio`, `films by Coppola starring De Niro`
-
-**Day 3 — Submission match upgrade**
-- Haiku reads full reflection text, extracts `{ title, category, year_hint, actor_hint, director_hint, mood, confidence }`
-- TMDB / Books / Places confirms via existing enrichment helpers
-- Better confidence calibration than heuristic scoring
-- All categories (not just movies/series) get LLM-grade extraction
-
-**Day 4 — Quality coach + conversational fallback + cost dashboard**
-- Quality coach (`useSubmission` calls): replaces `lib/ai/quality.ts` regex with Haiku semantic understanding
-- Real coaching dimensions: WHY / SPECIFIC / EMOTIONAL / ACTIONABLE with contextual next-prompt
-- Conversational fallback: real LLM in the no-match mini-chat instead of theatrical regex
-- Admin cost dashboard at `/admin/ai-usage` — daily token spend, top expensive queries, rate-limit indicator
-
-**Decision points already locked:**
-1. ✅ Individual plan + pre-paid credits
-2. ✅ Set $30/month soft cap as initial budget alert
-3. ⏳ Order: search-intent first (biggest UX impact)
-4. ⏳ Caching: Postgres-based per-query cache table for hot queries (cheap, bypasses Anthropic for repeats)
+1. **Onboarding flow** (`/onboarding` route) — give-before-you-ask spec from CLAUDE.md §7. Welcome → Interests (2+ categories, min) → Reward feed → Suggested users. Reuses `<InterestsSelector>` (already standalone). Trigger: first login after signup if `users.onboarded_at IS NULL`.
+2. **Achievement unlock celebration** — popup after each milestone suggestion. Triggers from `/api/suggestions` POST when crossing 1 / 3 / 7 / 10 / 25 / 50 thresholds. UI: full-screen reward modal (mirror BookmarkSavedModal architecture) with badge graphic + progress to next milestone + Share CTA.
+3. **Security settings page** — `/profile/[handle]/settings/security`. Password change + 2FA placeholder + social unlink + session list (active devices). Schema exists (`devices` table). Backend routes need wiring.
+4. **Admin moderation polish** — (a) admin suggestions queue filter (#29: filter by status / category / hidden), (b) reports queue priority sort (#30: oldest unresolved first), (c) bulk ops on items (#28: bulk publish/unpublish/delete).
+5. **Drop legacy `ratings` + `comments` tables** (#25/#26). All UI now reads from `reviews` (migration 016). Two migrations: `026-drop-ratings.sql` (data already wiped) + `027-archive-comments.sql` (export to JSON file in scripts/sql/ first, then DROP).
+6. **Map ↔ list drop-down reveal** (Phase D below — kept separate since it's a structural refactor, not a quick fix).
+7. **CategoryCard migration sweep** — old card still in use on all 9 category pages; migrate to `SuggestionCardPortrait` / `SuggestionCardLandscape` from session 15.
 
 ### Phase B — Recommendations (pgvector + nightly batch + LLM rerank)
 

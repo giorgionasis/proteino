@@ -40,7 +40,8 @@ import { useCallback } from "react";
 const DURATION_MS = 700;
 const ARC_HEIGHT  = 220;   // px the path's control point lifts above the midpoint
 const KEYFRAMES   = 24;    // path smoothness
-const FADE_START  = 0.85;  // fraction of the path at which opacity starts dropping
+const FADE_START  = 0.97;  // near-zero fade; shrinkage to ~1px handles the disappearance
+const END_PX      = 1;     // final clone size in pixels — vanishes to a point at the icon centre
 
 export function useBookmarkOrbit() {
   return useCallback(async (): Promise<void> => {
@@ -92,11 +93,10 @@ export function useBookmarkOrbit() {
     const p1x = (p0x + p2x) / 2;
     const p1y = Math.min(p0y, p2y) - ARC_HEIGHT;
 
-    // End scale: shrink to a size close to the target's bounding box
-    // (slightly larger so the fade-out in the last 15% covers any gap).
-    const sourceMaxSide = Math.max(sRect.width,  sRect.height);
-    const targetMaxSide = Math.max(tRect.width,  tRect.height);
-    const endScale      = Math.max(0.08, (targetMaxSide * 1.4) / sourceMaxSide);
+    // End scale: shrink continuously to ~1px at the icon's centre, so the
+    // clone visually collapses into a point rather than landing icon-sized.
+    const sourceMaxSide = Math.max(sRect.width, sRect.height);
+    const endScale      = END_PX / sourceMaxSide;
 
     /**
      * Position the clone so its centre lands at (cx, cy) at the given scale.

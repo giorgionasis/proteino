@@ -7,6 +7,8 @@ import { ProfileCard } from "@/components/profile/ProfileCard";
 import { BadgeDisplay } from "@/components/profile/BadgeDisplay";
 import { Stats } from "@/components/profile/Stats";
 import { CategoryStatCard } from "@/components/profile/CategoryStatCard";
+import { ProfileScoreCard } from "@/components/profile/ProfileScoreCard";
+import { ProfileVotesCard } from "@/components/profile/ProfileVotesCard";
 import { RowMenu } from "@/components/profile/RowMenu";
 import { FollowersPopupCentered } from "@/components/profile/FollowersPopupCentered";
 import { ProfilePopup } from "@/components/profile/ProfilePopup";
@@ -59,6 +61,8 @@ export function ProfileTab() {
       <ProfileCardShowcase />
       <BadgeDisplayShowcase />
       <StatsShowcase />
+      <ProfileScoreCardShowcase />
+      <ProfileVotesCardShowcase />
       <CategoryStatCardShowcase />
       <RowMenuShowcase />
       <FollowersPopupShowcase />
@@ -170,6 +174,60 @@ function StatsShowcase() {
       <Variant label="Past all milestones (no progress bar)">
         <div className="w-[360px] bg-white rounded-lg border border-zinc-200">
           <Stats user={{ ...SAMPLE_USER, suggestion_count: 1000, level: 99 }} />
+        </div>
+      </Variant>
+    </ShowcaseSection>
+  );
+}
+
+function ProfileScoreCardShowcase() {
+  return (
+    <ShowcaseSection
+      name="ProfileScoreCard"
+      filePath="components/profile/ProfileScoreCard.tsx"
+      description="'Συνολική Βαθμολογία' card in the horizontal stats scroller on a user's profile. Big score + leaves icon + underlined link to the full reviews list. Info icon opens a tooltip explaining how the score is computed."
+      contextLinks={[{ label: "Live (own profile)", href: "/profile" }]}
+    >
+      <Variant label="Healthy score · 213 ratings">
+        <div className="bg-white p-4">
+          <ProfileScoreCard score={4.56} count={213} href="#" />
+        </div>
+      </Variant>
+      <Variant label="New user — no ratings yet">
+        <div className="bg-white p-4">
+          <ProfileScoreCard score={0} count={0} href="#" />
+        </div>
+      </Variant>
+      <Variant label="Perfect score" note="5.00 is uncommon — design test">
+        <div className="bg-white p-4">
+          <ProfileScoreCard score={5} count={3} href="#" />
+        </div>
+      </Variant>
+    </ShowcaseSection>
+  );
+}
+
+function ProfileVotesCardShowcase() {
+  return (
+    <ShowcaseSection
+      name="ProfileVotesCard"
+      filePath="components/profile/ProfileVotesCard.tsx"
+      description="'Θετικές ψήφοι' card in the horizontal stats scroller on a user's profile. Sum of vote_up across the user's reviews + thumbs-up icon + underlined link to the reviews list."
+      contextLinks={[{ label: "Live (own profile)", href: "/profile" }]}
+    >
+      <Variant label="27 positive votes">
+        <div className="bg-white p-4">
+          <ProfileVotesCard votes={27} href="#" />
+        </div>
+      </Variant>
+      <Variant label="New user · zero votes">
+        <div className="bg-white p-4">
+          <ProfileVotesCard votes={0} href="#" />
+        </div>
+      </Variant>
+      <Variant label="High-volume user · 1.2k votes">
+        <div className="bg-white p-4">
+          <ProfileVotesCard votes={1247} href="#" />
         </div>
       </Variant>
     </ShowcaseSection>

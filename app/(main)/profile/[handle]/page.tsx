@@ -56,7 +56,7 @@ export default async function ProfilePage({ params }: Props) {
   // Fetch follower/following counts + viewer-specific follow state in one round-trip
   const meId = (await authClient.auth.getUser()).data.user?.id ?? null;
   const isOwner = params.handle === ownerHandle;
-  const [{ count: followerCount }, { count: followingCount }, followRow, bookmarksRes] = await Promise.all([
+  const [{ count: followerCount }, { count: followingCount }, followRow, bookmarksRes, reviewsRes] = await Promise.all([
     db.from("follows").select("id", { count: "exact", head: true }).eq("following_id", profileData.id),
     db.from("follows").select("id", { count: "exact", head: true }).eq("follower_id", profileData.id),
     meId && meId !== profileData.id
@@ -66,9 +66,14 @@ export default async function ProfilePage({ params }: Props) {
     isOwner
       ? db.from("bookmarks").select("id", { count: "exact", head: true }).eq("user_id", profileData.id)
       : Promise.resolve({ count: 0 }),
+    // Sum of vote_up across all the user's reviews — drives the
+    // "Θετικές ψήφοι" card on the profile.
+    db.from("reviews").select("vote_up").eq("user_id", profileData.id),
   ]);
   const initialFollowing = !!(followRow as any)?.data;
   const bookmarkCount = (bookmarksRes as any)?.count ?? 0;
+  const voteUpCount = ((reviewsRes as any)?.data ?? [])
+    .reduce((sum: number, r: { vote_up: number | null }) => sum + (r.vote_up ?? 0), 0);
 
   // Fetch user's suggestions with items to find the highest-rated one
   const { data: userSuggestions } = (await (db.from("suggestions") as any)
@@ -131,6 +136,7 @@ export default async function ProfilePage({ params }: Props) {
         followersCount={followerCount ?? 0}
         followingCount={followingCount ?? 0}
         avgQualityScore={profileData.avg_quality_score ?? 0}
+        voteUpCount={voteUpCount}
         topSuggestion={topSuggestion}
       />
     );
