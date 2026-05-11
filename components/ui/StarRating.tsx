@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 
 // ── Types ──────────────────────────────────────────────────────
@@ -33,6 +33,25 @@ export function StarRating({
   const [hovered, setHovered] = useState(0);
   const display = hovered || value;
 
+  // Cascading scale-pop on tap — when user picks N stars, animate
+  // stars 1..N with a 50ms left-to-right stagger so the rating feels
+  // like an *act* rather than a state flip. Tracks the value with a
+  // mount-version key so each new selection re-fires the animation,
+  // even when the user re-taps the same value.
+  const [popVersion, setPopVersion] = useState(0);
+  const lastValue = useRef(value);
+  useEffect(() => {
+    if (lastValue.current !== value) {
+      setPopVersion((v) => v + 1);
+      lastValue.current = value;
+    }
+  }, [value]);
+
+  const handlePick = (star: number) => {
+    setPopVersion((v) => v + 1);
+    onChange?.(star);
+  };
+
   return (
     <div
       className={cn("inline-flex items-center gap-0.5", className)}
@@ -42,6 +61,8 @@ export function StarRating({
       {[1, 2, 3, 4, 5].map((star) => {
         const filled = display >= star;
         const half   = !filled && display >= star - 0.5;
+        // Animate any star that's <= the picked value, staggered.
+        const pop    = !readOnly && filled && popVersion > 0;
 
         return (
           <button
@@ -49,13 +70,13 @@ export function StarRating({
             type="button"
             disabled={readOnly}
             aria-label={`${star} star${star > 1 ? "s" : ""}`}
-            onClick={() => onChange?.(star)}
+            onClick={() => handlePick(star)}
             onMouseEnter={() => !readOnly && setHovered(star)}
             onMouseLeave={() => !readOnly && setHovered(0)}
             className={cn(
               SIZE_PX[size],
-              "leading-none transition-all duration-100",
-              readOnly ? "cursor-default" : "cursor-pointer active:scale-110",
+              "leading-none transition-colors duration-150",
+              readOnly ? "cursor-default" : "cursor-pointer",
               filled
                 ? "text-coral-600"
                 : half
@@ -64,7 +85,13 @@ export function StarRating({
               !readOnly && !filled && "hover:text-coral-400",
             )}
           >
-            ★
+            <span
+              key={`${star}-${popVersion}`}
+              className={cn("inline-block", pop && "animate-star-fill")}
+              style={{ animationDelay: pop ? `${(star - 1) * 50}ms` : undefined }}
+            >
+              ★
+            </span>
           </button>
         );
       })}

@@ -41,7 +41,7 @@ const HAS_MAP: CategorySlug[] = ["food", "bars", "hotels", "theater", "events"];
 // canonical surface. Without this, picking a tab AND having a stale
 // cuisine entry in filterValues double-filters or shows ghost chips.
 const TABS_OWNED_FILTER: Partial<Record<CategorySlug, string>> = {
-  food:    "cuisine",
+  food:    "type",
   movies:  "genre",
   series:  "genre",
   books:   "genre",
@@ -80,6 +80,8 @@ function itemToLandscape(item: CategoryItem, category: CategorySlug): LandscapeI
     cover_url: item.cover_url,
     is_top_rated: item.avg_rating >= 4.5 && item.rating_count >= 5,
     href: `/${category}/${item.slug ?? item.id}`,
+    avatar_url: item.suggester?.avatar_url ?? null,
+    suggester: item.suggester ?? null,
   };
 }
 
@@ -100,6 +102,7 @@ function matchesFilter(
   filterId: string,
   value: string | string[],
   category: CategorySlug,
+  regionDescendants?: Record<string, string[]>,
 ): boolean {
   const v = typeof value === "string" ? value : "";
   const arr = Array.isArray(value) ? value : [];
@@ -114,10 +117,20 @@ function matchesFilter(
       return ciEq(item.subcategory, v);
 
     case "cuisine":
+      // Food: tabs own `type`, so subcategory holds the type value.
+      // Cuisine is its own field — match against item.cuisine.
+      if (category === "food") {
+        if (arr.length > 0) return arr.some((x) => ciEq(item.cuisine, x));
+        return ciEq(item.cuisine, v);
+      }
       if (arr.length > 0) return arr.some((x) => ciEq(item.subcategory, x));
       return ciEq(item.subcategory, v);
 
     case "type":
+      // For food the tabs surface owns this dimension; matchesFilter
+      // is short-circuited at the tabs-owned-key check, so this branch
+      // only runs for non-food. Foodtype path kept defensively in case
+      // an admin re-enables a `type` filter row alongside the tabs.
       if (category === "food") {
         if (arr.length > 0) return arr.some((x) => ciEq(item.foodType, x));
         return ciEq(item.foodType, v);
@@ -139,7 +152,23 @@ function matchesFilter(
       return ciIncludes(item.actors, v);
 
     case "region":
-      if (arr.length > 0) return item.regionId ? arr.includes(item.regionId) : false;
+      if (arr.length > 0) {
+        if (!item.regionId) return false;
+        // Expand selected region IDs to include all descendants — picking
+        // "Βόρεια Προάστια" must also match items tagged "Χαλάνδρι"
+        // beneath it. When `regionDescendants` is unavailable, fall back
+        // to direct id match.
+        if (regionDescendants) {
+          const itemRegionId = item.regionId;
+          for (const selectedId of arr) {
+            if (selectedId === itemRegionId) return true;
+            const descendants: string[] | undefined = regionDescendants[selectedId];
+            if (descendants && descendants.includes(itemRegionId)) return true;
+          }
+          return false;
+        }
+        return arr.includes(item.regionId);
+      }
       return ciEq(item.area, v);
 
     case "awards":
@@ -214,6 +243,10 @@ interface CategoryPageShellProps {
   regionTree?: import("@/components/filters/TwoStepListPicker").TwoStepNode[];
   /** Map of sub-region id → parent region id, used by region filter app. */
   regionChildToParent?: Record<string, string>;
+  /** Map regionId → all descendant ids. When the user picks "Βόρεια
+   *  Προάστια", the filter expands to include items tagged to its
+   *  descendants ("Χαλάνδρι", etc.) so 3-level trees match correctly. */
+  regionDescendants?: Record<string, string[]>;
   /** Awards taxonomy with counts (movies/series). */
   awardsGroups?: import("@/components/filters/GroupedCheckboxList").GroupedListGroup[];
 }
@@ -228,6 +261,7 @@ export function CategoryPageShell({
   filterConfig: filterConfigProp,
   regionTree,
   regionChildToParent,
+  regionDescendants,
   awardsGroups,
 }: CategoryPageShellProps) {
   const router = useRouter();
@@ -269,11 +303,11 @@ export function CategoryPageShell({
       // it. If both are set, this avoids double-filtering / state drift.
       if (filterId === tabsOwnedKey) continue;
       if (!value || (Array.isArray(value) && value.length === 0) || value === "all" || value === "") continue;
-      result = result.filter((it) => matchesFilter(it, filterId, value, category));
+      result = result.filter((it) => matchesFilter(it, filterId, value, category, regionDescendants));
     }
 
     return result;
-  }, [listItems, activeTab, filterValues, category, tabsOwnedKey]);
+  }, [listItems, activeTab, filterValues, category, tabsOwnedKey, regionDescendants]);
 
   const filteredCount = filteredItems.length;
   const hasActiveFilters = activeTab !== "Όλα" || activeFilterCount > 0;
@@ -287,10 +321,10 @@ export function CategoryPageShell({
     for (const [filterId, value] of Object.entries(vals)) {
       if (filterId === tabsOwnedKey) continue;
       if (!value || (Array.isArray(value) && value.length === 0) || value === "all" || value === "") continue;
-      result = result.filter((it) => matchesFilter(it, filterId, value, category));
+      result = result.filter((it) => matchesFilter(it, filterId, value, category, regionDescendants));
     }
     return result.length;
-  }, [listItems, activeTab, category, tabsOwnedKey]);
+  }, [listItems, activeTab, category, tabsOwnedKey, regionDescendants]);
 
   // Build a lookup table from sub-region UUID → human label, so the
   // active-filter chips don't show raw UUIDs ("e428a25e-c0ef-…") for
@@ -477,7 +511,7 @@ export function CategoryPageShell({
           <div className="flex justify-center px-4 pt-1 pb-3">
             <button
               onClick={() => setShowMap(true)}
-              className="flex items-center justify-center gap-2 rounded-full active:opacity-85 transition-opacity"
+              className="flex items-center justify-center gap-2 rounded-full active:scale-[0.97] active:opacity-90 transition-[transform,opacity] duration-150 ease-out"
               style={{
                 width: 220,
                 height: 44,

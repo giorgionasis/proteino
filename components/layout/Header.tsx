@@ -29,7 +29,10 @@ export function Header({
         <span className="text-2xl font-black text-zinc-800 tracking-tight leading-none">
           Proteino
         </span>
-        <span className="w-[5px] h-[5px] rounded-full bg-coral-600 mb-[3px]" />
+        {/* Subtle 4s opacity pulse on the coral dot — a tiny "alive"
+         *  signal in an otherwise static logo. Pauses on hover so the
+         *  user can read it cleanly when interacting. */}
+        <span className="w-[5px] h-[5px] rounded-full bg-coral-600 mb-[3px] animate-pulse [animation-duration:4s] hover:[animation-play-state:paused]" />
       </Link>
 
       {/* Right slot: notifications (registered) or sign-in (guest) */}

@@ -59,11 +59,22 @@ export function Toast({
         ? "fixed top-6 left-1/2 -translate-x-1/2 z-50"
         : "fixed bottom-24 left-1/2 -translate-x-1/2 z-50";
 
+  // Animate in from the chosen edge — top toast slides down from above,
+  // bottom toast slides up from below (reading direction). Inline
+  // toasts just fade in. 250ms ease-spring keeps the motion confident
+  // without being slow.
+  const motionClasses =
+    position === "top"
+      ? "animate-in slide-in-from-top-3 fade-in duration-250 ease-spring"
+      : position === "bottom"
+        ? "animate-in slide-in-from-bottom-3 fade-in duration-250 ease-spring"
+        : "animate-in fade-in duration-200 ease-soft";
+
   return (
     <div
       role="status"
       aria-live="polite"
-      className={`${positionClasses} ${styles.bg} ${styles.text} px-4 py-2.5 rounded-full text-[13px] font-medium shadow-lg flex items-center gap-2 max-w-[90vw]`}
+      className={`${positionClasses} ${motionClasses} ${styles.bg} ${styles.text} px-4 py-2.5 rounded-full text-[13px] font-medium shadow-lg flex items-center gap-2 max-w-[90vw]`}
     >
       <span aria-hidden>{styles.icon}</span>
       <span className="truncate">{message}</span>

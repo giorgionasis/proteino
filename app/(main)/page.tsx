@@ -40,7 +40,7 @@ function extractArea(address: string | null | undefined): string | undefined {
 async function fetchFoodLandscape(sb: SB, limit = 5): Promise<LandscapeItem[]> {
   const { data } = await sb
     .from("items")
-    .select("id, title, slug, cover_url, avg_rating, rating_count, item_food(cuisine, type, address)")
+    .select("id, title, slug, cover_url, avg_rating, rating_count, item_food(cuisine, type, address), suggestions(users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, level, suggestion_count, avg_quality_score))")
     .eq("category", "food")
     .eq("is_published", true)
     .order("avg_rating", { ascending: false })
@@ -48,6 +48,14 @@ async function fetchFoodLandscape(sb: SB, limit = 5): Promise<LandscapeItem[]> {
 
   return (data ?? []).map((r: any) => {
     const ext = Array.isArray(r.item_food) ? r.item_food[0] : r.item_food;
+    const u = (r.suggestions ?? []).find((s: any) => s?.users?.id)?.users ?? null;
+    const suggester = u ? {
+      id: u.id, handle: u.handle, display_name: u.display_name,
+      avatar_url: u.avatar_url,
+      level: u.level ?? undefined,
+      suggestion_count: u.suggestion_count ?? undefined,
+      avg_quality_score: u.avg_quality_score ?? undefined,
+    } : null;
     return {
       id: r.id,
       title: r.title,
@@ -58,6 +66,8 @@ async function fetchFoodLandscape(sb: SB, limit = 5): Promise<LandscapeItem[]> {
       rating_count: r.rating_count,
       is_top_rated: r.avg_rating >= 4.5 && r.rating_count >= 5,
       href: `/food/${stripPrefix(r.slug)}`,
+      avatar_url: suggester?.avatar_url ?? null,
+      suggester,
     };
   });
 }
@@ -139,7 +149,7 @@ async function fetchBooks(sb: SB, limit = 5): Promise<PortraitItem[]> {
 async function fetchRecipes(sb: SB, limit = 5): Promise<LandscapeItem[]> {
   const { data } = await sb
     .from("items")
-    .select("id, title, slug, cover_url, avg_rating, rating_count, item_recipes(channel)")
+    .select("id, title, slug, cover_url, avg_rating, rating_count, item_recipes(channel), suggestions(users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, level, suggestion_count, avg_quality_score))")
     .eq("category", "recipes")
     .eq("is_published", true)
     .order("avg_rating", { ascending: false })
@@ -147,6 +157,14 @@ async function fetchRecipes(sb: SB, limit = 5): Promise<LandscapeItem[]> {
 
   return (data ?? []).map((r: any) => {
     const ext = Array.isArray(r.item_recipes) ? r.item_recipes[0] : r.item_recipes;
+    const u = (r.suggestions ?? []).find((s: any) => s?.users?.id)?.users ?? null;
+    const suggester = u ? {
+      id: u.id, handle: u.handle, display_name: u.display_name,
+      avatar_url: u.avatar_url,
+      level: u.level ?? undefined,
+      suggestion_count: u.suggestion_count ?? undefined,
+      avg_quality_score: u.avg_quality_score ?? undefined,
+    } : null;
     return {
       id: r.id,
       title: r.title,
@@ -156,6 +174,8 @@ async function fetchRecipes(sb: SB, limit = 5): Promise<LandscapeItem[]> {
       rating_count: r.rating_count,
       is_top_rated: r.avg_rating >= 4.5 && r.rating_count >= 5,
       href: `/recipes/${stripPrefix(r.slug)}`,
+      avatar_url: suggester?.avatar_url ?? null,
+      suggester,
     };
   });
 }

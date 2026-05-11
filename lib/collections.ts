@@ -49,6 +49,21 @@ export interface HydratedItem {
   avg_rating: number;
   rating_count: number;
   metadata: Record<string, any> | null;
+  /** Original suggester(s) — populated via the suggestions+users join
+   *  on the items query. The Landscape card pulls the first non-null
+   *  user as the bottom-left avatar overlay; the popup needs id /
+   *  handle / display_name to fetch + render full profile. */
+  suggestions?: {
+    users: {
+      id: string;
+      handle: string;
+      display_name: string;
+      avatar_url: string | null;
+      level: number | null;
+      suggestion_count: number | null;
+      avg_quality_score: number | null;
+    } | null;
+  }[] | null;
 }
 
 /* ─── Public API ──────────────────────────────────────────── */
@@ -138,9 +153,16 @@ async function hydrateCollection(sb: SupabaseLike, c: CollectionRow): Promise<Hy
   const extTable = c.source_category ? EXT_TABLES[c.source_category] : undefined;
   const useExtJoin = extFilters.length > 0 && !!extTable;
 
+  // Always fetch the original-suggester profile alongside item metadata —
+  // the Landscape card renders the avatar overlay AND wires it to the
+  // ProfilePopup (id/handle/display_name needed). FK disambiguator:
+  // `suggestions` has two FKs to `users` (user_id + hidden_by) so plain
+  // `users(...)` returns ambiguous.
+  const suggesterJoin = "suggestions(users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, level, suggestion_count, avg_quality_score))";
+  const baseSelect = `id, title, slug, cover_url, category, avg_rating, rating_count, metadata, ${suggesterJoin}`;
   const select = useExtJoin
-    ? `id, title, slug, cover_url, category, avg_rating, rating_count, metadata, ${extTable}!inner()`
-    : "id, title, slug, cover_url, category, avg_rating, rating_count, metadata";
+    ? `${baseSelect}, ${extTable}!inner()`
+    : baseSelect;
 
   let q: any = sb
     .from("items")
@@ -196,6 +218,21 @@ export function toPortraitItem(item: HydratedItem): PortraitItem {
 
 export function toLandscapeItem(item: HydratedItem): LandscapeItem {
   const tags: string[] = (item.metadata as any)?.tags ?? [];
+  // Pick the first suggestion that has a user attached. Most items
+  // have exactly one original suggestion; this is defensive against
+  // edge-case rows where the FK has been cleared.
+  const firstUser = item.suggestions?.find((s) => s?.users?.id)?.users ?? null;
+  const suggester = firstUser
+    ? {
+        id: firstUser.id,
+        handle: firstUser.handle,
+        display_name: firstUser.display_name,
+        avatar_url: firstUser.avatar_url,
+        level: firstUser.level ?? undefined,
+        suggestion_count: firstUser.suggestion_count ?? undefined,
+        avg_quality_score: firstUser.avg_quality_score ?? undefined,
+      }
+    : null;
   return {
     id: item.id,
     title: item.title,
@@ -205,5 +242,7 @@ export function toLandscapeItem(item: HydratedItem): LandscapeItem {
     rating_count: item.rating_count,
     is_top_rated: item.avg_rating >= 4.5 && item.rating_count >= 5,
     href: `/${item.category}/${stripPrefix(item.slug)}`,
+    avatar_url: suggester?.avatar_url ?? null,
+    suggester,
   };
 }

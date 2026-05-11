@@ -103,14 +103,19 @@ function IntelligencePanel({
       </div>
 
       {/* Locked match banner — prominent, unambiguous. Shown above the
-          coaching message so the user can't miss what AI committed to. */}
+          coaching message so the user can't miss what AI committed to.
+          Enters with `animate-pop-in` (scale-up + fade) and the
+          ✓ Κλειδωμένο badge slides in from the right just after for a
+          two-beat reward feel. The whole card is keyed off `lockedTitle`
+          so a different match restarts the entrance. */}
       {lockedTitle && (
         <div
-          className="rounded-card px-3 py-2.5 border border-coral-600/40"
+          key={lockedTitle}
+          className="rounded-card px-3 py-2.5 border border-coral-600/40 animate-in zoom-in-95 fade-in duration-300 ease-pop"
           style={{ background: "linear-gradient(135deg, rgba(254,111,94,0.18), rgba(255,153,128,0.10))" }}
         >
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-coral-600 tracking-widest uppercase shrink-0">
+            <span className="text-[10px] font-bold text-coral-600 tracking-widest uppercase shrink-0 animate-in slide-in-from-right-3 fade-in duration-300 ease-spring delay-150">
               ✓ Κλειδωμένο
             </span>
             {lockedCategory && (

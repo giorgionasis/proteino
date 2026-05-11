@@ -1,12 +1,45 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-07 (session 16 — design system showcase completion: 16 tabs · ~110 components · per-tab file split)
+Last updated: 2026-05-11 (session 17 — search v2 + multi-language + regions admin + food tabs flip + admin UI revamp + motion sprints + popup fixes)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 16 finished:**
+**Current state — session 17 finished:**
+
+- ✅ **Search v2 — structured-filter engine.** Gemini extraction extended with `genre`, `channel`, `status`, `period`, `duration_min/max`, `person` alongside the existing `type` + `location`. `app/api/search/route.ts` now composes these into per-category Postgres queries (`fetchByStructuredFilters`). 4 of 7 example queries work end-to-end (κωμωδίες netflix · παιδικά κάτω από 90 λεπτά · ολοκληρωμένες σειρές · sebastian fitzek). The other 3 are confirmed **data gaps**, not code: no theater plays carry "Μπέζος" actor, no events have `event_type` matching "συναυλία", no food items have `cuisine="Ιταλική"`. See §3 Phase A for next steps.
+- ✅ **Multi-language title search.** Migration 020 adds `items.original_title` + generated `original_title_normalized` (Greek accent-folded) + index. Admin field added in `SuggestionEditor` for movies/series/books. Search `app/api/search/route.ts` ilikes both columns so "Lucifer" finds "Λούσιφερ" and vice versa.
+- ✅ **Regions admin** — `/admin/content/regions` page with **N-level tree CRUD**. New `<RegionsManager>` component with inline rename, add-child, drag-to-reparent (via select), cycle prevention, recursive descendants. Migration 001 patched idempotent (`DROP POLICY IF EXISTS` before `CREATE POLICY`).
+- ✅ **3-level region hierarchy** wired end-to-end. `lib/regions.ts` returns `descendantsById` map; `CategoryPageShell.matchesFilter` expands selected region IDs to all descendants — picking "Βόρεια Προάστια" matches items tagged "Χαλάνδρι" beneath it. SuggestionEditor's `RegionSelect` refactored to N cascading dropdowns (Region → Area → Sub-area …) — appears as deep as the tree goes per region. Search's `resolveLocation` rewritten to require ALL words of the region name to appear in query (fixed "Νότια Προάστια" winning a "βόρεια προάστια" search).
+- ✅ **Bottom-sheet region picker shows leaves only.** Intermediate prefecture-style regions (Βόρεια Προάστια, Ηράκλειο prefecture) are hidden from the picker — user picks the leaf directly (Χαλάνδρι, Ελούντα, Κολωνάκι). Smart search still understands the intermediate level via Gemini taxonomy injection.
+- ✅ **Food taxonomy flipped: subcategory tabs = TYPE not cuisine.** Migration 021 + code change. Food page tabs now show ταβέρνα · μεζεδοπωλείο · ψαροταβέρνα · εστιατόριο · …; cuisine demoted to a bottom-sheet multi-select filter. Greek browsing intent leads with establishment type, not cuisine — per user UX decision. CLAUDE.md §6 + §16 updated.
+- ✅ **Admin Suggestion Editor — food taxonomy fix.** Subcategory dropdown hidden for food category; new dedicated Type + Cuisine `<select>` controls in `FoodExtraFields`, sourced from `extra_field_options` via the existing `getOpts` helper with `dedupePreserveCurrent` safety net. `original_title` admin input added for movies/series/books. Save button gated only on `saving` (was on `dirty` which never tracked extension-form state — now any edit can be saved).
+- ✅ **Admin UI revamp** — new shared primitives at `components/admin/ui/`: `AdminPageHeader`, `AdminPanel`, `AdminRow` (with hover-revealed actions + `AdminActionButton` / `AdminActionSelect`), `AdminEmpty`. `RegionsManager` is the first showcase of the new rhythm — single typographic anchor, hover-revealed controls, no always-visible clutter. Pattern is ready to roll across other admin pages.
+- ✅ **`tokenMatches` — Greek-inflection-aware fuzzy match.** Used in venue refinement filter + subcategory lookup. Handles "ιταλικό" ↔ "ιταλική", "συναυλιες" ↔ "συναυλια", "παιδικά" → "Animation" (via alias map). Asymmetric: tolerates inflection variants but does NOT broaden longer queries via shorter substrings ("μπακαλοταβερνα" no longer falsely matches "ταβερνα").
+- ✅ **Smart-related results in search.** When a title match anchors a query (e.g. "Μπακαλοταβέρνα"), the venue refinement now appends contextually-similar items from the candidate pool: same type AND same address area (Tier A) — with a Tier B fallback to "same type anywhere" when Tier A is empty.
+- ✅ **Detail-page sweep with `DetailHeaderActions`.** All 9 detail components (Food, Bars, Hotels, Movies, Series, Books, Recipes, Theater, Events) now use a shared `<DetailHeaderActions>` (built on the `IconButton` primitive) instead of inline bookmark + share buttons. ~120 lines of duplicate markup gone. Bookmark icon scale-pops on every toggle.
+- ✅ **Suggester avatar wired everywhere.** `lib/collections.ts:HydratedItem` carries `suggestions[].users` with the full profile. `LandscapeItem.suggester` populated by `toLandscapeItem` + `fetchFoodLandscape` + `fetchRecipes` + the category-page `mapItem`. `CarouselLandscape` and `CategoryCard.LandscapeCard` render `<UserAvatarWithPopup>` when present (falls back to initials in a colored ring otherwise). Tapping the avatar opens `ProfilePopup` without navigating to the item.
+- ✅ **ProfilePopup smooth.** Rendered via portal to `document.body` (cuts the React parent chain so events stay inside). 3-phase mount: `mounted` (DOM presence) + `visible` (transform target), with `requestAnimationFrame` between to trigger the transition. 320ms `translateY(100%) ↔ 0` slide, 200ms opacity. Close button + backdrop click both work cleanly. Avatar size 120px, badge icon swapped to the canonical `/icons/badges/*.svg` set.
+- ✅ **Motion foundations — Sprint 1.** `tailwindcss-animate` installed. `globals.css` carries `prefers-reduced-motion` global override (instant resolution for vestibular accessibility). Named easings in `tailwind.config.ts`: `ease-spring`, `ease-soft`, `ease-pop`.
+- ✅ **Motion Sprint 1 effects shipped.** All overlays (`Modal`, `FilterBottomSheet`, `FullScreenOverlay`, `ProfilePopup`) animate cleanly. Cards have `active:scale-[0.97]` tap feedback (CategoryCard / CarouselLandscape / CarouselPortrait / RowCard / search ResultCard). `<FadeImage>` primitive for image opacity-on-load. Bookmark scale-pops. `SubCategoryTabs` has a measured **sliding coral underline**; `BottomNav` has a top-edge sliding indicator.
+- ✅ **Motion Sprint 2 effects shipped.** Star rating: cascading scale-pop with 50ms left-to-right stagger. Follow button: icon + label re-mount with `animate-pop-in` on state flip. Submission MATCH LOCKED badge: `animate-in zoom-in-95` + ✓ Κλειδωμένο pill slides in from the right 150ms later. Proteino Intelligence panel: slide-down + fade-in on first activation. Search ResultCard: 40ms stagger slide-in-from-bottom + fade-in (capped at 10 items).
+- ✅ **Motion Sprint 3 effects shipped.** FAB scale-in entrance (re-fires every time overlay closes). Toast slide-in from edge. Input focus uses explicit 200ms ease-soft border-color transition. `<ExpandableText>` primitive built (max-height animation) — available for plot show-more retrofits. Logo coral dot: 4s subtle opacity pulse, paused on hover. Map pin tap: classList-toggled `pin-pop` animation (scale 1 → 1.18 → 1, ease-pop). "Search this area" pill: slide-in from top.
+- ⚠ **Map ↔ list transition reverted to instant swap.** Multiple attempts at smooth reveals (cross-fade, slide-up, layered drop-down) each introduced subtle breakage — most painfully the transform on the page wrapper made `FilterBottomSheet`'s `fixed` position become wrapper-relative (CSS containing-block rule), causing the filter to appear half-open on /food load. Currently uses the original instant `if (showMap) … else …` branch swap. **Open question — see §3 Phase D**: build a proper "drop-down reveal" (map descends from above, list pushed down) that requires both views simultaneously mounted + an outer overflow:hidden wrapper. Needs structural refactor of `CategoryMapView` (currently uses hardcoded viewport-relative height).
+
+**Operational blockers (require user action):**
+
+- 🛑 **Gemini paid tier not enabled** — free tier is 20 requests/day on `gemini-2.5-flash-lite`. Today's testing burned through it. Search returns `categories=[]` and falls through to popular when quota is exhausted. Enable billing at https://aistudio.google.com → API key settings. At our prompt size (~700 tokens/call), paid cost is ~$0.0001/search.
+- 🛑 **Migrations 019 / 020 / 021 not yet applied.** All three are idempotent and small. Apply via Supabase SQL Editor in order:
+  - `019-ai-cache-and-usage.sql` — AI cache + usage log tables (enables the cost dashboard)
+  - `020-original-title.sql` — multi-language title column + index
+  - `021-food-tabs-flip-type.sql` — category_filters visibility flip (food.type off, food.cuisine on)
+- 🛑 **Data gaps for the 3 unmatched search examples** — admin needs to populate:
+  - Theater: `item_theater.actors` jsonb with cast (so "θέατρο μπέζος" works)
+  - Events: set `event_type = "Συναυλία"` on concert items + valid `dates` jsonb (so "συναυλίες καλοκαίρι αττική" works)
+  - Food: set `cuisine = "Ιταλική"` on Italian restaurants + tag them to a Βόρεια Προάστια descendant region (so "ιταλικό βόρεια προάστια" works)
+
+**Previous state — session 16 finished:**
 
 - ✅ **Design system showcase is complete.** `/admin/showcase` now documents every reusable component in the codebase — ~110 components across 16 tabs. The single 1582-line monolith from session 15 has been split into per-tab files under `app/admin/showcase/tabs/` (16 files, 100-700 lines each). Default tab: Primitives. Full tab list + responsibilities in CLAUDE.md §26.
 - ✅ **3 batches shipped this session:**
@@ -864,6 +897,29 @@ The regex-based extraction has hit its ceiling. Real user-reported failures that
 | Streak threshold hit | last_suggestion_at + cron | "6 εβδομάδες σερί — μη σπάσεις" |
 | Friend rated my bookmark | rating insert + bookmark on same item | "@George βαθμολόγησε το X (στα bookmarks σου)" |
 | Anniversary of suggestion | suggestion.published_at + cron | "Πριν 1 χρόνο πρότεινες X — N άνθρωποι το βαθμολόγησαν" |
+
+### Phase D — Map ↔ list "drop-down reveal" transition (deferred, ~3-4 hours)
+
+User-requested but reverted in session 17 after several attempts broke `FilterBottomSheet` positioning. The CSS gotcha: any ancestor with `transform` / `will-change-transform` / `filter` becomes the containing block for `position: fixed` descendants, replacing the viewport. So animating the page wrapper makes `fixed inset-0` elements (bottom sheets, modals, popups) compute their position relative to the wrapper, not the viewport — they appear in the wrong place.
+
+**What the user wants:** map descends from above (revealed from behind the global header), pushing the list down off the bottom. Reverse on close. Same map (no internal visual changes to `CategoryMapView`).
+
+**Why it's not a 30-minute fix:**
+
+1. **Both views must mount simultaneously** during the transition (and remain mounted after, for state preservation). Currently `CategoryPageShell` uses early-return — list and map render as alternative branches.
+2. **`CategoryMapView` has hardcoded viewport-relative height** (`calc(100dvh - 64px)`) and a `marginBottom` overflow hack. To layer it correctly inside a transformed wrapper, it needs to size to its parent (`h-full`), not the viewport.
+3. **`FilterBottomSheet` must move outside the transformed wrapper** (proven by the session-17 bug). Either render via portal (preferred) or position as a fragment-level sibling.
+4. **`CategoryWelcomeHeader` uses `position: sticky`** which interacts with parent transforms in fragile ways — may need to become `fixed` or be hoisted outside the animated area.
+5. **Body scroll lock** required while the map is open (otherwise the off-bottom list extends the document and scroll-bleeds past the map).
+
+**Recommended approach when revisiting:**
+
+- Refactor `CategoryMapView` to use `h-full` (and drop the marginBottom hack). Standalone visual unchanged — it always renders inside a constrained content area anyway.
+- Portal `FilterBottomSheet` to `document.body` (mirrors the ProfilePopup fix that worked in session 17).
+- In `CategoryPageShell`, render BOTH layers inside a `position: relative; overflow: hidden;` wrapper with the content-area height (`calc(100dvh - 64px)`). Map layer + list layer absolutely-positioned with `inset: 0`. Both translate together: `transform: translateY(showMap ? 0 : -100%)` on the map, `translateY(showMap ? 100% : 0)` on the list.
+- Lazy-mount the map (don't run MapLibre on pages where the user never opens the map). Once mounted, keep.
+
+Estimated: 3-4 hours of careful work + verification across all 5 venue categories.
 
 ### Sequencing rationale
 

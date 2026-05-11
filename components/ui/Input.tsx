@@ -66,7 +66,10 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             type={inputType}
             disabled={disabled}
             className={cn(
-              "w-full font-semibold text-zinc-800 outline-none transition-all",
+              // 200ms ease-soft for the focus transition — explicit
+              // values so the focus state doesn't snap. Animates
+              // border-color + bg + outline together.
+              "w-full font-semibold text-zinc-800 outline-none transition-[border-color,background-color] duration-200 ease-soft",
               "placeholder:text-zinc-500 placeholder:font-semibold placeholder:text-base",
 
               // Default (auth) variant

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useImperativeHandle, forwardRef, useEffect } from "react";
+import { useState, useCallback, useRef, useImperativeHandle, forwardRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CATEGORIES } from "@/constants/categories";
@@ -34,6 +34,11 @@ interface SuggestionProps {
 interface ItemProps {
   id: string;
   title: string;
+  /** Original-language title (e.g. 'Lucifer' for the Greek-dubbed
+   *  'Λούσιφερ', 'Conclave' for 'Κονκλάβιο'). Hidden from the public
+   *  detail page but searched alongside `title` so multi-language
+   *  lookups work both ways. */
+  originalTitle?: string | null;
   slug: string;
   category: string;
   subcategoryId: string | null;
@@ -64,6 +69,22 @@ function getOpts(extraOptions: ExtraOptions, group: string, fallback: string[] =
   const opts = extraOptions[group];
   if (opts && opts.length > 0) return opts.map((o) => o.label);
   return fallback;
+}
+
+/**
+ * Dropdown safety net — guarantees the currently-saved value is in the
+ * options list even if the admin removed it from `extra_field_options`
+ * later. Without this, a stale value would render as the placeholder
+ * "— επιλογή —" and silently overwrite to "" on the next save.
+ *
+ * Case-insensitive de-dupe so "Ταβέρνα" and "ταβέρνα" don't double up.
+ */
+function dedupePreserveCurrent(options: string[], current: string): string[] {
+  const trimmed = current?.trim();
+  if (!trimmed) return options;
+  const lower = trimmed.toLowerCase();
+  if (options.some((o) => o.toLowerCase() === lower)) return options;
+  return [trimmed, ...options];
 }
 
 const COUNTRIES = [
@@ -103,6 +124,7 @@ function parseTrailer(url: string | null | undefined): { youtube: string; vimeo:
 
 export function SuggestionEditor({ suggestion, item, extData, subcategories, regions, extraOptions }: Props) {
   const [title, setTitle] = useState(item.title);
+  const [originalTitle, setOriginalTitle] = useState(item.originalTitle ?? "");
   const [slug, setSlug] = useState(item.slug);
   const [category, setCategory] = useState(item.category);
   const [subcategoryId, setSubcategoryId] = useState(item.subcategoryId ?? "");
@@ -157,6 +179,7 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
   // simple ref comparison can't detect that without deeper instrumentation).
   const initialSnapshot = useRef({
     title: item.title,
+    originalTitle: item.originalTitle ?? "",
     slug: item.slug,
     category: item.category,
     subcategoryId: item.subcategoryId ?? "",
@@ -172,6 +195,7 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
 
   const dirty =
     title !== initialSnapshot.current.title ||
+    originalTitle !== initialSnapshot.current.originalTitle ||
     slug !== initialSnapshot.current.slug ||
     category !== initialSnapshot.current.category ||
     subcategoryId !== initialSnapshot.current.subcategoryId ||
@@ -224,6 +248,7 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
         category,
         itemData: {
           title,
+          original_title: originalTitle.trim() || null,
           slug,
           category,
           subcategory_id: subcategoryId || null,
@@ -248,7 +273,7 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
     if (res.ok) {
       // Reset the snapshot so dirty=false again
       initialSnapshot.current = {
-        title, slug, category,
+        title, originalTitle, slug, category,
         subcategoryId,
         descriptionSeo, reflection,
         isPublished,
@@ -259,7 +284,7 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
       setTimeout(() => setSaveStatus("idle"), 3000);
     }
     return res.ok;
-  }, [title, slug, category, subcategoryId, descriptionSeo, isPublished, reflection, item.id, suggestion.id, suggestion.publishedAt, posterUrl, backdropUrl, galleryImages, trailerYoutube, trailerVimeo]);
+  }, [title, originalTitle, slug, category, subcategoryId, descriptionSeo, isPublished, reflection, item.id, suggestion.id, suggestion.publishedAt, posterUrl, backdropUrl, galleryImages, trailerYoutube, trailerVimeo]);
 
   const saveAndNext = useCallback(async () => {
     const ok = await save();
@@ -359,9 +384,16 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
             </span>
           )}
 
+          {/* `dirty` only tracks parent state (title, slug, …); extension
+           *  forms own their own dirty state (FoodExtraFields type/cuisine,
+           *  AddressMapSection address/lat/lng, …). Gating Save on parent
+           *  dirty alone would refuse to save edits made exclusively inside
+           *  extensions — which is most of the editor's surface. So Save is
+           *  always clickable; the yellow "unsaved changes" hint above
+           *  still drives off `dirty` for the parent-state-only signal. */}
           <button
             onClick={save}
-            disabled={saving || !dirty}
+            disabled={saving}
             className="px-5 py-2 text-sm font-medium text-zinc-700 bg-white border border-zinc-200 rounded-lg hover:bg-zinc-50 disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save"}
@@ -389,6 +421,21 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
               <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Title</label>
               <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-800 focus:outline-none focus:border-zinc-400" />
             </div>
+            {(category === "movie" || category === "series" || category === "book") && (
+              <div>
+                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">
+                  Original title
+                  <span className="ml-2 normal-case font-normal text-zinc-400 tracking-normal">— σε αρχική γλώσσα (e.g. "Lucifer" για "Λούσιφερ")</span>
+                </label>
+                <input
+                  type="text"
+                  value={originalTitle}
+                  onChange={(e) => setOriginalTitle(e.target.value)}
+                  placeholder="Optional — βοηθάει το search να βρίσκει το item με αγγλικό/πρωτότυπο title"
+                  className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-800 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400"
+                />
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Slug</label>
               <input type="text" value={slug} onChange={(e) => setSlug(e.target.value)} className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-500 focus:outline-none focus:border-zinc-400" />
@@ -401,15 +448,26 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
                   {CATEGORIES.map((c) => (<option key={c.slug} value={c.slug}>{c.labelEl}</option>))}
                 </select>
               </div>
-              <div className="flex-1">
-                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Subcategory</label>
-                <select value={subcategoryId} onChange={(e) => setSubcategoryId(e.target.value)} className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 focus:outline-none focus:border-zinc-400 bg-white">
-                  <option value="">SELECT SUBCATEGORY</option>
-                  {subcategories.map((sub) => (
-                    <option key={sub.id} value={sub.id}>{sub.name}</option>
-                  ))}
-                </select>
-              </div>
+              {category === "food" ? (
+                /* Food taxonomy lives on `item_food.type` + `item_food.cuisine`
+                 * (rendered in FoodExtraFields below). The generic
+                 * subcategory_id FK is ignored by the public food page so we
+                 * skip the dropdown here to avoid two surfaces for the same
+                 * dimension confusing admins. */
+                <div className="flex-1 flex items-center text-xs text-zinc-400 px-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-lg">
+                  Type &amp; Cuisine παρακάτω στα ExtraFields
+                </div>
+              ) : (
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Subcategory</label>
+                  <select value={subcategoryId} onChange={(e) => setSubcategoryId(e.target.value)} className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 focus:outline-none focus:border-zinc-400 bg-white">
+                    <option value="">SELECT SUBCATEGORY</option>
+                    {subcategories.map((sub) => (
+                      <option key={sub.id} value={sub.id}>{sub.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
             <div className="flex gap-4 items-end">
               <div>
@@ -1083,6 +1141,32 @@ function SeriesExtraFields({ data, extraOptions }, ref) {
 
 /* ─────────────── FOOD / RESTAURANT ─────────────── */
 
+/**
+ * Canonical establishment-type suggestions for the food Type input.
+ *
+ * Sourced from the K2 import option list (see fix-extension-tables.ts
+ * FOOD_TYPE map). The Type input is free-text + datalist so admins
+ * can add new values on the fly — these are just autocomplete hints,
+ * not a strict whitelist. The first ~8 cover the long tail; the rest
+ * are kept for archive items that already use them.
+ */
+const FOOD_TYPE_SUGGESTIONS = [
+  "ταβέρνα",
+  "μεζεδοπωλείο",
+  "ψαροταβέρνα",
+  "εστιατόριο",
+  "ουζερί",
+  "πιτσαρία",
+  "ρακάδικο",
+  "τσιπουράδικο",
+  "κουτούκι",
+  "παραδοσιακό καφενείο",
+  "μαγειρείο",
+  "εστιατόριο παντοπωλείο",
+  "ζωντανή μουσική",
+  "wine bar restaurant",
+] as const;
+
 const FoodExtraFields = forwardRef<ExtFieldsHandle, { itemId: string; data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
 function FoodExtraFields({ itemId, data, regions, extraOptions }, ref) {
   const LOCATION_CATEGORY = "food";
@@ -1136,8 +1220,47 @@ function FoodExtraFields({ itemId, data, regions, extraOptions }, ref) {
         setLng={setLng}
       />
 
-      {/* Region / Area */}
-      <RegionSelect regionId={regionId} setRegionId={setRegionId} parentRegions={parentRegions} childRegions={childRegions} />
+      {/* Region / Area — N cascading levels (auto-expands when the
+       *  selected region has child regions; stops at the deepest leaf). */}
+      <RegionSelect regionId={regionId} setRegionId={setRegionId} regions={regions} />
+
+      {/* Type + Cuisine — the canonical food taxonomy. Type drives the
+       *  public sub-category tabs (ταβέρνα, μεζεδοπωλείο, …); cuisine
+       *  is the bottom-sheet multi-select on /food. Both are
+       *  admin-managed dropdowns sourced from `extra_field_options`
+       *  (manage at /admin/extra-fields). FOOD_TYPE_SUGGESTIONS is a
+       *  fallback so the dropdown is never empty before the admin
+       *  seeds the `food.type` group. The current saved value is
+       *  always included even if it's not in the canonical list — so
+       *  legacy values aren't silently lost. */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Είδος (Type)</label>
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+            className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 bg-white focus:outline-none focus:border-zinc-400"
+          >
+            <option value="">— επιλογή —</option>
+            {dedupePreserveCurrent(getOpts(extraOptions, "type", [...FOOD_TYPE_SUGGESTIONS]), type).map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Κουζίνα (Cuisine)</label>
+          <select
+            value={cuisine}
+            onChange={(e) => setCuisine(e.target.value)}
+            className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 bg-white focus:outline-none focus:border-zinc-400"
+          >
+            <option value="">— επιλογή —</option>
+            {dedupePreserveCurrent(getOpts(extraOptions, "cuisine"), cuisine).map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {/* Contact */}
       <div className="grid grid-cols-3 gap-4 mb-6">
@@ -1228,7 +1351,7 @@ function BarsExtraFields({ itemId, data, regions, extraOptions }, ref) {
       />
 
       {/* Region / Area */}
-      <RegionSelect regionId={regionId} setRegionId={setRegionId} parentRegions={parentRegions} childRegions={childRegions} />
+      <RegionSelect regionId={regionId} setRegionId={setRegionId} regions={regions} />
 
       {/* Contact */}
       <div className="grid grid-cols-3 gap-4 mb-6">
@@ -1340,7 +1463,7 @@ function HotelExtraFields({ itemId, data, regions, extraOptions }, ref) {
       />
 
       {/* Region / Area */}
-      <RegionSelect regionId={regionId} setRegionId={setRegionId} parentRegions={parentRegions} childRegions={childRegions} />
+      <RegionSelect regionId={regionId} setRegionId={setRegionId} regions={regions} />
 
       {/* Contact */}
       <div className="grid grid-cols-3 gap-4 mb-6">
@@ -1919,39 +2042,111 @@ function TheaterExtraFields({ itemId, category, data, metadata, regions, extraOp
 
 /* ─────────────── SHARED COMPONENTS ─────────────── */
 
-function RegionSelect({ regionId, setRegionId, parentRegions, childRegions }: {
+interface RegionRow {
+  id: string;
+  name: string;
+  parent_id: string | null;
+}
+
+/**
+ * N-level cascading region picker.
+ *
+ * The regions table is self-referential (parent_id) with no fixed
+ * depth — Attica is 2 levels (Αττική → Χαλάνδρι), Crete may be 3
+ * (Κρήτη → Ηράκλειο → Ελούντα). Instead of hardcoding 2 dropdowns,
+ * we walk the tree from the selected region up to root, then render
+ * one select per level on that path. A new deeper select appears
+ * automatically when the currently-selected region has children;
+ * picking a value at any level overrides the selection (the deepest
+ * selected id is what gets stored as `regionId`).
+ *
+ * Clearing a level falls back to the parent — the form never ends up
+ * with an "orphan" deeper level visible without a value above it.
+ */
+function RegionSelect({ regionId, setRegionId, regions }: {
   regionId: string;
   setRegionId: (v: string) => void;
-  parentRegions: { id: string; name: string; parent_id: string | null }[];
-  childRegions: { id: string; name: string; parent_id: string | null }[];
+  regions: RegionRow[];
 }) {
-  const selectedChild = childRegions.find((r) => r.id === regionId);
-  const selectedParentId = selectedChild?.parent_id ?? (parentRegions.find((r) => r.id === regionId)?.id ?? "");
+  const byId = useMemo(() => {
+    const m = new Map<string, RegionRow>();
+    for (const r of regions) m.set(r.id, r);
+    return m;
+  }, [regions]);
+
+  const childrenByParent = useMemo(() => {
+    const m = new Map<string, RegionRow[]>();
+    for (const r of regions) {
+      const key = r.parent_id ?? "__root__";
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(r);
+    }
+    // Stable order — by name, Greek collator.
+    m.forEach((arr) => arr.sort((a, b) => a.name.localeCompare(b.name, "el")));
+    return m;
+  }, [regions]);
+
+  // Walk from selected up to root: ancestor path including selected.
+  const path: string[] = useMemo(() => {
+    const out: string[] = [];
+    let cur = regionId ? byId.get(regionId) : undefined;
+    while (cur) {
+      out.unshift(cur.id);
+      cur = cur.parent_id ? byId.get(cur.parent_id) : undefined;
+    }
+    return out;
+  }, [regionId, byId]);
+
+  // Build the level descriptors: first level is always root children.
+  // Then one level for each ancestor in path WHOSE children exist (so we
+  // don't render an empty "next" dropdown when at a leaf).
+  const levels: { parentKey: string; selected: string }[] = [];
+  levels.push({ parentKey: "__root__", selected: path[0] ?? "" });
+  for (let i = 0; i < path.length; i++) {
+    const ancestorId = path[i];
+    const kids = childrenByParent.get(ancestorId);
+    if (!kids || kids.length === 0) break;
+    levels.push({ parentKey: ancestorId, selected: path[i + 1] ?? "" });
+  }
+
+  // Picking a value at level i sets regionId = that pick. If user clears
+  // (picks ""), regionId falls back to the parent at level i-1 (or "" at
+  // root level so the field becomes empty).
+  const onLevelChange = (levelIdx: number, value: string) => {
+    if (value) {
+      setRegionId(value);
+    } else {
+      const parentSelection = levelIdx === 0 ? "" : path[levelIdx - 1] ?? "";
+      setRegionId(parentSelection);
+    }
+  };
+
+  const labelForLevel = (i: number): string => {
+    if (i === 0) return "Region";
+    if (i === 1) return "Area";
+    return `Sub-area ${i - 1}`;
+  };
 
   return (
-    <div className="grid grid-cols-2 gap-4 mb-6">
-      <div>
-        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Region</label>
-        <select
-          value={selectedParentId}
-          onChange={(e) => setRegionId(e.target.value)}
-          className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white focus:outline-none focus:border-zinc-400"
-        >
-          <option value="">Select Region</option>
-          {parentRegions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Area</label>
-        <select
-          value={regionId}
-          onChange={(e) => setRegionId(e.target.value)}
-          className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white focus:outline-none focus:border-zinc-400"
-        >
-          <option value="">Select Area</option>
-          {childRegions.filter((r) => r.parent_id === selectedParentId).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-        </select>
-      </div>
+    <div className="flex flex-wrap gap-4 mb-6">
+      {levels.map((lvl, i) => {
+        const opts = childrenByParent.get(lvl.parentKey) ?? [];
+        return (
+          <div key={`${i}-${lvl.parentKey}`} className="min-w-[180px] flex-1">
+            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">
+              {labelForLevel(i)}
+            </label>
+            <select
+              value={lvl.selected}
+              onChange={(e) => onLevelChange(i, e.target.value)}
+              className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white focus:outline-none focus:border-zinc-400"
+            >
+              <option value="">— επιλογή —</option>
+              {opts.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { CategorySlug } from "@/types";
+import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 
 export interface CategoryItem {
   id:                string;
@@ -31,9 +32,25 @@ export interface CategoryItem {
   duration_min?:     number;
   level?:            string;
   foodType?:         string;
+  /** Food only — the cuisine label (Ελληνική, Ιταλική, …). Surfaced as
+   *  a bottom-sheet multi-select filter; the tabs themselves render
+   *  `subcategory` which now holds establishment type (ταβέρνα, …). */
+  cuisine?:          string;
   hotelType?:        string;
   channel?:          string;
   tags?:             string[];
+  /** Original suggester — populates the avatar overlay on landscape
+   *  cards and (when tapped) opens ProfilePopup. Optional because not
+   *  every item has a suggestion attached. */
+  suggester?:        {
+    id:               string;
+    handle:           string;
+    display_name:     string;
+    avatar_url?:      string | null;
+    level?:           number;
+    suggestion_count?:number;
+    avg_quality_score?:number | null;
+  } | null;
 }
 
 /* ── Category orientation ──────────────────────────────────── */
@@ -83,7 +100,7 @@ function LandscapeCard({ item, category }: { item: CategoryItem; category: Categ
   return (
     <Link
       href={`/${category}/${item.slug ?? item.id}`}
-      className="block w-full active:opacity-90 transition-opacity"
+      className="block w-full active:scale-[0.98] active:opacity-95 transition-[transform,opacity] duration-150 ease-out"
     >
       {/* Image */}
       <div
@@ -112,11 +129,24 @@ function LandscapeCard({ item, category }: { item: CategoryItem; category: Categ
           </span>
         )}
 
-        {/* Suggester avatar ring */}
-        <div
-          className="absolute bottom-3 left-3 w-[50px] h-[50px] rounded-full"
-          style={{ border: "3px solid #fff", backgroundColor: item.avatar_color ?? "#d4d4d8" }}
-        />
+        {/* Suggester avatar — interactive when we have user data
+         *  (UserAvatarWithPopup renders avatar / initials and opens
+         *  the profile popup on tap, with click propagation stopped
+         *  so the surrounding card Link doesn't fire). Falls back to
+         *  a colored ring when no suggester is attached to the item. */}
+        {item.suggester ? (
+          <div
+            className="absolute bottom-3 left-3 rounded-full"
+            style={{ boxShadow: "0 0 0 3px #fff" }}
+          >
+            <UserAvatarWithPopup user={item.suggester} size={50} />
+          </div>
+        ) : (
+          <div
+            className="absolute bottom-3 left-3 w-[50px] h-[50px] rounded-full"
+            style={{ border: "3px solid #fff", backgroundColor: item.avatar_color ?? "#d4d4d8" }}
+          />
+        )}
       </div>
 
       {/* Info */}
@@ -172,7 +202,7 @@ function PortraitCard({ item, category }: { item: CategoryItem; category: Catego
   return (
     <Link
       href={`/${category}/${item.slug ?? item.id}`}
-      className="block active:opacity-80 transition-opacity"
+      className="block active:scale-[0.98] active:opacity-90 transition-[transform,opacity] duration-150 ease-out"
     >
       {/* Image — 2:3 aspect ratio */}
       <div
@@ -257,7 +287,7 @@ function RowCard({ item, category }: { item: CategoryItem; category: CategorySlu
   return (
     <Link
       href={`/${category}/${item.slug ?? item.id}`}
-      className="flex gap-4 active:opacity-80 transition-opacity"
+      className="flex gap-4 active:scale-[0.98] active:opacity-90 transition-[transform,opacity] duration-150 ease-out"
     >
       {/* Poster — 2:3, fixed 88px wide */}
       <div

@@ -5,12 +5,25 @@ import { notFound } from "next/navigation";
 export default async function SuggestionDetailPage({ params }: { params: { id: string } }) {
   const supabase = createAdminClient();
 
-  // Try with the new `items.images` column first (post migration 009).
-  // If the column doesn't exist yet (Postgres error 42703), retry without it
-  // so the editor still loads — admin can run the migration when convenient.
+  // Three-tier select to handle optional columns from later migrations:
+  //   tier 1 — `images` (migration 009) + `original_title` (migration 020)
+  //   tier 2 — drop original_title only
+  //   tier 3 — drop both
+  // If a tier fails with PG error 42703 (column doesn't exist), retry one
+  // tier down so the editor still loads with whichever migrations are
+  // actually applied.
   // FK disambiguator: suggestions has two FKs to users (user_id + hidden_by from
   // migration 015), so plain `users(...)` returns PGRST201 ambiguous-relationship.
-  const fullSelect = `
+  const tier1 = `
+      id, rating, reflection, is_published, created_at, published_at,
+      user_id,
+      users!suggestions_user_id_fkey(id, display_name),
+      items!inner(
+        id, title, original_title, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, images,
+        avg_rating, rating_count, suggestion_count, description_seo, metadata
+      )
+    `;
+  const tier2 = `
       id, rating, reflection, is_published, created_at, published_at,
       user_id,
       users!suggestions_user_id_fkey(id, display_name),
@@ -19,7 +32,7 @@ export default async function SuggestionDetailPage({ params }: { params: { id: s
         avg_rating, rating_count, suggestion_count, description_seo, metadata
       )
     `;
-  const fallbackSelect = `
+  const tier3 = `
       id, rating, reflection, is_published, created_at, published_at,
       user_id,
       users!suggestions_user_id_fkey(id, display_name),
@@ -31,18 +44,28 @@ export default async function SuggestionDetailPage({ params }: { params: { id: s
 
   let { data: rawSuggestion, error } = await supabase
     .from("suggestions")
-    .select(fullSelect)
+    .select(tier1)
     .eq("id", params.id)
     .single();
 
   if (error && (error as any).code === "42703") {
-    const retry = await supabase
+    const retry2 = await supabase
       .from("suggestions")
-      .select(fallbackSelect)
+      .select(tier2)
       .eq("id", params.id)
       .single();
-    rawSuggestion = retry.data;
-    error = retry.error;
+    rawSuggestion = retry2.data;
+    error = retry2.error;
+
+    if (error && (error as any).code === "42703") {
+      const retry3 = await supabase
+        .from("suggestions")
+        .select(tier3)
+        .eq("id", params.id)
+        .single();
+      rawSuggestion = retry3.data;
+      error = retry3.error;
+    }
   }
 
   if (error || !rawSuggestion) notFound();
@@ -106,6 +129,7 @@ export default async function SuggestionDetailPage({ params }: { params: { id: s
       item={{
         id: item.id,
         title: item.title,
+        originalTitle: item.original_title ?? null,
         slug: item.slug,
         category,
         subcategoryId: item.subcategory_id,

@@ -147,6 +147,11 @@ export interface SubmissionAnalysis {
 export interface SearchAnalysis {
   intent: string;
   vibe: string | null;
+  /** Establishment type / sub-type — used for venue refinement
+   *  (ταβέρνα, μεζεδοπωλείο, cocktail bar, …) AND non-venue genre
+   *  ("θρίλερ", "κωμωδία" — though `genre` is preferred there). Kept
+   *  loose: Gemini can put the user's intent in either field and the
+   *  search route checks both. */
   type: string | null;
   location: string | null;
   categories: CategorySlug[];
@@ -157,6 +162,29 @@ export interface SearchAnalysis {
   decade?: string | null;
   price?: "budget" | "mid" | "high" | null;
   person?: string | null;
+  /** Genre / sub-category name (e.g. "Κωμωδία", "Θρίλερ", "Παιδικά",
+   *  "Sci-Fi"). Maps to `subcategories.name` for movies/series/books/
+   *  recipes. Distinct from `type` so prompt + filter logic stay
+   *  semantic (genre = taxonomy, type = establishment/sub-type). */
+  genre?: string | null;
+  /** Streaming/broadcast channel for movies + series ("Netflix", "HBO",
+   *  "Apple TV+", "Disney+", "Mega"). Filters item_movies.channel /
+   *  item_series.channel. */
+  channel?: string | null;
+  /** Series airing status: "completed" (end_date set / final season
+   *  aired) or "ongoing" (no end_date). Filters item_series. */
+  status?: "completed" | "ongoing" | null;
+  /** Time period for events / theater: "summer" / "winter" / "spring"
+   *  / "autumn" / month names ("december", "july") / "weekend". The
+   *  search route translates this into a concrete date range and
+   *  filters item_events.dates jsonb for overlap. */
+  period?: string | null;
+  /** Numeric duration constraints in minutes (movies). Either bound
+   *  may be set independently. "κάτω από 90 λεπτά" → duration_max=90;
+   *  "πάνω από 120 λεπτά" → duration_min=120; range queries set
+   *  both. */
+  duration_min?: number | null;
+  duration_max?: number | null;
 }
 
 export type SearchPillType = "VIBE" | "TYPE" | "LOC" | "CATEGORY";

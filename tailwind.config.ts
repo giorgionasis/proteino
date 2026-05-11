@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import animatePlugin from "tailwindcss-animate";
 
 const config: Config = {
   content: [
@@ -115,6 +116,17 @@ const config: Config = {
         header:  "0 1px 0 0 #e4e4e7",
       },
 
+      // ── Easings (named tokens) ──────────────────────────────
+      // ease-spring  : iOS-style decel; default for bottom sheets, page transitions
+      // ease-soft    : Material-standard; default for general UI transitions
+      // ease-pop     : overshoots slightly past 1.0 — for "tactile" reward
+      //                interactions (likes, bookmarks, achievement unlocks)
+      transitionTimingFunction: {
+        spring: "cubic-bezier(0.32, 0.72, 0, 1)",
+        soft:   "cubic-bezier(0.4, 0, 0.2, 1)",
+        pop:    "cubic-bezier(0.34, 1.56, 0.64, 1)",
+      },
+
       // ── Animations ──────────────────────────────────────────
       keyframes: {
         slideUp: {
@@ -183,7 +195,7 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [animatePlugin],
 };
 
 export default config;

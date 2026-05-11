@@ -1,4 +1,16 @@
 import Link from "next/link";
+import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
+
+/** Slim user shape consumed by the avatar overlay → ProfilePopup. */
+export interface LandscapeItemSuggester {
+  id: string;
+  handle: string;
+  display_name: string;
+  avatar_url?: string | null;
+  level?: number;
+  suggestion_count?: number;
+  avg_quality_score?: number | null;
+}
 
 export interface LandscapeItem {
   id: string;
@@ -8,7 +20,13 @@ export interface LandscapeItem {
   rating_count?: number;
   subtitle?: string;
   location?: string;
+  /** Legacy: just the URL — renders a non-interactive overlay. Prefer
+   *  `suggester` so the avatar opens the user popup on tap. */
   avatar_url?: string | null;
+  /** Original suggester — when present, renders <UserAvatarWithPopup>
+   *  in place of the plain avatar overlay so users can drill into the
+   *  suggester's profile from any carousel card. */
+  suggester?: LandscapeItemSuggester | null;
   is_top_rated?: boolean;
   href: string;
   placeholder_color?: string;
@@ -62,7 +80,7 @@ function LandscapeCard({ item }: { item: LandscapeItem }) {
   return (
     <Link
       href={item.href}
-      className="flex-none w-[300px] pb-1 active:opacity-80 transition-opacity"
+      className="flex-none w-[300px] pb-1 active:scale-[0.97] active:opacity-90 transition-[transform,opacity] duration-150 ease-out"
     >
       {/* Image */}
       <div
@@ -88,14 +106,28 @@ function LandscapeCard({ item }: { item: LandscapeItem }) {
             Top rated
           </span>
         )}
-        <div
-          className="absolute bottom-3 left-3 w-[50px] h-[50px] rounded-full"
-          style={{ border: "3px solid #fff", backgroundColor: item.avatar_url ? "transparent" : "#d4d4d8" }}
-        >
-          {item.avatar_url && (
-            <img src={item.avatar_url} alt="" className="w-full h-full object-cover rounded-full" />
-          )}
-        </div>
+        {/* Suggester avatar overlay. When `suggester` user data is
+         *  attached we render the interactive popup wrapper (tap →
+         *  ProfilePopup). UserAvatarWithPopup is a client component and
+         *  internally stops click propagation, so the surrounding Link
+         *  doesn't fire alongside the popup open. */}
+        {item.suggester ? (
+          <div
+            className="absolute bottom-3 left-3 rounded-full"
+            style={{ boxShadow: "0 0 0 3px #fff" }}
+          >
+            <UserAvatarWithPopup user={item.suggester} size={50} />
+          </div>
+        ) : (
+          <div
+            className="absolute bottom-3 left-3 w-[50px] h-[50px] rounded-full"
+            style={{ border: "3px solid #fff", backgroundColor: item.avatar_url ? "transparent" : "#d4d4d8" }}
+          >
+            {item.avatar_url && (
+              <img src={item.avatar_url} alt="" className="w-full h-full object-cover rounded-full" />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Description */}
@@ -136,7 +168,7 @@ function PortraitCard({ item }: { item: LandscapeItem }) {
   return (
     <Link
       href={item.href}
-      className="flex-none w-[160px] pb-1 active:opacity-80 transition-opacity"
+      className="flex-none w-[160px] pb-1 active:scale-[0.97] active:opacity-90 transition-[transform,opacity] duration-150 ease-out"
     >
       {/* Image — 2:3 */}
       <div

@@ -32,6 +32,18 @@ export function BottomNav({ avatarUrl, displayName }: BottomNavProps) {
         "pb-safe",
       )}
     >
+      {/* Sliding active indicator — 2px coral bar at the TOP of the
+       *  active tab. Translates between HOME/SEARCH/YOU positions so
+       *  the active state has motion instead of just color-flipping.
+       *  Each tab is `flex-1` (33.33%), so we use percent translate. */}
+      {(isHome || isYou) && (
+        <span
+          aria-hidden
+          className="absolute top-0 left-0 h-[2px] w-1/3 bg-coral-600 transition-transform duration-300 ease-spring will-change-transform"
+          style={{ transform: `translateX(${isHome ? 0 : 200}%)` }}
+        />
+      )}
+
       <div className="flex items-stretch h-16">
         {/* HOME */}
         <NavItem
@@ -65,7 +77,7 @@ export function BottomNav({ avatarUrl, displayName }: BottomNavProps) {
           label="YOU"
           icon={(avatarUrl || displayName) ? (
             <div
-              className="rounded-full overflow-hidden shrink-0"
+              className="rounded-full overflow-hidden shrink-0 transition-all duration-200 ease-soft"
               style={{
                 width: 24, height: 24,
                 outline: isYou ? "2px solid #FE6F5E" : "1.5px solid #a1a1aa",

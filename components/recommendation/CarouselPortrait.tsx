@@ -49,7 +49,7 @@ export function CarouselPortrait({ title, items, seeAllHref, showLiveIndicator }
           <Link
             key={item.id}
             href={item.href}
-            className="flex-none w-[200px] pb-1 active:opacity-80 transition-opacity"
+            className="flex-none w-[200px] pb-1 active:scale-[0.97] active:opacity-90 transition-[transform,opacity] duration-150 ease-out"
           >
             {/* Poster */}
             <div

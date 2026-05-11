@@ -94,6 +94,21 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
   const raw = item[extKey[category]];
   const ext: any = Array.isArray(raw) ? raw[0] : raw;
 
+  // Pluck the first suggestion's user — populates the avatar overlay
+  // on landscape carousel cards and the click-through popup.
+  const suggesterUser = (item.suggestions ?? []).find((s: any) => s?.users?.id)?.users ?? null;
+  const suggester = suggesterUser
+    ? {
+        id: suggesterUser.id,
+        handle: suggesterUser.handle,
+        display_name: suggesterUser.display_name,
+        avatar_url: suggesterUser.avatar_url,
+        level: suggesterUser.level ?? undefined,
+        suggestion_count: suggesterUser.suggestion_count ?? undefined,
+        avg_quality_score: suggesterUser.avg_quality_score ?? undefined,
+      }
+    : null;
+
   const result: CategoryItem = {
     id: item.id,
     slug: stripPrefix(item.slug),
@@ -104,6 +119,7 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
     cover_url: safeImageUrl(item.cover_url),
     suggestedBy: buildSuggestedBy(item.suggestions),
     tags,
+    suggester,
   };
 
   // Surface lat/lng for venue categories — used by map view.
@@ -114,10 +130,14 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
 
   switch (category) {
     case "food":
-      result.subcategory = ext?.cuisine || ext?.type || tags[0] || "Εστιατόριο";
+      // Tabs render establishment type (ταβέρνα, μεζεδοπωλείο,
+      // ψαροταβέρνα) — that's how Greek users browse food. Cuisine
+      // moves to a bottom-sheet multi-select filter.
+      result.subcategory = ext?.type || ext?.cuisine || tags[0] || "Εστιατόριο";
       result.area = extractArea(ext?.address);
       result.regionId = ext?.region_id || undefined;
       result.foodType = ext?.type || undefined;
+      result.cuisine = ext?.cuisine || undefined;
       if (ext?.delivery_links && typeof ext.delivery_links === "object") {
         result.delivery = Object.keys(ext.delivery_links).filter((k) => ext.delivery_links[k]);
       }
@@ -199,7 +219,7 @@ function computeFilterData(items: CategoryItem[], category: CategorySlug): Filte
 
   const genreFilterId: Record<CategorySlug, string | null> = {
     movies: "genre", series: "genre", books: "genre",
-    food: "cuisine", recipes: "type", bars: null,
+    food: "type", recipes: "type", bars: null,
     theater: "type", events: "event_type", hotels: null,
   };
   const gid = genreFilterId[category];
@@ -214,7 +234,10 @@ function computeFilterData(items: CategoryItem[], category: CategorySlug): Filte
       options.director = collectStrings(items, (i) => i.director);
       break;
     case "food":
-      options.type = collectStrings(items, (i) => i.foodType);
+      // type is now the tabs-owned dimension (already populated via
+      // `genreFilterId.food = "type"` above). cuisine becomes the
+      // bottom-sheet multi-select filter.
+      options.cuisine = collectStrings(items, (i) => i.cuisine);
       options.region = collectStrings(items, (i) => i.area);
       break;
     case "bars":
@@ -244,7 +267,7 @@ export default async function CategoryPage({ params }: Props) {
   const category = cat.slug as CategorySlug;
   const sb = createAdminClient();
 
-  const select = `*, ${EXT_SELECT[category]}, suggestions(users!suggestions_user_id_fkey(display_name))`;
+  const select = `*, ${EXT_SELECT[category]}, suggestions(users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, level, suggestion_count, avg_quality_score))`;
   const { data: rawItems, count: totalCount } = (await (sb.from("items") as any)
     .select(select, { count: "exact" })
     .eq("category", category)
@@ -319,6 +342,7 @@ export default async function CategoryPage({ params }: Props) {
       filterConfig={filterConfig}
       regionTree={regionTreeData.parents}
       regionChildToParent={regionTreeData.childToParent}
+      regionDescendants={regionTreeData.descendantsById}
       awardsGroups={awardsGroups}
     />
   );

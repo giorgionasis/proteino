@@ -64,7 +64,7 @@ function IntelligencePanel({ progress, message, tier }: {
   tier: "high" | "medium" | "low" | null;
 }) {
   return (
-    <div className="bg-zinc-900 rounded-card p-4 space-y-3">
+    <div className="bg-zinc-900 rounded-card p-4 space-y-3 animate-in slide-in-from-top-2 fade-in duration-300 ease-spring">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold text-coral-600 tracking-[0.2em] uppercase">
           Proteino Intelligence
@@ -133,14 +133,15 @@ function FeaturedHero({ item }: { item: Item }) {
 
 // ── Result card ───────────────────────────────────────────────────────────────
 
-function ResultCard({ item }: { item: Item }) {
+function ResultCard({ item, index = 0 }: { item: Item; index?: number }) {
   const cleanSlug = item.slug.includes("/") ? item.slug : `${item.category}/${item.slug}`;
   const cover = item.poster_url ?? item.cover_url;
 
   return (
     <Link
       href={`/${cleanSlug}`}
-      className="flex items-center gap-3 p-3 bg-white rounded-card border border-zinc-200 active:bg-zinc-50 transition-colors"
+      className="flex items-center gap-3 p-3 bg-white rounded-card border border-zinc-200 active:scale-[0.99] active:bg-zinc-50 transition-[transform,colors] duration-150 ease-out animate-in slide-in-from-bottom-2 fade-in fill-mode-both ease-soft"
+      style={{ animationDuration: "300ms", animationDelay: `${Math.min(index, 10) * 40}ms` }}
     >
       <div className="w-14 h-14 rounded-sm bg-zinc-100 shrink-0 overflow-hidden">
         {cover && (
@@ -665,7 +666,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                     Άλλα αποτελέσματα · {visibleResults.length}
                   </p>
                 )}
-                {visibleResults.map((item) => <ResultCard key={item.id} item={item} />)}
+                {visibleResults.map((item, i) => <ResultCard key={item.id} item={item} index={i} />)}
               </div>
             );
           }
@@ -683,7 +684,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                     <p className="text-[10px] font-bold text-zinc-400 tracking-[0.2em] uppercase px-1">
                       {meta?.icon} {meta?.labelEl ?? cat} · {list.length}
                     </p>
-                    {list.slice(0, 5).map((item) => <ResultCard key={item.id} item={item} />)}
+                    {list.slice(0, 5).map((item, i) => <ResultCard key={item.id} item={item} index={i} />)}
                     {list.length > 5 && (
                       <p className="text-[12px] font-semibold text-coral-600 px-1">
                         +{list.length - 5} ακόμα στα {meta?.labelEl ?? cat}
@@ -740,7 +741,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                 <p className="text-[10px] font-bold text-zinc-400 tracking-[0.2em] uppercase px-1">
                   Πιθανώς εννοούσες
                 </p>
-                {fallbackSuggestions.map((it) => <ResultCard key={it.id} item={it} />)}
+                {fallbackSuggestions.map((it, i) => <ResultCard key={it.id} item={it} index={i} />)}
               </div>
             )}
             {showChips && (

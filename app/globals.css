@@ -167,3 +167,37 @@
   from { stroke-dashoffset: 100; }
   to   { stroke-dashoffset: 0;   }
 }
+
+/* ── Map pin tap pop ───────────────────────────────────────────
+ * MapLibre markers are raw DOM nodes (escape-hatched out of React),
+ * so the tap animation has to be classList-toggled, not a Tailwind
+ * `active:scale-*`. 320ms scale 1 → 1.18 → 1 with overshoot easing —
+ * tactile feedback when the user actually picks a pin.
+ */
+@keyframes pin-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.pin-pop-anim {
+  animation: pin-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: bottom center;
+}
+
+/* ── Reduced-motion override ────────────────────────────────────
+ * Honor the OS-level "Reduce motion" preference. Anything we
+ * animate gets near-instant resolution so users with vestibular
+ * or attention sensitivities aren't punished for our choices.
+ * Non-negotiable accessibility default.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration:   0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration:  0.01ms !important;
+    scroll-behavior:      auto !important;
+  }
+}
+

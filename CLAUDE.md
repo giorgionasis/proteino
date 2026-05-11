@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-07 (session 16 — design system showcase completion: 16 tabs · ~110 components · per-tab file split)
+**Last meaningful update:** 2026-05-11 (session 17 — search v2 / regions admin / food tabs flip / admin UI revamp / motion sprints)
 
 ---
 
@@ -560,7 +560,7 @@ Every screen must have a next action. Examples:
 | Font | Open Sans | Verified from Figma (replaced system stack) |
 | Search/Suggestion UI | Light theme, full-screen slide-up | Consistent with design system |
 | Category filters | Sub-category tabs + filter row | AI search is primary, filters secondary |
-| Sub-category dimension | Type/cuisine-first (food/bars), destination-first (hotels/events/theater), genre-first (movies/books) | Matches dominant browsing intent per category |
+| Sub-category dimension | Type-first (food/bars/recipes/theater), destination-first (hotels/events), genre-first (movies/series/books) | Matches dominant browsing intent — Greek food browsing leads with establishment type (ταβέρνα/μεζεδοπωλείο), cuisine is a secondary filter |
 | Filter access | Inline quick-filters + "⊞ Filters" chip → bottom sheet | One tap away, never competing with FAB |
 
 ---
@@ -636,7 +636,7 @@ Managed via Zustand store (`useOverlay`):
 | Series | Genre | No location dimension |
 | Books | Genre | No location dimension |
 | Recipes | Type / Origin | No location dimension |
-| Food | Cuisine | Region is prominent filter |
+| Food | Type (establishment) | Cuisine + region are prominent filters |
 | Bars | Type | Region is prominent filter |
 | Hotels | Destination | Dynamic from data, not fixed taxonomy |
 | Theater | City | Dynamic from data |
@@ -652,7 +652,7 @@ Managed via Zustand store (`useOverlay`):
 
 **Recipes:** Κυρίως Πιάτο · Ορεκτικά · Επιδόρπια · Breakfast · Ψητά · Σαλάτες · Σούπες · Γλυκά · Ψωμί & Ζύμες
 
-**Food:** Ελληνική · Ιταλική · Ασιατική · Burger · Sushi · Fine Dining · Brunch · Vegan · Seafood · Street Food · Middle Eastern
+**Food:** Ταβέρνα · Μεζεδοπωλείο · Ψαροταβέρνα · Εστιατόριο · Ουζερί · Πιτσαρία · Ρακάδικο · Τσιπουράδικο · Κουτούκι · Παραδοσιακό Καφενείο · Μαγειρείο (computed dynamically from `item_food.type` distinct values; admin can re-publish a single canonical list later). Cuisine (Ελληνική · Ιταλική · Ασιατική · Burger · Sushi · Fine Dining · Brunch · Vegan · Seafood · Street Food · Middle Eastern) is a bottom-sheet multi-select filter.
 
 **Bars:** Cocktail Bar · Wine Bar · Jazz Bar · Rooftop · Beach Bar · Coffee · Speakeasy · Pub · All-Day · Sports Bar
 
@@ -1114,3 +1114,134 @@ components/admin/showcase/
 - New visual variant → add a `<Variant>` cell.
 - Component refactor → check if any showcase variant breaks (TypeScript catches it; the showcase is a typecheck canary).
 - Major redesign → review the showcase first, lock the variants, then ship the redesign.
+
+---
+
+## 27. Search v2 — structured filters (session 17)
+> ✅ Shipped (Gemini extraction + route filters); requires data backfill in some categories
+
+Major rewrite of `app/api/search/route.ts` to handle structured queries beyond title ilike. Gemini's extraction schema (`types/index.ts:SearchAnalysis`) now carries:
+
+| Field | Categories | Maps to |
+|---|---|---|
+| `type` | venues | `item_<cat>.type` / `item_food.cuisine` (refinement filter) |
+| `genre` | non-venue | `subcategories.name` via `resolveSubcategoryIds` |
+| `channel` | movies / series | `item_movies.channel` / `item_series.channel` ilike |
+| `status` | series | `item_series.end_date IS NOT NULL` (completed) |
+| `period` | events | jsonb date overlap, month-of-year matching |
+| `duration_min/max` | movies | `item_movies.duration_min` range |
+| `person` | all | jsonb actor/director/writer/performer search across movies/series/books/theater/events |
+| `location` | venues | recursive descendant expansion through regions tree |
+
+### Architecture
+- **Venue branch** (food/bars/hotels/theater/events): pulls candidates (up to 800/cat when refinement tokens present), then JS-filters by address (location tokens) + title/cuisine/type (refinement tokens via `tokenMatches`). When a title anchor is found, surfaces contextually-similar items (Tier A: same type + same address area; Tier B fallback: same type anywhere).
+- **Non-venue branch** (movies/series/books/recipes): `fetchByStructuredFilters` composes subcategory_id + channel + duration + status into a single Supabase query per category. If genre is set but doesn't resolve and other filters exist, drops the genre constraint rather than empty-returning.
+- **People search**: extended from movies/series/books to theater + events. Runs both raw and accent-folded query variants to beat Postgres's accent-sensitive ilike.
+
+### `tokenMatches` semantics
+Asymmetric Greek-inflection-aware match:
+- `target.includes(token)` → match (data broadens query)
+- Common prefix ≥ 4 chars AND within 2 of shorter side → match (inflection variants)
+- `token.includes(target)` (token longer than target) → **NOT a match** (don't broaden via shorter substring)
+
+So "ταβέρνα" matches "ψαροταβέρνα" (broadening allowed), but "μπακαλοταβέρνα" does NOT silently expand to all "ταβέρνα" venues (user being more specific is intentional).
+
+### `resolveLocation` — multi-word matching
+Region names are scored per query: a region matches only when **every word** of its name appears in the query (plus an optional slug-match bonus). Ties broken by name length (longer = more specific wins). Fixes "Νότια Προάστια" beating "Βόρεια Προάστια" on a "βόρεια προάστια" search (both share the word "Προάστια").
+
+### Cache + prompt versioning
+`lib/ai/cache-and-log.ts` carries `PROMPT_VERSION` (currently `v6`). Bump on any prompt change to invalidate all v_{prev} cache entries on next read. Cache key is `hash(provider|model|version|task|query)` with 30-day TTL.
+
+### Quota
+Free tier of `gemini-2.5-flash-lite` is **20 requests/day** (not RPM). Enable billing on Google Cloud Console to lift. At ~700 tokens/call (with taxonomy injection), paid cost ≈ $0.0001/search.
+
+---
+
+## 28. Regions admin & N-level hierarchy (session 17)
+> ✅ Shipped — admin at `/admin/content/regions`, backed by `regions` table
+
+The `regions` table has been self-referential via `parent_id` since migration 001 — but no admin UI existed. Session 17 added `/admin/content/regions` (`<RegionsManager>`) with inline rename, add-child, drag-to-reparent (via select), cycle prevention, recursive descendant collection.
+
+### Frontend consumption (bottom-sheet picker)
+`lib/regions.ts:fetchRegionTreeForCategory` returns `{ parents, childToParent, descendantsById }`. The picker (`<TwoStepListPicker>`) is **two steps maximum**: top-level region → leaves. **Intermediate prefecture-style regions are HIDDEN from the picker** (Βόρεια Προάστια, Ηράκλειο prefecture) — the user picks the specific neighborhood (Χαλάνδρι, Ελούντα) without thinking about which super-region it belongs to.
+
+### Smart search still understands the full hierarchy
+The intermediate level stays in the `regions` table so:
+- Gemini taxonomy injection (`lib/ai/taxonomy.ts`) includes top-level regions in the prompt
+- `resolveLocation` walks the full tree and returns `descendantIds` for any matched region
+- Search query "ψαροταβέρνα στα βόρεια προάστια" resolves the intermediate region and expands to ALL descendants beneath it (including items tagged to Χαλάνδρι specifically)
+- `matchesFilter` for the region filter expands selected region IDs to all descendants via `descendantsById`
+
+### SuggestionEditor RegionSelect
+Refactored from hardcoded 2-level (Region + Area selects) to **N cascading dropdowns**. Walks the tree from selected node up to root, renders one `<select>` per level. New deeper select appears automatically when the selected region has children. So Crete (3+ levels) gets `Κρήτη → Ηράκλειο prefecture → Ελούντα`; Attica still works as `Αττική → Βόρεια Προάστια → Χαλάνδρι`; bare regions (e.g. Σαντορίνη with no children) show a single select.
+
+---
+
+## 29. Multi-language item titles (session 17)
+> ✅ Shipped (code); apply migration 020 in Supabase to activate
+
+Items can carry both a localized `title` (e.g. "Λούσιφερ") and an `original_title` (e.g. "Lucifer"). The search route ilikes both columns (via `title_normalized` + `original_title_normalized` generated columns with Greek accent folding) so users find items in either language.
+
+- Migration 020 (`scripts/sql/020-original-title.sql`) adds the column + generated normalized variant + btree index.
+- Admin: `<SuggestionEditor>` shows the field for movies / series / books (hidden for other categories).
+- Admin page query has a 3-tier fallback (with both new cols → without `original_title` → without `images` either) so the editor still loads on environments where migrations 009 or 020 aren't applied yet.
+
+---
+
+## 30. Admin UI primitives (session 17)
+> ✅ Shipped — `components/admin/ui/` shared rhythm pattern
+
+New design rhythm for admin pages (Linear / Vercel / Supabase Studio style). First showcase: `/admin/content/regions`.
+
+```
+components/admin/ui/
+├── AdminPageHeader.tsx     # Title + subtitle + meta + primary CTA
+├── AdminPanel.tsx          # Bordered card with optional toolbar slot
+├── AdminRow.tsx            # Generic list row — title / meta / actions slots.
+│                           # Actions hidden by default, revealed on
+│                           # group-hover + focus-within. Includes
+│                           # AdminActionButton + AdminActionSelect (sub-comp).
+└── AdminEmpty.tsx          # icon + title + description + CTA empty state
+```
+
+### Patterns
+- **Hover-revealed actions** — secondary controls (parent dropdown, delete, add-child) only appear on row hover. Reduces visual clutter — eyes scan to the primary info first.
+- **Typographic hierarchy** — primary title 14-15px medium zinc-900; metadata 12px muted zinc-400; actions far-right 28px icon buttons.
+- **Tree rendering** — `AdminRow` accepts a `depth` prop (18px indent per level). Combined with a small leading chevron/dot, it renders an unbounded-depth tree without drawing finder-style guide lines.
+
+### Roll-out
+`RegionsManager` is the only consumer today. Same primitives can replace ad-hoc admin styling in: `/admin/content/filters`, `/admin/content/activities`, `/admin/users`, `/admin/reports`, `/admin/reviews`, `/admin/categories`. Each is ~1 hour of careful refactor.
+
+---
+
+## 31. Motion + animation system (session 17)
+> ✅ Foundations + Sprints 1-3 shipped
+
+### Foundations
+- `tailwindcss-animate` installed → `animate-in / animate-out / fade-in / slide-in-from-bottom / zoom-in-* / duration-* / delay-*` utilities are available.
+- `app/globals.css` includes a `prefers-reduced-motion` global override: instant resolution for animations + transitions for users with vestibular sensitivity. Non-negotiable accessibility default.
+- Named easings in `tailwind.config.ts:transitionTimingFunction`:
+  - `ease-spring` — `cubic-bezier(0.32, 0.72, 0, 1)` — iOS decel; bottom sheets, page transitions
+  - `ease-soft` — `cubic-bezier(0.4, 0, 0.2, 1)` — Material-standard; general UI
+  - `ease-pop` — `cubic-bezier(0.34, 1.56, 0.64, 1)` — overshoots 1.0; reward interactions (likes, bookmarks, achievements)
+
+### Shipped effects (see PROGRESS §0 for the full per-sprint list)
+- All overlays slide cleanly (Modal, FilterBottomSheet, FullScreenOverlay, ProfilePopup, ConfirmDeleteDialog, …)
+- Cards tap with `active:scale-[0.97]` (CategoryCard / CarouselLandscape / CarouselPortrait / RowCard / ResultCard)
+- Image opacity-on-load via `<FadeImage>` primitive
+- Bookmark / Follow / Star rating: `animate-pop-in` re-mount on state flip
+- SubCategoryTabs / BottomNav: measured sliding coral indicators (no class-swap snap)
+- Search ResultCard: 40ms stagger slide-in-from-bottom
+- AI Intelligence panel: slide-down-from-top on activation
+- Submission MATCH LOCKED: zoom-in + delayed pill slide-in
+- Toast: slide-in from edge
+- FAB: scale-in entrance on remount
+- Logo coral dot: 4s pulse, paused on hover
+- Map pin tap: classList `pin-pop` scale animation
+- Input focus: explicit 200ms ease-soft transition
+
+### CSS gotchas locked in (don't re-learn the hard way)
+- **Transformed ancestor → `position: fixed` containing block.** Any element with `transform`, `will-change-transform`, `filter`, or `perspective` becomes the containing block for fixed descendants, replacing the viewport. `FilterBottomSheet`, `Modal`, `ProfilePopup` ALL use `fixed inset-0`. If you animate a wrapper that contains them, they'll mis-position. Workaround: render the fixed elements as siblings of the animated wrapper, or via portal to `document.body`.
+- **Conditional mount kills exit animations.** `{open && <Popup>}` unmounts the popup the instant `open` flips to false — the exit animation never plays. Pattern: always render the component, let it manage its own `mounted` state internally with a delayed unmount (`setTimeout` matching transition duration).
+- **CSS animations need a property change to fire.** Setting `style={{ animation: 'slideUp …' }}` on first mount may not animate if the property is already applied. Use CSS transitions on a state-toggled property (`transform`, `opacity`) instead — `requestAnimationFrame` gap between mount and "show" state lets the browser commit the start frame before applying the target.
+- **`animate-in slide-in-from-bottom` (no suffix) has no translation.** From `tailwindcss-animate`, suffix-less variants don't translate by any specific distance — they're effectively just fades. Use `slide-in-from-bottom-N` (Tailwind spacing) or the project's own `slideUp` keyframe (which animates `translateY(100%) ↔ 0`).

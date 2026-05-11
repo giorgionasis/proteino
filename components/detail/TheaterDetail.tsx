@@ -3,13 +3,11 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Bookmark, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { InnerHeader } from "@/components/layout/Header";
-import { useBookmark } from "@/hooks/useBookmark";
+import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
 import { useReview } from "@/hooks/useReview";
-import { useShareLink } from "@/hooks/useShareLink";
 import { OwnSuggestionActions } from "@/components/detail/OwnSuggestionActions";
 import { ReviewCard } from "@/components/detail/ReviewCard";
 import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
@@ -70,8 +68,6 @@ function formatDates(dates: unknown): string {
 
 export function TheaterDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
-  const { bookmarked, toggle: toggleBookmark } = useBookmark(data.item.id, "theater", data.isBookmarked);
-  const { share, copied: shareCopied } = useShareLink({ title: data.item.title });
   const [plotExpanded, setPlotExpanded] = useState(false);
   const [userRating, setUserRating] = useState(data.myReview?.rating ?? 0);
   const { save: saveReview, busy: reviewBusy, savedRating } = useReview(data.item.id, { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null });
@@ -132,15 +128,12 @@ export function TheaterDetail({ data }: { data: ItemDetailData }) {
         title=""
         onBack={() => router.back()}
         rightSlot={
-          <>
-            <button onClick={toggleBookmark} className={cn("w-9 h-9 flex items-center justify-center rounded-full transition-colors", bookmarked ? "bg-zinc-800" : "bg-zinc-100 active:bg-zinc-200")}>
-              <Bookmark size={16} className={bookmarked ? "text-white fill-white" : "text-zinc-700"} />
-            </button>
-            <button onClick={share} className={cn("relative w-9 h-9 flex items-center justify-center rounded-full transition-colors", shareCopied ? "bg-emerald-100" : "bg-zinc-100 active:bg-zinc-200")} aria-label={shareCopied ? "Αντιγράφηκε" : "Κοινοποίηση"}>
-              <Share2 size={16} className={shareCopied ? "text-emerald-700" : "text-zinc-700"} />
-              {shareCopied && <span className="absolute -bottom-7 right-0 whitespace-nowrap px-2 py-1 rounded bg-zinc-900 text-white text-[11px] font-medium">✓ Αντιγράφηκε</span>}
-            </button>
-          </>
+          <DetailHeaderActions
+            itemId={data.item.id}
+            category="theater"
+            isBookmarked={data.isBookmarked}
+            shareTitle={data.item.title}
+          />
         }
       />
 

@@ -4,6 +4,22 @@ This file documents exactly how AI is implemented across the entire Proteino eco
 AI is a visible, functional feature — not decoration. Every AI interaction must feel alive.
 Place this file in the project root alongside CLAUDE.md and HOOKS.md.
 
+**Last meaningful update:** 2026-05-11 (session 17 — Search v2 with structured filters)
+
+---
+
+## OPERATIONAL STATUS (session 17)
+
+| Surface | Status | Notes |
+|---|---|---|
+| Submission AI | ✅ Wired | Gemini Flash-Lite + cache. Live quality coach via `scoreDescriptionQuality`. |
+| Search AI | ✅ Wired (v2) | Structured-filter engine. See §13 for the full schema. |
+| Recommendation AI | 🛑 Phase B not started | pgvector + nightly batch + LLM rerank. 5 days est. |
+
+**🛑 Gemini billing not enabled** — free tier of `gemini-2.5-flash-lite` caps at **20 requests/day** (per-project, not per-key). Once exhausted, `analyzeSearchQuery` and `analyzeSubmission` return passthrough `{categories: []}` and the route falls through to title-only matching. Enable at https://aistudio.google.com → API key → Linked Google Cloud project → Billing. At our ~700-token prompts, paid tier is ~$0.0001 per call.
+
+**🛑 Migration 019 not yet applied** — `scripts/sql/019-ai-cache-and-usage.sql` creates `ai_query_cache` + `ai_usage_log`. The wrapper at `lib/ai/cache-and-log.ts` writes best-effort (silently no-ops if tables missing), but the `/admin/ai-usage` dashboard reads from these — empty until applied.
+
 ---
 
 ## Core Principle
@@ -1214,4 +1230,106 @@ Return ONLY valid JSON. No prose, no markdown fences.
 | Initial budget | $20 deposit, $30/mo soft cap | Conservative start | 2026-05-05 |
 | First integration | Search intent | Highest UX impact | 2026-05-05 |
 | Cache strategy | Anthropic native + Postgres | Layered, both cheap | 2026-05-05 |
+| Production provider (interim) | **Gemini 2.5 Flash-Lite** | Free dev tier (20/day) + paid is ~3× cheaper than Haiku. Decision pivoted before Anthropic credits were activated. | 2026-05-09 |
+
+---
+
+## 13. Search v2 — Structured-Filter Engine (session 17, 2026-05-11)
+
+Extension of the search route from "title ilike + region resolution" to a full structured-extraction pipeline. The Gemini prompt now extracts 7 distinct signals beyond the legacy `type` + `location`, and the route composes them into per-category Postgres queries.
+
+### 13.1 Extended `SearchAnalysis` schema
+
+`types/index.ts`:
+
+```typescript
+export interface SearchAnalysis {
+  intent: string;
+  vibe: string | null;
+  type: string | null;       // venue establishment / cuisine / hint
+  location: string | null;
+  categories: CategorySlug[];
+  query: string;
+  // Extended (session 17):
+  genre?: string | null;     // canonical subcategory name ("Κωμωδία", "Animation")
+  channel?: string | null;   // "Netflix" / "HBO" / "Mega" / …
+  status?: "completed" | "ongoing" | null;  // series only
+  period?: string | null;    // "summer" / "december" / "weekend"
+  duration_min?: number | null;  // minutes
+  duration_max?: number | null;  // minutes
+  person?: string | null;    // actor / director / writer / performer
+  decade?: string | null;    // legacy, still used
+  price?: "budget" | "mid" | "high" | null;  // legacy
+}
+```
+
+Prompt-version `v6` (in `lib/ai/cache-and-log.ts`). Bump on any prompt change to flush cache entries.
+
+### 13.2 Route architecture
+
+`app/api/search/route.ts` (~1200 lines) processes a query in this order:
+
+1. **`analyzeSearchQuery`** (Gemini, Postgres-cached) — extracts the structured analysis.
+2. **`resolveLocation`** — multi-word region-name matching against the `regions` table. Returns `{ id, name, slug, descendantIds }`. Multi-word names require ALL words to appear in the query (fixes "Νότια Προάστια" beating "Βόρεια Προάστια").
+3. **Venue branch** (food/bars/hotels/theater/events when category resolved):
+   - `fetchVenueItems(category, regionIds, limit)` — joins extension table to items, pulls address + cuisine + type + dates.
+   - Token split: words matching the resolved location → `locationTokens` (address-text filter); rest → `refinementTokens` (title / cuisine / type via `tokenMatches`).
+   - **Smart-related layer**: when refinementTokens find a title anchor, look at the full candidate pool for items sharing the anchor's type + address area (Tier A) — fall back to "same type anywhere" if Tier A empty (Tier B).
+   - **Period filter** (events only): translates `period` to month-set, JS-filters `item_events.dates` jsonb for overlap.
+   - **People-search fallback** for venues: when refinement + ambiguous-address both yielded nothing, runs `fetchPeopleMatches(person ?? query)` and keeps hits in the active venue category.
+4. **Non-venue branch** (movies/series/books/recipes): when Gemini extracted `genre` / `channel` / `status` / `duration` (`hasStructuredSignals`), `fetchByStructuredFilters` composes them into per-category items queries. Genre lookup via `resolveSubcategoryIds` with `tokenMatches` + `GENRE_ALIASES` (παιδικά → Animation, νουάρ → Θρίλερ, …). Otherwise falls through to title ilike (legacy path) + people search.
+5. **No dead ends**: every code path has a popular-in-category fallback or honest no_match flow.
+
+### 13.3 `tokenMatches` — Greek inflection
+
+Asymmetric match used for cuisine / type / subcategory-name comparisons:
+
+```typescript
+function tokenMatches(token: string, target: string): boolean {
+  if (token === target) return true;
+  if (target.includes(token)) return true;              // broadens query
+  let i = 0;
+  while (i < token.length && i < target.length && token[i] === target[i]) i++;
+  return i >= 4 && i >= Math.min(token.length, target.length) - 2;
+  // NOT a match: token.includes(target) — don't broaden longer queries
+}
+```
+
+- `tokenMatches("ταβέρνα", "ψαροταβέρνα")` → true (target longer)
+- `tokenMatches("ιταλικο", "ιταλικη")` → true (common prefix 6 of 7)
+- `tokenMatches("μπακαλοταβερνα", "ταβερνα")` → **false** (token longer, asymmetric rule)
+
+### 13.4 People-search v2
+
+`fetchPeopleMatches` runs **both raw and accent-folded** variants through every ilike (Postgres ilike is case-insensitive but NOT accent-insensitive). Covers:
+
+- `item_movies.actors` (jsonb cast to text) + `item_movies.director`
+- `item_series.actors` + `item_series.director`
+- `item_books.writer`
+- `item_theater.actors` + `item_theater.director` + `item_theater.writer`  ← session-17 addition
+- `item_events.performers` (jsonb)  ← session-17 addition
+
+Dedup by `item_id`. People hits in the venue branch are kept only when their category is in `venueCatsForFilter`.
+
+### 13.5 Period → month-set
+
+`periodToMonths(period)` returns a `Set<number>` of month indices. `summer` → `{5,6,7}`. `december` → `{11}`. Year-agnostic — an event matches "summer concerts" if any of its scheduled dates falls in June-August, regardless of which year. This correctly surfaces both archival and forward-looking events. `weekend` is a separate day-of-week predicate.
+
+### 13.6 7 example queries — status as of session 17
+
+| Query | Status | Notes |
+|---|---|---|
+| κωμωδίες netflix | ✅ Works | genre + channel structured filter |
+| παιδικά κάτω από 90 λεπτά | ✅ Works | genre alias → Animation, duration_max range |
+| θέατρο μπέζος | ⚠ Data gap | Code finds theater plays via people search, but no theater item in DB has "Μπέζος" in `actors` |
+| ολοκληρωμένες σειρές | ✅ Works | status=completed → `end_date IS NOT NULL` |
+| sebastian fitzek | ✅ Works | People search hits `item_books.writer` |
+| συναυλίες καλοκαίρι αττική | ⚠ Data gap | No `item_events.event_type` matches "συναυλία" in DB |
+| ιταλικό βόρεια προάστια | ⚠ Data gap | location resolves correctly; no `item_food.cuisine` matches "ιταλικ" in DB |
+
+Action: admin populates the missing data, no further code work needed.
+
+### 13.7 Multi-language titles
+
+Migration 020 adds `items.original_title` (e.g. "Lucifer" for the Greek-stored "Λούσιφερ"). The search route ilikes both `title_normalized` and `original_title_normalized` (generated accent-folded columns) so users find items in either language. Triple-fallback `or(...)` query so the route still works on environments where migration 020 isn't applied.
 

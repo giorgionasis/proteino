@@ -368,6 +368,12 @@ export function CategoryMapView({
         `;
         el.addEventListener("click", (e) => {
           e.stopPropagation();
+          // Trigger the scale-pop animation on tap. classList toggle
+          // pattern (remove → reflow → add) lets the same animation
+          // re-fire on consecutive taps of the same pin.
+          el.classList.remove("pin-pop-anim");
+          void el.offsetWidth;
+          el.classList.add("pin-pop-anim");
           setSelected(item);
         });
         const marker = new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([lng, lat]).addTo(map);
@@ -396,10 +402,12 @@ export function CategoryMapView({
         style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
       />
 
-      {/* "Λίστα" toggle — top left. Compact since the word is short. */}
+      {/* "Λίστα" toggle — top left. Compact since the word is short.
+       *  Adds tap scale-down so the toggle feels responsive before the
+       *  list view crossfades in. */}
       <button
         onClick={onSwitchToList}
-        className="absolute top-3 left-3 z-30 flex items-center justify-center gap-1.5 h-10 px-4 rounded-full active:opacity-80 transition-opacity select-none"
+        className="absolute top-3 left-3 z-30 flex items-center justify-center gap-1.5 h-10 px-4 rounded-full active:scale-95 active:opacity-80 transition-[transform,opacity] duration-150 ease-out select-none"
         style={{ background: "rgba(63,63,70,0.92)" }}
       >
         <ListToggleIcon />
@@ -474,7 +482,7 @@ export function CategoryMapView({
             }, 350);
           }}
           disabled={searchHerePillConfirming}
-          className="absolute left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 h-11 pl-4 pr-3 rounded-full active:opacity-80 transition-all select-none"
+          className="absolute left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 h-11 pl-4 pr-3 rounded-full active:opacity-80 select-none animate-in slide-in-from-top-3 fade-in duration-300 ease-spring transition-[transform,opacity] will-change-transform"
           style={{
             top: 64,
             background: "#FE6F5E",

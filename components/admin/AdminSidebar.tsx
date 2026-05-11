@@ -39,6 +39,7 @@ const NAV: NavEntry[] = [
     children: [
       { label: "Collections",    href: "/admin/content/collections",    icon: <IconCollection /> },
       { label: "Activities",     href: "/admin/content/activities",     icon: <IconMap /> },
+      { label: "Regions",        href: "/admin/content/regions",        icon: <IconMap /> },
       { label: "Filters",        href: "/admin/content/filters",        icon: <IconSliders /> },
       { label: "Movies Tonight", href: "/admin/content/movies-tonight", icon: <IconFilm /> },
     ],

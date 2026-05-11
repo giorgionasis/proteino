@@ -43,11 +43,15 @@ CREATE INDEX IF NOT EXISTS idx_theater_region ON item_theater(region_id);
 CREATE INDEX IF NOT EXISTS idx_events_region ON item_events(region_id);
 
 -- ─── RLS Policies (public read, admin write) ────────────────────────────
+-- Idempotent: drop existing policies before re-creating so the script
+-- can be re-run on an environment where 001 was applied previously.
 ALTER TABLE subcategories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE regions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "subcategories_public_read" ON subcategories;
 CREATE POLICY "subcategories_public_read" ON subcategories
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "regions_public_read" ON regions;
 CREATE POLICY "regions_public_read" ON regions
   FOR SELECT USING (true);

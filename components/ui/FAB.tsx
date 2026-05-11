@@ -28,8 +28,14 @@ export function FAB({ className }: { className?: string }) {
           "w-14 h-14 rounded-full",
           "gradient-coral text-white shadow-fab",
           "flex items-center justify-center",
-          "transition-transform duration-150 will-change-transform",
+          "transition-transform duration-150 ease-out will-change-transform",
           "active:scale-95",
+          // Initial-mount entrance: scale-in 350ms ease-pop. Re-fires
+          // whenever the FAB becomes visible again after an overlay
+          // closes (FAB unmounts when overlay !== null, so a return
+          // mount triggers the keyframe again — exactly the right
+          // "tada, I'm back" feel without extra logic).
+          "animate-scale-in",
           className,
         )}
       >

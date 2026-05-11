@@ -20,10 +20,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * Prompt-version bump invalidates cache on prompt changes. Bump when
  * tweaking the system prompt in gemini.ts.
  */
-// v2 — taxonomy injection (DB-canonical values added to prompts).
-// Bumping invalidates all v1 cached results so the next call re-fetches
-// with the richer prompt.
-const PROMPT_VERSION = "v2";
+// v6 — same prompt as v5; bumped because the route-side resolveLocation
+// + isLocationInQuery validators now reject + recompute Gemini's
+// location suggestion when it doesn't appear in the query. Cache flush
+// ensures stale (mis-located) extractions don't replay.
+const PROMPT_VERSION = "v6";
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 interface CachedEntry {

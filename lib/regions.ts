@@ -7,6 +7,11 @@ export interface RegionTree {
   parents: TwoStepNode[];
   /** Map subRegionId → parentRegionId (for filter application). */
   childToParent: Record<string, string>;
+  /** Map regionId → all descendant ids (recursive, any depth). When the
+   *  user picks a region in the filter, we expand the selection to
+   *  include every descendant so 3-level trees (Κρήτη → Ηράκλειο →
+   *  Ελούντα) match items tagged at any depth, not just the picked one. */
+  descendantsById: Record<string, string[]>;
 }
 
 /**
@@ -24,7 +29,7 @@ export async function fetchRegionTreeForCategory(
   category: string,
 ): Promise<RegionTree> {
   if (!VENUE_CATEGORIES.has(category)) {
-    return { parents: [], childToParent: {} };
+    return { parents: [], childToParent: {}, descendantsById: {} };
   }
 
   // 1. All regions (small table, ~hundreds of rows) — get the full tree once.
@@ -63,38 +68,91 @@ export async function fetchRegionTreeForCategory(
     }
   }
 
+  // 4. Recursive descendant collection — supports any tree depth. For
+  //    each region we resolve every descendant id once; consumers use
+  //    this map both for count rollup AND for filter expansion (when
+  //    user picks the top-level region, the filter silently includes
+  //    every descendant beneath it).
+  const descendantsById: Record<string, string[]> = {};
+  const collectDescendants = (id: string): string[] => {
+    if (descendantsById[id]) return descendantsById[id];
+    const direct = childrenByParent.get(id) ?? [];
+    const all: string[] = [];
+    for (const c of direct) {
+      all.push(c.id);
+      all.push(...collectDescendants(c.id));
+    }
+    descendantsById[id] = all;
+    return all;
+  };
+  for (const r of regions) collectDescendants(r.id);
+
+  // 5. Compute "rolled up" count per region: direct items at that node
+  //    + items at any descendant.
+  const rolledUpCount = (id: string): number => {
+    let sum = countsBySubRegion.get(id) ?? 0;
+    for (const did of descendantsById[id] ?? []) {
+      sum += countsBySubRegion.get(did) ?? 0;
+    }
+    return sum;
+  };
+
+  // 6. Leaf collection — for each top-level region, gather the deepest
+  //    descendants (regions with no children of their own). The picker
+  //    flattens intermediate prefecture-style levels so users pick the
+  //    SPECIFIC neighborhood/place ("Χαλάνδρι", "Κολωνάκι", "Ελούντα")
+  //    without having to know which super-region it belongs to. The
+  //    intermediate level (Βόρεια Προάστια / Ηράκλειο prefecture) stays
+  //    in the regions table so smart search + admin both see the full
+  //    hierarchy — the picker is the only surface that flattens.
+  //
+  //    Edge case: a top-level region with no children at all (e.g. a
+  //    bare "Σαντορίνη") becomes its own leaf so it remains pickable.
+  const leavesUnder = (rootId: string): { id: string; name: string }[] => {
+    const direct = childrenByParent.get(rootId) ?? [];
+    if (direct.length === 0) {
+      const r = byId.get(rootId);
+      return r ? [{ id: r.id, name: r.name }] : [];
+    }
+    const out: { id: string; name: string }[] = [];
+    const queue: string[] = direct.map((c) => c.id);
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      const kids = childrenByParent.get(id) ?? [];
+      if (kids.length === 0) {
+        const r = byId.get(id);
+        if (r) out.push({ id: r.id, name: r.name });
+      } else {
+        for (const c of kids) queue.push(c.id);
+      }
+    }
+    return out;
+  };
+
   const childToParent: Record<string, string> = {};
   const parents: TwoStepNode[] = [];
 
   for (const r of regions) {
-    if (r.parent_id) continue; // skip non-top-level
-    const childRegions = childrenByParent.get(r.id) ?? [];
-
-    // Per-child count is direct items in that sub-area. Parent count is the
-    // sum of all children's counts (i.e. all items in that wider region).
-    const children = childRegions
-      .map((c) => ({
-        id: c.id,
-        label: c.name,
-        count: countsBySubRegion.get(c.id) ?? 0,
+    if (r.parent_id) continue; // top-level only
+    const leaves = leavesUnder(r.id)
+      .map((leaf) => ({
+        id: leaf.id,
+        label: leaf.name,
+        count: rolledUpCount(leaf.id),
       }))
-      .filter((c) => c.count > 0)
+      .filter((leaf) => leaf.count > 0)
       .sort((a, b) => a.label.localeCompare(b.label, "el"));
 
-    // Some items might be tagged directly to a parent region (no specific
-    // sub-area). Include those in the parent count too.
-    const directParentCount = countsBySubRegion.get(r.id) ?? 0;
-    const totalCount = children.reduce((sum, c) => sum + c.count, 0) + directParentCount;
-
+    const totalCount = rolledUpCount(r.id);
     if (totalCount === 0) continue;
 
-    for (const c of children) childToParent[c.id] = r.id;
+    for (const leaf of leaves) childToParent[leaf.id] = r.id;
 
     parents.push({
       id: r.id,
       label: r.name,
       count: totalCount,
-      children,
+      children: leaves,
     });
   }
 
@@ -102,5 +160,5 @@ export async function fetchRegionTreeForCategory(
   // (Αττική should be near the top, niche regions further down).
   parents.sort((a, b) => b.count - a.count);
 
-  return { parents, childToParent };
+  return { parents, childToParent, descendantsById };
 }

@@ -29,13 +29,18 @@ export function FollowButton({
 
   const iconName = active ? "followed" : "follow";
 
+  // Re-mount icon + label every state flip via the `active` key so
+  // they enter with `animate-pop-in` (scale 0.85 → 1.05 → 1, 300ms
+  // ease-pop). Button bg crossfade is handled by transition-all.
+  const stateKey = active ? "on" : "off";
+
   if (variant === "dark") {
     return (
       <button
         onClick={toggle}
         className={cn(
           "inline-flex items-center justify-center gap-2.5 rounded-full font-semibold",
-          "transition-all duration-150 select-none active:scale-[0.97]",
+          "transition-all duration-300 ease-soft select-none active:scale-[0.97]",
           "px-7 py-5 text-lg",
           active
             ? "bg-[#E5FFF9] text-[#033C2E]"
@@ -43,8 +48,12 @@ export function FollowButton({
           className,
         )}
       >
-        <Icon name={iconName} size={20} />
-        {active ? "Ακολουθείς" : "Ακολούθησε"}
+        <span key={`icon-${stateKey}`} className="inline-flex animate-pop-in">
+          <Icon name={iconName} size={20} />
+        </span>
+        <span key={`label-${stateKey}`} className="animate-pop-in">
+          {active ? "Ακολουθείς" : "Ακολούθησε"}
+        </span>
       </button>
     );
   }
@@ -54,7 +63,7 @@ export function FollowButton({
       onClick={toggle}
       className={cn(
         "inline-flex items-center justify-center gap-1.5 rounded-[20px] font-semibold",
-        "transition-all duration-150 select-none active:scale-[0.97]",
+        "transition-all duration-300 ease-soft select-none active:scale-[0.97]",
         size === "sm" && "h-8 px-4 text-sm",
         size === "md" && "h-10 px-5 text-sm",
         size === "lg" && "h-11 px-6 text-base",
@@ -64,8 +73,12 @@ export function FollowButton({
         className,
       )}
     >
-      <Icon name={iconName} size={size === "lg" ? 18 : 16} />
-      {active ? "Ακολουθείς" : "Ακολούθησε"}
+      <span key={`icon-${stateKey}`} className="inline-flex animate-pop-in">
+        <Icon name={iconName} size={size === "lg" ? 18 : 16} />
+      </span>
+      <span key={`label-${stateKey}`} className="animate-pop-in">
+        {active ? "Ακολουθείς" : "Ακολούθησε"}
+      </span>
     </button>
   );
 }
