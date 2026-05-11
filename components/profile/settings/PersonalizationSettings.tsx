@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
 import { CATEGORIES as CAT_LIST } from "@/constants/categories";
@@ -18,7 +18,57 @@ const CATEGORIES = [
 
 export function PersonalizationSettings() {
   const router = useRouter();
-  const [selected, setSelected] = useState<Set<string>>(new Set(["books", "movies", "food"]));
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch current interests on mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/profile/preferences");
+        const data = await res.json();
+        if (cancelled) return;
+        if (res.ok) {
+          const interests = Array.isArray(data?.preferences?.interests)
+            ? (data.preferences.interests as string[])
+            : [];
+          setSelected(new Set(interests));
+        } else if (res.status === 503) {
+          setError("Migration 022 δεν έχει τρέξει ακόμα. Πες στον admin.");
+        }
+      } catch {
+        if (!cancelled) setError("Αποτυχία φόρτωσης προτιμήσεων.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/profile/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interests: Array.from(selected) }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data?.error ?? "Αποτυχία αποθήκευσης.");
+      } else {
+        router.back();
+      }
+    } catch {
+      setError("Αποτυχία σύνδεσης. Δοκίμασε ξανά.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function toggle(key: string) {
     if (key === "all") {
@@ -74,13 +124,20 @@ export function PersonalizationSettings() {
         </div>
       </div>
 
-      {/* Save button */}
+      {error && (
+        <p className="px-5 pt-4 text-sm font-semibold text-red-500 text-center">{error}</p>
+      )}
+
+      {/* Save button — calls /api/profile/preferences PATCH then navigates
+       *  back. Local state seeds from the GET on mount, so re-entering
+       *  the page shows the user's last saved interests. */}
       <div className="fixed bottom-0 left-0 right-0 px-5 py-4 bg-white border-t border-zinc-200 z-20">
         <button
-          onClick={() => router.back()}
-          className="w-full h-[52px] rounded-[12px] text-[16px] font-bold text-white active:opacity-80 transition-opacity"
+          onClick={save}
+          disabled={saving || loading}
+          className="w-full h-[52px] rounded-[12px] text-[16px] font-bold text-white active:opacity-80 transition-opacity disabled:opacity-50"
           style={{ background: "linear-gradient(135deg, #FE6F5E 0%, #FF9980 100%)" }}>
-          Αποθήκευση
+          {saving ? "Αποθήκευση..." : "Αποθήκευση"}
         </button>
       </div>
     </div>

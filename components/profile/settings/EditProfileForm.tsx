@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
 
@@ -26,6 +26,32 @@ export function EditProfileForm(props: Props) {
   const [gender, setGender]           = useState(props.gender);
   const [birthday, setBirthday]       = useState(props.birthday);
   const [region, setRegion]           = useState(props.region);
+  // Avatar upload state — separate save flow from the rest of the form
+  // since the avatar persists immediately on upload (it's already live
+  // in storage; rolling back via Cancel would orphan a file).
+  const [avatarUrl, setAvatarUrl]     = useState(props.avatarUrl);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  async function handleAvatarUpload(file: File) {
+    setError(null);
+    setAvatarUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/profile/avatar", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Αποτυχία ανεβάσματος εικόνας.");
+      } else {
+        setAvatarUrl(data.url);
+      }
+    } catch {
+      setError("Αποτυχία σύνδεσης. Δοκίμασε ξανά.");
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
 
   async function handleSave() {
     setError(null);
@@ -60,22 +86,56 @@ export function EditProfileForm(props: Props) {
     <div className="pb-16">
       <InnerHeader title="Επεξεργασία Προφίλ" onBack={() => router.back()} />
 
-      {/* Avatar */}
+      {/* Avatar — tap to upload (JPG / PNG / WebP, max 4MB). Uploads
+       *  immediately on file pick + persists `users.avatar_url`; the
+       *  Cancel button below only reverts the OTHER fields. */}
       <div className="flex flex-col items-center gap-3 pt-10 pb-8">
-        <div
-          className="relative w-[120px] h-[120px] rounded-full overflow-hidden border-[3px] border-zinc-50"
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={avatarUploading}
+          className="relative w-[120px] h-[120px] rounded-full overflow-hidden border-[3px] border-zinc-50 active:scale-95 transition-transform disabled:opacity-60"
           style={{ boxShadow: "1px 1px 15px 3px rgba(0,0,0,0.15)" }}
+          aria-label="Άλλαξε φωτογραφία προφίλ"
         >
           <Image
-            src={props.avatarUrl || "/images/profile-avatar.png"}
+            src={avatarUrl || "/images/profile-avatar.png"}
             alt="Avatar"
             fill
             className="object-cover"
             unoptimized
           />
-        </div>
+          {/* Camera icon overlay — bottom-right, indicates tappability */}
+          <span
+            className="absolute bottom-1 right-1 w-9 h-9 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: "#FE6F5E", boxShadow: "0 2px 8px rgba(0,0,0,0.25)" }}
+          >
+            {avatarUploading ? (
+              <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin-slow" />
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+                <circle cx="12" cy="13" r="3" />
+              </svg>
+            )}
+          </span>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleAvatarUpload(f);
+            // Reset so re-selecting the SAME file still triggers onChange.
+            e.target.value = "";
+          }}
+        />
         <p className="text-sm font-medium text-zinc-500 text-center px-8">
-          Η φωτογραφία ενημερώνεται μέσω του Google λογαριασμού σου
+          {avatarUploading
+            ? "Ανέβασμα..."
+            : "Πάτα στη φωτογραφία για αλλαγή"}
         </p>
       </div>
 

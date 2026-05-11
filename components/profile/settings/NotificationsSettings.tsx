@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
 
 type CheckState = { push: boolean; email: boolean };
 type SectionKey = "suggestions_review" | "suggestions_publish" | "friends_review" | "friends_publish" | "personal_review" | "personal_publish";
 
-const INITIAL: Record<SectionKey, CheckState> = {
+/** Defaults applied to fresh accounts (and as fallback when migration
+ *  022 isn't yet applied — so the page renders something usable
+ *  instead of an empty grid). */
+const DEFAULTS: Record<SectionKey, CheckState> = {
   suggestions_review:  { push: false, email: false },
   suggestions_publish: { push: true,  email: true  },
   friends_review:      { push: true,  email: false },
@@ -18,10 +21,50 @@ const INITIAL: Record<SectionKey, CheckState> = {
 
 export function NotificationsSettings() {
   const router = useRouter();
-  const [checks, setChecks] = useState(INITIAL);
+  const [checks, setChecks] = useState(DEFAULTS);
+  const [loaded, setLoaded] = useState(false);
+  const saveTimer = useRef<number | null>(null);
+
+  // Fetch saved prefs on mount. Merge over defaults so any new section
+  // added in code shows up immediately for users without that key yet.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/profile/preferences");
+        const data = await res.json();
+        if (cancelled) return;
+        const saved = data?.preferences?.notifications as Partial<Record<SectionKey, CheckState>> | undefined;
+        if (saved) {
+          setChecks((prev) => ({ ...prev, ...saved }));
+        }
+      } catch { /* swallow — defaults stand */ }
+      finally { if (!cancelled) setLoaded(true); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Debounced save so toggling multiple boxes in quick succession
+  // results in a single PATCH. 600ms quiet period feels intentional —
+  // the user sees the toggle flip immediately, the network round-trip
+  // happens in the background.
+  function scheduleSave(nextChecks: Record<SectionKey, CheckState>) {
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      void fetch("/api/profile/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifications: nextChecks }),
+      });
+    }, 600);
+  }
 
   function toggle(key: SectionKey, type: "push" | "email") {
-    setChecks(prev => ({ ...prev, [key]: { ...prev[key], [type]: !prev[key][type] } }));
+    setChecks((prev) => {
+      const next = { ...prev, [key]: { ...prev[key], [type]: !prev[key][type] } };
+      if (loaded) scheduleSave(next);
+      return next;
+    });
   }
 
   return (
