@@ -137,7 +137,7 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
 
       {/* Cover placeholder */}
       <div className="px-6 pt-6">
-        <div className="relative w-full h-[228px] rounded-[12px] overflow-hidden bg-zinc-800 flex items-center justify-center">
+        <div data-orbit-source className="relative w-full h-[228px] rounded-[12px] overflow-hidden bg-zinc-800 flex items-center justify-center">
           {coverUrl ? <img src={coverUrl} alt={title} className="w-full h-full object-cover" /> : <span className="text-zinc-500 text-4xl">📺</span>}
           {/* Trailer play button */}
           <div className="absolute inset-0 flex items-center justify-center">

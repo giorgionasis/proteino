@@ -6,6 +6,7 @@ import { IconButton } from "@/components/ui/IconButton";
 import { Icon } from "@/components/ui/Icon";
 import { useShareLink } from "@/hooks/useShareLink";
 import { useGuestGuard } from "@/hooks/useGuestGuard";
+import { useBookmarkOrbit } from "@/hooks/useBookmarkOrbit";
 import { GuestPromptModal } from "@/components/guest/GuestPromptModal";
 import type { BookmarkController } from "@/components/detail/BookmarkStatusChips";
 import type { BookmarkSaveResult } from "@/components/detail/BookmarkSavedModal";
@@ -16,9 +17,14 @@ import type { BookmarkSaveResult } from "@/components/detail/BookmarkSavedModal"
  * page (single useBookmark instance shared with BookmarkStatusChips)
  * so both surfaces stay in sync without re-fetching.
  *
- * On successful save the host page receives a `BookmarkSaveResult`
- * via `onSaved` and opens the celebration modal with the bookmarker
- * avatar stack. Removal is silent — the icon flip is enough feedback.
+ * On a SAVE action we run the orbit microinteraction: the hero cover
+ * image clones, flies along a parabolic arc, and lands on this icon —
+ * exactly when the icon flips from `bookmark-add` (outlined) to
+ * `bookmark-added` (filled) with a bounce.
+ *
+ * To keep the icon visual in sync with the orbit timing, we maintain
+ * a local `visualBookmarked` that lags the controller's `bookmarked`
+ * during the orbit phase. UNBOOKMARK is instant — no reverse orbit.
  */
 interface Props {
   category:    string;
@@ -32,37 +38,68 @@ interface Props {
 
 export function DetailHeaderActions({ category, bookmark, shareTitle, onSaved, onToast }: Props) {
   const { bookmarked, toggle } = bookmark;
-  const { share, copied } = useShareLink({ title: shareTitle });
+  const { share, copied }      = useShareLink({ title: shareTitle });
+  const fly                    = useBookmarkOrbit();
   // Bookmark is a logged-in action; sharing is fine for guests too.
   const { requireAuth, modalProps } = useGuestGuard("να σώσεις στα αγαπημένα σου");
 
-  // Pop the bookmark icon every time the bookmarked state actually
-  // flips (skip the initial mount). 280ms scale 1 → 1.3 → 1 via the
-  // existing `pop-in` keyframe — feels tactile without being noisy.
-  const [popKey, setPopKey] = useState(0);
-  const lastBookmark = useRef(bookmarked);
+  // Visual override during orbit: the icon stays in the PREVIOUS
+  // state until the orbit lands, then flips to the new state. The
+  // popKey effect below produces the bounce on flip.
+  const [orbiting, setOrbiting]                 = useState(false);
+  const [visualBookmarked, setVisualBookmarked] = useState(bookmarked);
+
+  // When NOT orbiting, mirror the controller's bookmarked. When
+  // orbiting, hold the previous value — the visual flip happens on
+  // setOrbiting(false) at landing.
   useEffect(() => {
-    if (lastBookmark.current !== bookmarked) {
+    if (!orbiting) setVisualBookmarked(bookmarked);
+  }, [bookmarked, orbiting]);
+
+  // Pop the icon on every flip of `visualBookmarked`. Skip the
+  // initial mount via the ref guard.
+  const [popKey, setPopKey] = useState(0);
+  const lastVisual          = useRef(visualBookmarked);
+  useEffect(() => {
+    if (lastVisual.current !== visualBookmarked) {
       setPopKey((k) => k + 1);
-      lastBookmark.current = bookmarked;
+      lastVisual.current = visualBookmarked;
     }
-  }, [bookmarked]);
+  }, [visualBookmarked]);
 
   async function handleToggle() {
     requireAuth(async () => {
       const wasBookmarked = bookmarked;
-      const result = await toggle();
-      if (!result.ok) {
-        onToast?.("Κάτι πήγε στραβά. Δοκίμασε ξανά.");
-        return;
-      }
-      // Open the celebration modal on SAVE only (not on remove).
-      // Remove is silent — the icon flip is enough feedback.
-      if (!wasBookmarked && result.status) {
-        onSaved?.({
-          status:  result.status,
-          context: result.context,
-        });
+
+      if (!wasBookmarked) {
+        // ── SAVE flow with orbit ───────────────────────────────────────
+        // Kick off the orbit + the API write in parallel. The orbit is
+        // a fixed-duration visual; the API may resolve faster or
+        // slower but we always wait for the orbit to land before
+        // flipping the icon visual.
+        setOrbiting(true);
+        const orbitPromise  = fly();
+        const togglePromise = toggle();
+
+        await orbitPromise;
+        setOrbiting(false);
+        // visualBookmarked will now sync to bookmarked via the effect
+
+        const result = await togglePromise;
+        if (!result.ok) {
+          onToast?.("Κάτι πήγε στραβά. Δοκίμασε ξανά.");
+          return;
+        }
+        // Open the celebration modal after the orbit + save settle.
+        if (result.status) {
+          onSaved?.({ status: result.status, context: result.context });
+        }
+      } else {
+        // ── UNBOOKMARK: instant, no orbit ──────────────────────────────
+        const result = await toggle();
+        if (!result.ok) {
+          onToast?.("Κάτι πήγε στραβά. Δοκίμασε ξανά.");
+        }
       }
     });
   }
@@ -72,13 +109,14 @@ export function DetailHeaderActions({ category, bookmark, shareTitle, onSaved, o
       <IconButton
         onClick={handleToggle}
         aria-label="Αποθήκευση"
+        data-orbit-target
       >
         <span
           key={popKey}
           className={popKey > 0 ? "inline-flex animate-pop-in" : "inline-flex"}
         >
           <Icon
-            name={bookmarked ? "bookmark-added" : "bookmark-add"}
+            name={visualBookmarked ? "bookmark-added" : "bookmark-add"}
             width={16}
             height={20}
             alt=""

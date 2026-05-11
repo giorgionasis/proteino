@@ -121,7 +121,7 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
 
       {/* Hero / gallery */}
       {Array.isArray((item as any).images) && (item as any).images.length > 0 ? (
-        <div className="pt-6">
+        <div data-orbit-source className="pt-6">
           <ItemGalleryViewer
             images={(item as any).images as GalleryImage[]}
             tabs={["Εσωτερικά", "Εξωτερικά"]}
@@ -129,7 +129,7 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
         </div>
       ) : (
         <div className="px-6 pt-6">
-          <div className="w-full h-[220px] rounded-[12px] overflow-hidden bg-zinc-800 flex items-center justify-center">
+          <div data-orbit-source className="w-full h-[220px] rounded-[12px] overflow-hidden bg-zinc-800 flex items-center justify-center">
             {coverUrl ? <img src={coverUrl} alt={title} className="w-full h-full object-cover" /> : <span className="text-zinc-500 text-5xl">☕</span>}
           </div>
         </div>

@@ -139,7 +139,7 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
 
       {/* Hero */}
       <div className="px-6 pt-6">
-        <div className="relative w-full h-[228px] rounded-[12px] overflow-hidden bg-zinc-200">
+        <div data-orbit-source className="relative w-full h-[228px] rounded-[12px] overflow-hidden bg-zinc-200">
           {coverUrl && <Image src={coverUrl} alt={title} fill className="object-cover" priority />}
         </div>
       </div>

@@ -130,7 +130,7 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
 
       {/* ── Cover ──────────────────────────────────────────────── */}
       <div className="px-6 pt-6">
-        <div className="relative w-full h-[280px] rounded-[12px] overflow-hidden bg-zinc-200 flex items-center justify-center">
+        <div data-orbit-source className="relative w-full h-[280px] rounded-[12px] overflow-hidden bg-zinc-200 flex items-center justify-center">
           {coverUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img src={coverUrl} alt={title} className="w-full h-full object-cover" />

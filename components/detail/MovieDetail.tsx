@@ -238,7 +238,7 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
 
       {/* ── Trailer image ─────────────────────────────────── */}
       <div className="px-6 pt-6">
-        <div className="relative w-full h-[228px] rounded-[12px] overflow-hidden bg-zinc-200">
+        <div data-orbit-source className="relative w-full h-[228px] rounded-[12px] overflow-hidden bg-zinc-200">
           {coverUrl && <Image src={coverUrl} alt={title} fill className="object-cover" priority />}
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-[60px] h-[60px] rounded-full bg-white/80 flex items-center justify-center shadow-lg">
