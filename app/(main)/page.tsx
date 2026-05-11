@@ -1,4 +1,9 @@
 import type { Metadata } from "next";
+
+// ISR — refresh every 60s. Admin writes also call `revalidatePath('/')`
+// for instant updates; this is the upper-bound staleness fallback.
+export const revalidate = 60;
+
 import { CarouselLandscape, type LandscapeItem } from "@/components/recommendation/CarouselLandscape";
 import { CarouselPortrait, type PortraitItem } from "@/components/recommendation/CarouselPortrait";
 import { AIChips, type CategoryChip } from "@/components/home/AIChips";

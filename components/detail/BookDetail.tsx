@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
@@ -43,7 +44,6 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
   const [userRating, setUserRating] = useState(data.myReview?.rating ?? 0);
   const { save: saveReview, busy: reviewBusy, savedRating } = useReview(data.item.id, { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null });
   const [userText, setUserText] = useState(data.myReview?.reflection ?? "");
-  const [plotExpanded, setPlotExpanded] = useState(false);
   const [authorBioExpanded, setAuthorBioExpanded] = useState(false);
 
   const { item, extension: ext, suggestions } = data;
@@ -189,14 +189,11 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
       {plot && (
         <div className="px-6 mt-8 space-y-4">
           <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">Πλοκή</p>
-          <p className="text-[15px] font-normal text-zinc-800 leading-[150%]">
-            {plotExpanded ? plot : plot.slice(0, 200) + (plot.length > 200 ? "…" : "")}
-          </p>
-          {plot.length > 200 && (
-            <button onClick={() => setPlotExpanded(v => !v)} className="text-[14px] font-bold text-zinc-800 underline">
-              {plotExpanded ? "Λιγότερα" : "Περισσότερα"}
-            </button>
-          )}
+          <ExpandableText
+            text={plot}
+            collapsedLines={5}
+            className="text-[15px] font-normal text-zinc-800 leading-[150%]"
+          />
         </div>
       )}
 

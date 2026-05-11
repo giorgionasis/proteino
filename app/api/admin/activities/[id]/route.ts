@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateCategory } from "@/lib/revalidate";
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const sb = createAdminClient();
@@ -36,6 +37,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const sb = createAdminClient();
   const { error } = await (sb.from("activities") as any).update(patch).eq("id", params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateCategory("hotels");
   return NextResponse.json({ ok: true });
 }
 
@@ -43,5 +45,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const sb = createAdminClient();
   const { error } = await sb.from("activities").delete().eq("id", params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateCategory("hotels");
   return NextResponse.json({ ok: true });
 }

@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateCategory } from "@/lib/revalidate";
 
 /**
  * POST /api/admin/items/[id]/location
@@ -51,6 +52,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // Map view + nearby filters depend on lat/lng — bust the category cache.
+  revalidateCategory(category);
 
   return NextResponse.json({ ok: true, address, lat, lng });
 }

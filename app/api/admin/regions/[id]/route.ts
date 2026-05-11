@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateFrontend } from "@/lib/revalidate";
 
 /**
  * Per-row regions ops.
@@ -53,6 +54,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateFrontend();
   return NextResponse.json(data);
 }
 
@@ -87,5 +89,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 
   const { error } = await sb.from("regions").delete().eq("id", params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateFrontend();
   return NextResponse.json({ ok: true });
 }

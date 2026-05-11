@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateFrontend } from "@/lib/revalidate";
 
 const GREEK_TO_LATIN: Record<string, string> = {
   "α":"a","β":"v","γ":"g","δ":"d","ε":"e","ζ":"z","η":"i","θ":"th",
@@ -182,5 +183,7 @@ export async function POST(req: NextRequest) {
     .eq("id", created.id)
     .single();
 
+  // Collections drive home + category carousels — bust both surfaces.
+  revalidateFrontend();
   return NextResponse.json(full ?? created);
 }

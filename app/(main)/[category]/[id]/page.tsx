@@ -1,5 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+
+// ISR — refresh every 60s. Admin saves call `revalidatePath` on this
+// specific path for instant updates; this caps staleness for items
+// that aren't actively being edited.
+export const revalidate = 60;
+
 import { MovieDetail }   from "@/components/detail/MovieDetail";
 import { SeriesDetail }  from "@/components/detail/SeriesDetail";
 import { BookDetail }    from "@/components/detail/BookDetail";

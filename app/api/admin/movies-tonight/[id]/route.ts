@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateHome } from "@/lib/revalidate";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const body = await req.json();
@@ -25,6 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  revalidateHome();
   return NextResponse.json({ ok: true });
 }
 
@@ -32,5 +34,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const sb = createAdminClient();
   const { error } = await sb.from("movies_tonight").delete().eq("id", params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateHome();
   return NextResponse.json({ ok: true });
 }

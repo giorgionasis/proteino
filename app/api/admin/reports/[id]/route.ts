@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateFrontend } from "@/lib/revalidate";
 
 const VALID_ACTIONS = ["kept", "hidden"] as const;
 type Action = (typeof VALID_ACTIONS)[number];
@@ -124,5 +125,8 @@ export async function PATCH(
     }
   }
 
+  // Hiding content removes it from frontend pages — bust caches so the
+  // visible-on-site state matches the moderation decision quickly.
+  if (action === "hidden") revalidateFrontend();
   return NextResponse.json({ ok: true, action });
 }

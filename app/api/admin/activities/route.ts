@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateCategory } from "@/lib/revalidate";
 
 // GET /api/admin/activities?category_id=...&type_id=...&q=...&page=0
 export async function GET(req: NextRequest) {
@@ -57,5 +58,7 @@ export async function POST(req: NextRequest) {
     .select("*")
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Activities appear in nearby-activities cards on hotel detail pages.
+  revalidateCategory("hotels");
   return NextResponse.json(data);
 }

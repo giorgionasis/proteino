@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateFrontend } from "@/lib/revalidate";
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createAdminClient();
@@ -108,6 +109,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .single();
 
   if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+  revalidateFrontend();
   return NextResponse.json(full);
 }
 
@@ -116,5 +118,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   // Placements cascade via FK ON DELETE CASCADE
   const { error } = await supabase.from("collections").delete().eq("id", params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateFrontend();
   return NextResponse.json({ ok: true });
 }

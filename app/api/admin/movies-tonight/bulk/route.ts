@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateHome } from "@/lib/revalidate";
 
 interface DraftRow {
   title: string;
@@ -112,5 +113,6 @@ export async function PUT(req: NextRequest) {
     .upsert(insertRows, { onConflict: "item_id,channel,air_date,air_time", count: "exact", ignoreDuplicates: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateHome();
   return NextResponse.json({ inserted: count ?? insertRows.length });
 }

@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+
+// ISR — refresh every 60s. Admin writes also call `revalidatePath` on
+// the affected category for instant updates; this caps staleness.
+export const revalidate = 60;
+
 import { CATEGORIES } from "@/constants/categories";
 import { CategoryPageShell } from "@/components/category/CategoryPageShell";
 import type { CategorySlug } from "@/types";

@@ -52,7 +52,6 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
   const [userRating, setUserRating] = useState(data.myReview?.rating ?? 0);
   const { save: saveReview, busy: reviewBusy, savedRating } = useReview(data.item.id, { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null });
   const [userText, setUserText] = useState(data.myReview?.reflection ?? "");
-  const [plotExpanded, setPlotExpanded] = useState(false);
 
   const { item, extension: ext, suggestions } = data;
   const mySuggestion = data.currentUserId ? suggestions.find(s => s.user.id === data.currentUserId) ?? null : null;

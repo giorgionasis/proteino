@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateFrontend } from "@/lib/revalidate";
 
 // POST /api/admin/collections/reorder
 // Body: { context, category?, ordered_placement_ids: string[] }
@@ -34,5 +35,6 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  revalidateFrontend();
   return NextResponse.json({ ok: true });
 }

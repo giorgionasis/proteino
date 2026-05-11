@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateHome } from "@/lib/revalidate";
 
 // GET /api/admin/movies-tonight?from=2026-05-04&to=2026-05-10
 // Returns airings within the date range with the embedded movie item.
@@ -57,5 +58,6 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  revalidateHome();
   return NextResponse.json(data);
 }

@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateFrontend } from "@/lib/revalidate";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const body = await req.json();
@@ -17,6 +18,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const { error } = await (supabase.from("subcategories") as any).update(patch).eq("id", params.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateFrontend();
   return NextResponse.json({ ok: true });
 }
 
@@ -39,5 +41,6 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   const { error } = await supabase.from("subcategories").delete().eq("id", params.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateFrontend();
   return NextResponse.json({ ok: true });
 }

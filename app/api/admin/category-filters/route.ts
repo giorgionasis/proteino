@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateCategory } from "@/lib/revalidate";
 
 // GET /api/admin/category-filters?category=movies
 export async function GET(req: NextRequest) {
@@ -54,5 +55,7 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  // New filter affects this category's bottom-sheet picker → bust it.
+  revalidateCategory(category);
   return NextResponse.json(data);
 }

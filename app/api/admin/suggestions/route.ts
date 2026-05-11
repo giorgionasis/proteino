@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateItem } from "@/lib/revalidate";
 
 export async function PUT(req: NextRequest) {
   const body = await req.json();
@@ -50,6 +51,12 @@ export async function PUT(req: NextRequest) {
   if (errors.length > 0) {
     return NextResponse.json({ error: errors.join("; ") }, { status: 500 });
   }
+
+  // Invalidate the frontend pages that show this item — detail,
+  // category listing, reviews subpage, home. Without this the admin
+  // edit doesn't appear publicly until the next ISR tick / rebuild.
+  // `slug` may not be in the payload; revalidateItem handles null.
+  revalidateItem(category, mergedItemData?.slug ?? null);
 
   return NextResponse.json({ ok: true });
 }

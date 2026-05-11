@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateCategory } from "@/lib/revalidate";
 
 // POST /api/admin/category-filters/reorder
 // Body: { category, ordered_ids: string[] }
@@ -20,5 +21,6 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  revalidateCategory(category);
   return NextResponse.json({ ok: true });
 }

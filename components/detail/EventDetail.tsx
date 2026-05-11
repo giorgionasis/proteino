@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { InnerHeader } from "@/components/layout/Header";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
 import { useReview } from "@/hooks/useReview";
 import { OwnSuggestionActions } from "@/components/detail/OwnSuggestionActions";
@@ -57,7 +58,6 @@ function formatDates(dates: unknown): string {
 
 export function EventDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
-  const [descExpanded, setDescExpanded] = useState(false);
   const [userRating, setUserRating] = useState(data.myReview?.rating ?? 0);
   const { save: saveReview, busy: reviewBusy, savedRating } = useReview(data.item.id, { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null });
   const [userText, setUserText] = useState(data.myReview?.reflection ?? "");
@@ -203,14 +203,11 @@ export function EventDetail({ data }: { data: ItemDetailData }) {
           <InfoDivider />
           <div className="pl-6 pr-6 py-5 space-y-4">
             <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΠΕΡΙΓΡΑΦΗ</p>
-            <p className="text-[15px] font-normal text-zinc-800 leading-[150%]">
-              {descExpanded ? description : description.slice(0, 140) + (description.length > 140 ? "…" : "")}
-            </p>
-            {description.length > 140 && (
-              <button onClick={() => setDescExpanded(v => !v)} className="text-[14px] font-bold text-zinc-800 underline">
-                {descExpanded ? "Λιγότερα" : "Περισσότερα"}
-              </button>
-            )}
+            <ExpandableText
+              text={description}
+              collapsedLines={4}
+              className="text-[15px] font-normal text-zinc-800 leading-[150%]"
+            />
           </div>
         </>
       )}

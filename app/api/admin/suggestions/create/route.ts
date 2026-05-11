@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateItem } from "@/lib/revalidate";
 
 const GREEK_TO_LATIN: Record<string, string> = {
   "α":"a","β":"v","γ":"g","δ":"d","ε":"e","ζ":"z","η":"i","θ":"th",
@@ -98,5 +99,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: sugErr?.message ?? "suggestion insert failed" }, { status: 500 });
   }
 
+  // Bust frontend caches: a new item just landed in this category.
+  revalidateItem(category, candidate);
   return NextResponse.json({ id: sugData.id, item_id: itemData.id, slug: fullSlug });
 }

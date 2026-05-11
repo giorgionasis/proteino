@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateCategory } from "@/lib/revalidate";
 
 // GET /api/admin/category-filters/settings?category=movies
 export async function GET(req: NextRequest) {
@@ -38,5 +39,6 @@ export async function PATCH(req: NextRequest) {
   const { error } = await (sb.from("category_filter_settings") as any)
     .upsert({ category, ...patch }, { onConflict: "category" });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateCategory(category);
   return NextResponse.json({ ok: true });
 }

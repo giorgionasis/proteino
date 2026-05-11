@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
 import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
 import { useReview } from "@/hooks/useReview";
 import { OwnSuggestionActions } from "@/components/detail/OwnSuggestionActions";
@@ -52,7 +53,6 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
   const [userRating,   setUserRating]   = useState(data.myReview?.rating ?? 0);
   const { save: saveReview, busy: reviewBusy, savedRating } = useReview(data.item.id, { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null });
   const [userText, setUserText] = useState(data.myReview?.reflection ?? "");
-  const [plotExpanded, setPlotExpanded] = useState(false);
 
   const { item, extension: ext, suggestions } = data;
   const mySuggestion = data.currentUserId ? suggestions.find(s => s.user.id === data.currentUserId) ?? null : null;
@@ -183,14 +183,11 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
             <InfoDivider />
             <div className="pl-6 pr-6 py-5 space-y-4">
               <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΠΛΟΚΗ</p>
-              <p className="text-[15px] font-normal text-zinc-800 leading-[150%]">
-                {plotExpanded ? plot : plot.slice(0, 140) + (plot.length > 140 ? "…" : "")}
-              </p>
-              {plot.length > 140 && (
-                <button onClick={() => setPlotExpanded(v => !v)} className="text-[14px] font-bold text-zinc-800 underline">
-                  {plotExpanded ? "Λιγότερα" : "Περισσότερα"}
-                </button>
-              )}
+              <ExpandableText
+                text={plot}
+                collapsedLines={4}
+                className="text-[15px] font-normal text-zinc-800 leading-[150%]"
+              />
             </div>
           </>
         )}

@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { slugify } from "@/lib/slugify";
+import { revalidateFrontend } from "@/lib/revalidate";
 
 /**
  * Admin regions CRUD.
@@ -56,5 +57,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // New region affects every category's region picker → bust everything.
+  revalidateFrontend();
   return NextResponse.json(data);
 }
