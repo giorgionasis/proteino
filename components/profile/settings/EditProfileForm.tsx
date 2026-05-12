@@ -1,9 +1,16 @@
 "use client";
 
 import Image from "next/image";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
+
+export interface RegionRow {
+  id:            string;
+  name:          string;
+  parent_id:     string | null;
+  display_order: number;
+}
 
 interface Props {
   handle:      string;
@@ -14,6 +21,10 @@ interface Props {
   gender:      string;
   birthday:    string;
   region:      string;
+  /** Structured region selection from migration 028. Empty string = unset. */
+  regionId:    string;
+  /** Full regions tree (loaded server-side). */
+  regions:     RegionRow[];
 }
 
 export function EditProfileForm(props: Props) {
@@ -25,7 +36,10 @@ export function EditProfileForm(props: Props) {
   const [bio, setBio]                 = useState(props.bio);
   const [gender, setGender]           = useState(props.gender);
   const [birthday, setBirthday]       = useState(props.birthday);
-  const [region, setRegion]           = useState(props.region);
+  // Region is now structured (region_id FK). Legacy `region` text is
+  // kept around so old admin queries still see something — the API
+  // resolves it from region_id at save time.
+  const [regionId, setRegionId]       = useState(props.regionId);
   // Avatar upload state — separate save flow from the rest of the form
   // since the avatar persists immediately on upload (it's already live
   // in storage; rolling back via Cancel would orphan a file).
@@ -65,7 +79,7 @@ export function EditProfileForm(props: Props) {
           bio:          bio.trim() || null,
           gender:       gender || null,
           birthday:     birthday || null,
-          region:       region.trim() || null,
+          region_id:    regionId || null,
         }),
       });
       const data = await res.json();
@@ -205,14 +219,14 @@ export function EditProfileForm(props: Props) {
         </FieldRow>
 
         <FieldRow label="Περιοχή">
-          <input
-            type="text"
-            value={region}
-            onChange={e => setRegion(e.target.value)}
-            maxLength={60}
-            placeholder="π.χ. Αθήνα"
-            className="w-full text-[16px] font-medium text-zinc-800 bg-transparent outline-none placeholder:text-zinc-400"
+          <RegionPicker
+            regionId={regionId}
+            setRegionId={setRegionId}
+            regions={props.regions}
           />
+          <p className="text-[12px] text-zinc-500 mt-1.5 leading-snug">
+            Χρησιμοποιείται για να ανεβαίνουν στην αρχή προτάσεις κοντά σου (εστιατόρια, bars, εκδηλώσεις). Δεν είναι φίλτρο — βλέπεις τα πάντα.
+          </p>
         </FieldRow>
 
         {error   && <p className="text-sm font-semibold text-red-500 text-center py-4">{error}</p>}
@@ -238,6 +252,117 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
     <div className="py-5 border-b border-zinc-200 space-y-1.5">
       <p className="text-[16px] font-bold text-zinc-700">{label}</p>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Cascading region picker. Reads the regions tree (N-level deep) and
+ * renders one native <select> per level. Picking at level i sets the
+ * region to that value AND prunes deeper levels until the user dives
+ * further. Selection is single — region_id is one specific node, which
+ * may be top-level (Αθήνα), intermediate (Βόρεια Προάστια), or leaf
+ * (Χαλάνδρι). Soft-sort logic on the server expands selected → all
+ * descendants so users get a sensible region match regardless of how
+ * specific they picked.
+ *
+ * Native <select> is intentional — it triggers the OS picker on
+ * mobile (cleaner UX than a custom dropdown for a deeply nested list).
+ */
+function RegionPicker({
+  regionId, setRegionId, regions,
+}: { regionId: string; setRegionId: (v: string) => void; regions: RegionRow[] }) {
+  const byId = useMemo(() => {
+    const m = new Map<string, RegionRow>();
+    for (const r of regions) m.set(r.id, r);
+    return m;
+  }, [regions]);
+
+  const childrenByParent = useMemo(() => {
+    const m = new Map<string, RegionRow[]>();
+    for (const r of regions) {
+      const key = r.parent_id ?? "__root__";
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(r);
+    }
+    m.forEach((arr) => arr.sort((a, b) => {
+      const o = (a.display_order ?? 0) - (b.display_order ?? 0);
+      return o !== 0 ? o : a.name.localeCompare(b.name, "el");
+    }));
+    return m;
+  }, [regions]);
+
+  // Walk from selected up to root: full ancestor path including
+  // the current selection (so deeper levels appear automatically).
+  const path: string[] = useMemo(() => {
+    const out: string[] = [];
+    let cur = regionId ? byId.get(regionId) : undefined;
+    while (cur) {
+      out.unshift(cur.id);
+      cur = cur.parent_id ? byId.get(cur.parent_id) : undefined;
+    }
+    return out;
+  }, [regionId, byId]);
+
+  // Build level descriptors: first is root children. Each ancestor
+  // contributes a level for its own children. Stop adding levels when
+  // the current selection has no children of its own (it's a leaf).
+  const levels: { parentKey: string; selected: string }[] = [];
+  levels.push({ parentKey: "__root__", selected: path[0] ?? "" });
+  for (let i = 0; i < path.length; i++) {
+    const ancestorId = path[i];
+    const kids = childrenByParent.get(ancestorId);
+    if (!kids || kids.length === 0) break;
+    levels.push({ parentKey: ancestorId, selected: path[i + 1] ?? "" });
+  }
+
+  function onLevelChange(levelIdx: number, value: string) {
+    if (value) {
+      setRegionId(value);
+    } else {
+      const parentSelection = levelIdx === 0 ? "" : path[levelIdx - 1] ?? "";
+      setRegionId(parentSelection);
+    }
+  }
+
+  if (regions.length === 0) {
+    return (
+      <p className="text-[14px] text-zinc-400 italic">
+        Φόρτωση περιοχών...
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      {levels.map((lvl, i) => {
+        const opts = childrenByParent.get(lvl.parentKey) ?? [];
+        if (opts.length === 0) return null;
+        return (
+          <select
+            key={`${i}-${lvl.parentKey}`}
+            value={lvl.selected}
+            onChange={(e) => onLevelChange(i, e.target.value)}
+            className="w-full h-11 px-3 rounded-lg border border-zinc-200 bg-white text-[15px] text-zinc-800 focus:outline-none focus:border-coral-600 transition-colors"
+          >
+            <option value="">
+              {i === 0 ? "— Διάλεξε περιοχή —" : "— επιλογή —"}
+            </option>
+            {opts.map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
+        );
+      })}
+      {regionId && (
+        <button
+          type="button"
+          onClick={() => setRegionId("")}
+          className="self-start text-[13px] text-zinc-500 underline active:opacity-70"
+        >
+          Καθαρισμός
+        </button>
+      )}
     </div>
   );
 }

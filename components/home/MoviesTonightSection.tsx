@@ -7,6 +7,7 @@
 
 import Link from "next/link";
 import { formatAirTime, type TonightAiring } from "@/lib/movies-tonight";
+import { ICON_PATHS, platformIconForChannel } from "@/lib/icons";
 
 export function MoviesTonightSection({ airings }: { airings: TonightAiring[] }) {
   if (airings.length === 0) return null;
@@ -53,9 +54,7 @@ export function MoviesTonightSection({ airings }: { airings: TonightAiring[] }) 
               {a.movie.title}
             </p>
             <div className="flex items-center gap-1.5 mt-1 text-[11px] text-zinc-500">
-              <span className="inline-block px-1.5 py-0.5 rounded bg-zinc-100 font-bold text-zinc-700">
-                {a.channel}
-              </span>
+              <ChannelBadge channel={a.channel} />
               {a.movie.avg_rating > 0 && (
                 <span className="inline-flex items-center gap-0.5 text-amber-600">
                   ★ {a.movie.avg_rating.toFixed(1)}
@@ -66,5 +65,32 @@ export function MoviesTonightSection({ airings }: { airings: TonightAiring[] }) 
         ))}
       </div>
     </section>
+  );
+}
+
+/**
+ * Channel badge — renders the channel's logo when we have one registered
+ * (Greek TV channels live under `channel-*` in lib/icons.ts), falls back
+ * to the plain text pill for unrecognised channels. Rendered as raw <img>
+ * (bypassing <Icon>) so the SVG's native aspect ratio is preserved —
+ * widths range 43–67 at h=20 across the channel set.
+ */
+function ChannelBadge({ channel }: { channel: string }) {
+  const iconName = platformIconForChannel(channel);
+  if (iconName) {
+    return (
+      <span
+        className="inline-flex items-center h-5 px-1.5 rounded bg-white border border-zinc-200"
+        title={channel}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={ICON_PATHS[iconName]} alt={channel} style={{ height: 12, width: "auto" }} />
+      </span>
+    );
+  }
+  return (
+    <span className="inline-block px-1.5 py-0.5 rounded bg-zinc-100 font-bold text-zinc-700">
+      {channel}
+    </span>
   );
 }

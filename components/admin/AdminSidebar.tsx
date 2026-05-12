@@ -47,6 +47,7 @@ const NAV: NavEntry[] = [
   { label: "Reviews",  href: "/admin/reviews",  icon: <IconStar />, counterKey: "reportedReviews", counterTone: "red" },
   { label: "Reports",  href: "/admin/reports",  icon: <IconFlag />, counterKey: "pendingReports",  counterTone: "red" },
   { label: "Users",    href: "/admin/users",    icon: <IconUsers /> },
+  { label: "Moments",  href: "/admin/moments",  icon: <IconConfetti /> },
   { label: "AI Usage", href: "/admin/ai-usage", icon: <IconSparkles /> },
   { label: "Showcase", href: "/admin/showcase", icon: <IconPalette /> },
   { label: "Settings", href: "/admin/settings", icon: <IconSettings /> },
@@ -250,6 +251,9 @@ function IconAlert() {
 }
 function IconSparkles() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>;
+}
+function IconConfetti() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5.8 11.3L2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="M22 2L12 12"/></svg>;
 }
 function IconPalette() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r="0.5" fill="currentColor"/><circle cx="17.5" cy="10.5" r="0.5" fill="currentColor"/><circle cx="8.5" cy="7.5" r="0.5" fill="currentColor"/><circle cx="6.5" cy="12.5" r="0.5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c3.31 0 6-2.69 6-6 0-4.96-4.49-9-10-9z"/></svg>;

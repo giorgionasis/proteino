@@ -24,6 +24,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fetchHomeCollections, type HydratedCollection } from "@/lib/collections";
 import { safeImageUrl } from "@/lib/image-url";
 import { fetchTonightAirings, type TonightAiring } from "@/lib/movies-tonight";
+import { getRegionMatchSet } from "@/lib/regions";
 
 export const metadata: Metadata = { title: "Proteino" };
 
@@ -42,16 +43,25 @@ function extractArea(address: string | null | undefined): string | undefined {
   return parts[parts.length - 1] || undefined;
 }
 
-async function fetchFoodLandscape(sb: SB, limit = 5): Promise<LandscapeItem[]> {
+async function fetchFoodLandscape(
+  sb: SB,
+  limit = 5,
+  regionMatchSet: Set<string> = new Set(),
+): Promise<LandscapeItem[]> {
+  // When the viewer has a region set, pull a larger candidate pool
+  // so the region-aware sort has material to bubble local items up.
+  // 5× limit caps wasted bandwidth while leaving room for re-ranking.
+  const fetchLimit = regionMatchSet.size > 0 ? Math.max(limit * 5, 25) : limit;
+
   const { data } = await sb
     .from("items")
-    .select("id, title, slug, cover_url, avg_rating, rating_count, item_food(cuisine, type, address), suggestions(users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, level, suggestion_count, avg_quality_score))")
+    .select("id, title, slug, cover_url, avg_rating, rating_count, item_food(cuisine, type, address, region_id), suggestions(users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, level, suggestion_count, avg_quality_score))")
     .eq("category", "food")
     .eq("is_published", true)
     .order("avg_rating", { ascending: false })
-    .limit(limit);
+    .limit(fetchLimit);
 
-  return (data ?? []).map((r: any) => {
+  const rows = (data ?? []).map((r: any) => {
     const ext = Array.isArray(r.item_food) ? r.item_food[0] : r.item_food;
     const u = (r.suggestions ?? []).find((s: any) => s?.users?.id)?.users ?? null;
     const suggester = u ? {
@@ -62,19 +72,34 @@ async function fetchFoodLandscape(sb: SB, limit = 5): Promise<LandscapeItem[]> {
       avg_quality_score: u.avg_quality_score ?? undefined,
     } : null;
     return {
-      id: r.id,
-      title: r.title,
-      cover_url: safeImageUrl(r.cover_url),
-      subtitle: ext?.cuisine || ext?.type || "Εστιατόριο",
-      location: extractArea(ext?.address),
-      avg_rating: r.avg_rating,
-      rating_count: r.rating_count,
-      is_top_rated: r.avg_rating >= 4.5 && r.rating_count >= 5,
-      href: `/food/${stripPrefix(r.slug)}`,
-      avatar_url: suggester?.avatar_url ?? null,
-      suggester,
+      __regionId: ext?.region_id as string | null | undefined,
+      __row: {
+        id: r.id,
+        title: r.title,
+        cover_url: safeImageUrl(r.cover_url),
+        subtitle: ext?.cuisine || ext?.type || "Εστιατόριο",
+        location: extractArea(ext?.address),
+        avg_rating: r.avg_rating,
+        rating_count: r.rating_count,
+        is_top_rated: r.avg_rating >= 4.5 && r.rating_count >= 5,
+        href: `/food/${stripPrefix(r.slug)}`,
+        avatar_url: suggester?.avatar_url ?? null,
+        suggester,
+      } as LandscapeItem,
     };
   });
+
+  // Soft sort: items in the viewer's region (or any descendant) first,
+  // preserving avg_rating order within each group.
+  if (regionMatchSet.size > 0) {
+    rows.sort((a, b) => {
+      const aIn = a.__regionId && regionMatchSet.has(a.__regionId) ? 1 : 0;
+      const bIn = b.__regionId && regionMatchSet.has(b.__regionId) ? 1 : 0;
+      return bIn - aIn;
+    });
+  }
+
+  return rows.slice(0, limit).map((r) => r.__row);
 }
 
 async function fetchMovies(sb: SB, limit = 7): Promise<PortraitItem[]> {
@@ -267,6 +292,7 @@ export default async function HomePage() {
 
   let isRegistered = false;
   let displayName = "";
+  let viewerRegionId: string | null = null;
 
   if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
@@ -279,13 +305,26 @@ export default async function HomePage() {
           u.user_metadata?.full_name ??
           u.email?.split("@")[0] ??
           "";
+        // Pull the saved region_id for soft-sorting venue carousels.
+        // One extra small read — adds no dynamism since the page
+        // already reads cookies above.
+        const { data: viewerRow } = await sb
+          .from("users")
+          .select("region_id")
+          .eq("id", u.id)
+          .maybeSingle();
+        viewerRegionId = (viewerRow as { region_id?: string | null } | null)?.region_id ?? null;
       }
     } catch { /* network error — render guest view */ }
   }
 
+  // Build the region descendant set once and pass through to every
+  // venue fetcher that takes it. Empty set when viewer has no region.
+  const regionMatchSet = await getRegionMatchSet(sb, viewerRegionId);
+
   const [food, movies, series, books, recipes, topUsers, chips, feedItems, collections, tonight] =
     await Promise.all([
-      fetchFoodLandscape(sb),
+      fetchFoodLandscape(sb, 5, regionMatchSet),
       fetchMovies(sb),
       fetchSeries(sb),
       fetchBooks(sb),

@@ -65,6 +65,12 @@ export type ItemDetailData = {
     /** Current viewer's vote on this review: 1, -1, or null. Always null for guests. */
     my_vote: 1 | -1 | null;
   }>;
+  /** Populated only for `category === "movies"` AND only when the
+   *  movie has a row in `movies_tonight` with `air_date = today`.
+   *  Drives the channel-icon badge on the detail page hero — the user's
+   *  explicit "show me where it airs today" hook. Null on any other
+   *  day, on non-movie pages, and for movies without a tonight booking. */
+  airingToday?: { channel: string; air_time: string } | null;
 };
 
 const EXT_TABLE: Record<string, string> = {
@@ -247,6 +253,31 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     backdrop_url: safeImageUrl(item.backdrop_url),
   };
 
+  // Airing-today check — movies only. One small query against
+  // movies_tonight, scoped to TODAY's date in YYYY-MM-DD. If the admin
+  // booked this movie to air today, the detail page hero gets a channel
+  // badge. Yesterday + tomorrow are explicitly NOT included — the hook
+  // is "where can you watch this RIGHT NOW", not "where has it played".
+  let airingToday: { channel: string; air_time: string } | null = null;
+  if (category === "movies") {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: airing } = await sb
+      .from("movies_tonight")
+      .select("channel, air_time")
+      .eq("item_id", item.id)
+      .eq("air_date", today)
+      .eq("is_published", true)
+      .order("air_time", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (airing) {
+      airingToday = {
+        channel:  (airing as { channel: string }).channel,
+        air_time: (airing as { air_time: string }).air_time,
+      };
+    }
+  }
+
   return {
     item: normalizedItem,
     extension: ext,
@@ -264,6 +295,7 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     ratingDistribution,
     isTopRated,
     reviews,
+    airingToday,
   };
 }
 

@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import type { CategorySlug } from "@/types";
 import { processAndStoreItemImageFromUrl } from "@/lib/item-image-upload";
+import { resolveOneMoment, buildVars } from "@/lib/moments";
+import type { ResolvedMoment } from "@/lib/moments";
 
 // Node runtime: Sharp (used by the image pipeline kicked off after item
 // creation) has native bindings and can't run on Edge.
@@ -396,17 +398,59 @@ export async function POST(req: NextRequest) {
     .update({ suggestion_count: newCount, last_suggestion_at: now })
     .eq("id", user.id);
 
-  // 4a. Milestone detection. When the publish crosses a milestone
-  //     threshold, the client overlays a celebration modal on top of
-  //     the Published screen. Two flavors:
-  //
-  //       tier_unlock     — a new badge becomes active (3 / 10 / 25 / 50)
-  //       progress_nudge  — encouragement on the way to the next tier
-  //                          (1 = first ever; 7 = "almost Gold")
-  //
-  //     "First ever" is technically a `progress_nudge` but the client
-  //     uses the `type` field to swap copy.
-  const achievement = computeAchievement(newCount);
+  // 4a. Achievement moment — resolved via the DB-driven `moments` table
+  //     (migration 026/027). The resolver picks the highest-priority
+  //     active row matching `trigger_event='suggestion_published'`
+  //     whose predicate evaluates true for this user's new count, then
+  //     interpolates copy placeholders ({count}, {remaining}, {ordinal})
+  //     before returning. Admins can edit copy + timing + add new
+  //     variants via /admin/moments without a code change.
+  const { data: userMeta } = await admin
+    .from("users")
+    .select("handle, display_name")
+    .eq("id", user.id)
+    .single();
+
+  const targetForCount =
+    newCount <= 3  ? 3  :
+    newCount <= 10 ? 10 :
+    newCount <= 25 ? 25 : 50;
+  const badgeForTarget =
+    targetForCount === 3  ? "verified" :
+    targetForCount === 10 ? "gold" :
+    targetForCount === 25 ? "expert"   : "platinum";
+
+  const momentCtx = {
+    user: {
+      id:               user.id,
+      handle:           (userMeta as any)?.handle ?? null,
+      display_name:     (userMeta as any)?.display_name ?? null,
+      suggestion_count: newCount,
+    },
+    payload: {
+      count:    newCount,
+      category,
+    },
+    vars: buildVars({
+      user:    { handle: (userMeta as any)?.handle, display_name: (userMeta as any)?.display_name },
+      category,
+      count:   newCount,
+      target:  targetForCount,
+      badge:   badgeForTarget,
+    }),
+  };
+
+  const achievementRaw: ResolvedMoment | null = await resolveOneMoment(
+    "suggestion_published",
+    "achievement_modal",
+    momentCtx,
+  );
+  // Enrich display with the runtime count — the modal uses it to draw
+  // progress dots ([target - dotCount + 1 .. target]). Stored alongside
+  // the moment's own display knobs (variant/badge/target/delay_ms).
+  const achievement = achievementRaw
+    ? { ...achievementRaw, display: { ...achievementRaw.display, count: newCount } }
+    : null;
 
   // 5. Hook moments (HOOKS.md §2B). Three cheap counts that drive the
   //    Published screen's social-proof + variable-reward block. Computed
@@ -448,66 +492,7 @@ export async function POST(req: NextRequest) {
   });
 }
 
-// ─── Milestone schedule ─────────────────────────────────────────────────
-//
-// Each badge tier has a small "approach run" of celebration popups so
-// the user feels the tier coming. The schedule (from user Figma mocks):
-//
-//   tier=3  (Verified) — fire at counts 1, 2, 3
-//   tier=10 (Gold)     — fire at counts 7, 9, 10
-//   tier=25 (Expert)   — fire at counts 22, 24, 25
-//   tier=50 (Platinum) — fire at counts 47, 49, 50
-//
-// counts == target → variant "tier_unlock"   (colored badge + sparkles)
-// counts < target  → variant "progress"      (greyed badge + progress dots)
-//
-// The schedule lives server-side so we can extend it (e.g. add count=22
-// for Expert mid-flight) without a client rebuild.
-
-type BadgeTier = "verified" | "gold" | "expert" | "platinum";
-
-interface Trigger {
-  variant: "progress" | "tier_unlock";
-  target:  number;
-  badge:   BadgeTier;
-}
-
-const TRIGGERS: Record<number, Trigger> = {
-  // tier=3 — Verified
-  1:  { variant: "progress",    target: 3,  badge: "verified" },
-  2:  { variant: "progress",    target: 3,  badge: "verified" },
-  3:  { variant: "tier_unlock", target: 3,  badge: "verified" },
-  // tier=10 — Έμπειρος (Gold)
-  7:  { variant: "progress",    target: 10, badge: "gold" },
-  9:  { variant: "progress",    target: 10, badge: "gold" },
-  10: { variant: "tier_unlock", target: 10, badge: "gold" },
-  // tier=25 — Expert
-  22: { variant: "progress",    target: 25, badge: "expert" },
-  24: { variant: "progress",    target: 25, badge: "expert" },
-  25: { variant: "tier_unlock", target: 25, badge: "expert" },
-  // tier=50 — Platinum
-  47: { variant: "progress",    target: 50, badge: "platinum" },
-  49: { variant: "progress",    target: 50, badge: "platinum" },
-  50: { variant: "tier_unlock", target: 50, badge: "platinum" },
-};
-
-export interface AchievementPayload {
-  variant: "progress" | "tier_unlock";
-  /** User's current suggestion_count after this publish. */
-  count:   number;
-  /** The target badge tier this celebration is about. */
-  target:  number;
-  /** The badge tier identifier. */
-  badge:   BadgeTier;
-}
-
-function computeAchievement(newCount: number): AchievementPayload | null {
-  const t = TRIGGERS[newCount];
-  if (!t) return null;
-  return {
-    variant: t.variant,
-    count:   newCount,
-    target:  t.target,
-    badge:   t.badge,
-  };
-}
+// Achievement trigger schedule + copy now lives in the DB-driven
+// `moments` table (migration 026/027). The resolver in lib/moments
+// replaces the previous hardcoded TRIGGERS map + computeAchievement
+// helper.

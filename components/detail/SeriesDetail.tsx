@@ -21,7 +21,7 @@ import { UserBadge } from "@/components/ui/UserBadge";
 import { Icon } from "@/components/ui/Icon";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
-import { platformIconForChannel, badgeLabelForSuggestions } from "@/lib/icons";
+import { streamingIconForChannel, badgeLabelForSuggestions } from "@/lib/icons";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
         <InfoDivider />
         <div className="flex pl-6 py-5">
           <InfoCell label="ΓΛΩΣΣΑ"     value={language} />
-          <InfoCellWithIcon label="ΔΙΚΤΥΟ" value={network} icon={platformIconForChannel(network)} />
+          <InfoCellWithIcon label="ΔΙΚΤΥΟ" value={network} icon={streamingIconForChannel(network)} />
         </div>
         <InfoDivider />
         <div className="pl-6 py-5 space-y-5">
@@ -344,7 +344,7 @@ function InfoCell({ label, value }: { label: string; value: string }) {
   );
 }
 
-function InfoCellWithIcon({ label, value, icon }: { label: string; value: string; icon: ReturnType<typeof platformIconForChannel> }) {
+function InfoCellWithIcon({ label, value, icon }: { label: string; value: string; icon: ReturnType<typeof streamingIconForChannel> }) {
   return (
     <div className="flex-1 flex flex-col gap-5 pr-2">
       <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">{label}</p>

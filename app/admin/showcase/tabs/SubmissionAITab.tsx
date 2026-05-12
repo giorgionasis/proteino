@@ -6,7 +6,8 @@ import { ShowcaseSection, Variant } from "@/components/admin/showcase/ShowcaseSe
 import { ProgressBar } from "@/components/ai/ProgressBar";
 import { ProteínoIntelligence } from "@/components/ai/ProteínoIntelligence";
 import { AchievementProgress } from "@/components/submission/AchievementProgress";
-import { AchievementUnlockedModal, type AchievementData } from "@/components/submission/AchievementUnlockedModal";
+import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
+import type { AchievementData } from "@/hooks/useSubmission";
 import type { SubmissionAnalysis } from "@/types";
 
 const ANALYSIS_LISTENING: SubmissionAnalysis = {
@@ -54,18 +55,71 @@ export function SubmissionAITab() {
 //
 // One click per state — opens the actual modal portal-mounted to body
 // so what you see here is byte-for-byte what users see post-submission.
+// Synthetic data mirrors the moments-table seed (migration 027) so the
+// showcase stays accurate when admins edit copy in /admin/moments — for
+// the *live* current state, the admin should preview from there instead.
+
+const TIER_ORDINAL: Record<string, string> = {
+  verified: "πρώτο", gold: "δεύτερό", expert: "τρίτο", platinum: "τέταρτο",
+};
+
+function makeAchievementData(
+  variant: "progress" | "tier_unlock",
+  count:   number,
+  target:  number,
+  badge:   "verified" | "gold" | "expert" | "platinum",
+): AchievementData {
+  const remaining = Math.max(0, target - count);
+  const ordinal   = TIER_ORDINAL[badge];
+
+  let title: string;
+  let subtitle: string;
+  let body: string;
+
+  if (variant === "tier_unlock") {
+    title = "Τα κατάφερες!";
+    subtitle = target === 3
+      ? "Το πρώτο επίτευγμα είναι δικό σου"
+      : `Απέκτησες και ${ordinal} επίτευγμα`;
+    body = target === 3
+      ? `Ολοκλήρωσες **${count}** προτάσεις και τώρα οι υπόλοιποι γνωρίζουν ότι συμβάλλεις πραγματικά στην κοινότητα του proteino`
+      : `Ολοκλήρωσες **${count}** προτάσεις και τώρα οι υπόλοιποι αναγνωρίζουν την αξία σου και τη συνεισφορά σου στην κοινότητα του proteino`;
+  } else {
+    if (count === 1)                       title = "Μόλις έκανες την πρώτη σου πρόταση!";
+    else if (target === 3 && remaining === 1) title = "Καταπληκτική αρχή!";
+    else if (remaining === 1)              title = "Είσαι πολύ κοντά!";
+    else                                   title = "Τα πας περίφημα!";
+
+    if (remaining === 1) {
+      subtitle = `Μένει ακόμη **1** πρόταση και αποκτάς το ${ordinal} σου επίτευγμα`;
+    } else if (target === 3) {
+      subtitle = `Με ακόμη **${remaining}** προτάσεις αποκτάς το ${ordinal} σου επίτευγμα`;
+    } else {
+      subtitle = `Με ακόμη **${remaining}** προτάσεις φτάνεις το ${ordinal} σου επίτευγμα`;
+    }
+    body = "Με τις προτάσεις σου βοηθάς και άλλους να ανακαλύψουν συναρπαστικά πράγματα";
+  }
+
+  return {
+    id:      `showcase-${badge}-${count}`,
+    key:     `achievement.${badge}.preview_${count}`,
+    surface: "achievement_modal",
+    copy:    { title, subtitle, body },
+    display: { variant, badge, target, count, delay_ms: 0 },
+  };
+}
 
 const ACH_STATES: { label: string; data: AchievementData }[] = [
-  { label: "#1 — Πρώτη πρόταση",      data: { variant: "progress",    count: 1,  target: 3,  badge: "verified" } },
-  { label: "#2 — Καταπληκτική αρχή",  data: { variant: "progress",    count: 2,  target: 3,  badge: "verified" } },
-  { label: "#3 — Verified UNLOCKED",  data: { variant: "tier_unlock", count: 3,  target: 3,  badge: "verified" } },
-  { label: "#7 — Τα πας περίφημα",    data: { variant: "progress",    count: 7,  target: 10, badge: "gold"     } },
-  { label: "#9 — Είσαι πολύ κοντά",   data: { variant: "progress",    count: 9,  target: 10, badge: "gold"     } },
-  { label: "#10 — Έμπειρος UNLOCKED", data: { variant: "tier_unlock", count: 10, target: 10, badge: "gold"     } },
-  { label: "#22 — Approach Expert",   data: { variant: "progress",    count: 22, target: 25, badge: "expert"   } },
-  { label: "#25 — Expert UNLOCKED",   data: { variant: "tier_unlock", count: 25, target: 25, badge: "expert"   } },
-  { label: "#49 — Πολύ κοντά (Plat.)",data: { variant: "progress",    count: 49, target: 50, badge: "platinum" } },
-  { label: "#50 — Platinum UNLOCKED", data: { variant: "tier_unlock", count: 50, target: 50, badge: "platinum" } },
+  { label: "#1 — Πρώτη πρόταση",      data: makeAchievementData("progress",    1,  3,  "verified") },
+  { label: "#2 — Καταπληκτική αρχή",  data: makeAchievementData("progress",    2,  3,  "verified") },
+  { label: "#3 — Verified UNLOCKED",  data: makeAchievementData("tier_unlock", 3,  3,  "verified") },
+  { label: "#7 — Τα πας περίφημα",    data: makeAchievementData("progress",    7,  10, "gold"    ) },
+  { label: "#9 — Είσαι πολύ κοντά",   data: makeAchievementData("progress",    9,  10, "gold"    ) },
+  { label: "#10 — Έμπειρος UNLOCKED", data: makeAchievementData("tier_unlock", 10, 10, "gold"    ) },
+  { label: "#22 — Approach Expert",   data: makeAchievementData("progress",    22, 25, "expert"  ) },
+  { label: "#25 — Expert UNLOCKED",   data: makeAchievementData("tier_unlock", 25, 25, "expert"  ) },
+  { label: "#49 — Πολύ κοντά (Plat.)",data: makeAchievementData("progress",    49, 50, "platinum") },
+  { label: "#50 — Platinum UNLOCKED", data: makeAchievementData("tier_unlock", 50, 50, "platinum") },
 ];
 
 function AchievementUnlockedModalShowcase() {

@@ -3,6 +3,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { CategorySlug, QualityAssessment, SubmissionAnalysis } from "@/types";
 import { assessQuality } from "@/lib/ai/quality";
+import * as funnel from "@/lib/funnel/tracker";
+import type { FunnelState } from "@/lib/funnel/types";
 
 export type SubmissionState =
   | "empty"
@@ -29,18 +31,31 @@ export type AchievementVariant = "progress" | "tier_unlock";
 export type BadgeTier          = "verified" | "gold" | "expert" | "platinum";
 
 /**
- * Server-side achievement payload — minimal by design. The client
- * computes all copy (title/subtitle/dots) from these four fields so
- * the wording can evolve without touching the API.
+ * Achievement payload — now a fully-resolved moment from the
+ * `moments` table. Copy is already interpolated server-side; the
+ * client just renders the strings (with **bold** markdown parsed by
+ * the modal). Variant + badge + target live under `display` so the
+ * modal can branch its visual treatment.
  */
 export interface AchievementData {
-  variant: AchievementVariant;
-  /** User's current suggestion_count after this publish. */
-  count:   number;
-  /** The target badge tier this celebration is about (3 / 10 / 25 / 50). */
-  target:  number;
-  /** The badge tier identifier. */
-  badge:   BadgeTier;
+  id:      string;
+  key:     string;
+  surface: "achievement_modal";
+  copy: {
+    title:      string;
+    subtitle:   string;
+    body:       string;
+    cta_label?: string;
+    cta_href?:  string;
+  };
+  display: {
+    delay_ms?:        number;
+    auto_dismiss_ms?: number | null;
+    variant?:         AchievementVariant;
+    badge?:           BadgeTier;
+    target?:          number;
+    [extra: string]:  unknown;
+  };
 }
 
 export interface PublishResult {
@@ -75,14 +90,23 @@ function rejectionKey(category: string | null, title: string | null): string {
 function parseAchievement(raw: unknown): AchievementData | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  if (r.variant !== "progress" && r.variant !== "tier_unlock") return null;
-  if (typeof r.count !== "number" || typeof r.target !== "number") return null;
-  if (typeof r.badge !== "string" || !["verified","gold","expert","platinum"].includes(r.badge)) return null;
+  if (typeof r.id !== "string" || typeof r.key !== "string") return null;
+  if (r.surface !== "achievement_modal") return null;
+  const copy = r.copy as Record<string, unknown> | undefined;
+  const display = (r.display as Record<string, unknown>) ?? {};
+  if (!copy || typeof copy.title !== "string") return null;
   return {
-    variant: r.variant,
-    count:   r.count,
-    target:  r.target,
-    badge:   r.badge as BadgeTier,
+    id:      r.id,
+    key:     r.key,
+    surface: "achievement_modal",
+    copy: {
+      title:     copy.title,
+      subtitle:  typeof copy.subtitle === "string" ? copy.subtitle : "",
+      body:      typeof copy.body     === "string" ? copy.body     : "",
+      cta_label: typeof copy.cta_label === "string" ? copy.cta_label : undefined,
+      cta_href:  typeof copy.cta_href  === "string" ? copy.cta_href  : undefined,
+    },
+    display,
   };
 }
 
@@ -152,8 +176,84 @@ export function useSubmission(): UseSubmissionReturn {
   // the same keystrokes would re-trigger the same match → same dup screen.
   const rejectedMatchesRef = useRef<Set<string>>(new Set());
 
+  // ── Funnel tracking ──────────────────────────────────────────────
+  // Mirror state changes into the analytics tracker so SQL can answer
+  // "where do users drop, what did they type, how long did each step
+  // take". Start on mount, fire `state_enter` on every transition,
+  // close on unmount via sendBeacon. See lib/funnel/tracker.ts.
+  const stateRef     = useRef<SubmissionState>("empty");
+  const prevStateRef = useRef<SubmissionState | null>(null);
+  const lockedKeyRef = useRef<string | null>(null);
+  useEffect(() => { stateRef.current = state; }, [state]);
+
+  // One-shot start + cleanup-on-unmount close. Empty deps — overlay
+  // mount = funnel session start. Cleanup snapshots the final text +
+  // closes the session via beacon so the data survives tab close.
+  useEffect(() => {
+    funnel.start();
+    return () => {
+      const finalText = textRef.current;
+      if (finalText.trim().length > 0) {
+        funnel.snapshot(finalText, stateRef.current as FunnelState);
+      }
+      funnel.close(stateRef.current as FunnelState);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Every state transition fires `state_enter` + bumps the
+  // text_length_max counter from the current textRef + snapshots the
+  // sanitised text so SQL can read what the user was typing at the
+  // moment they moved between states (or abandoned). The very first
+  // render (state === "empty") is the implicit flow_started moment
+  // already captured by funnel.start(), so we skip it.
+  useEffect(() => {
+    if (prevStateRef.current === null) { prevStateRef.current = state; return; }
+    if (prevStateRef.current === state) return;
+    prevStateRef.current = state;
+    funnel.track("state_enter", {
+      state: state as FunnelState,
+      counters: { text_length_max: textRef.current.length },
+    });
+    if (textRef.current.trim().length > 0) {
+      funnel.snapshot(textRef.current, state as FunnelState);
+    }
+  }, [state]);
+
+  // When state lands on `match_found` for a new (title, category)
+  // pair, fire a dedicated `match_locked` event with the AI's match
+  // metadata. Lets us measure rejection rate per category cleanly.
+  useEffect(() => {
+    if (state !== "match_found") return;
+    if (!analysis?.matched) return;
+    const key = `${analysis.category ?? ""}:${analysis.title ?? ""}`;
+    if (lockedKeyRef.current === key) return;
+    lockedKeyRef.current = key;
+    const md = (analysis.matchData ?? {}) as Record<string, any>;
+    funnel.track("match_locked", {
+      state: "match_found",
+      payload: {
+        title:          analysis.title,
+        category:       analysis.category,
+        confidence:     analysis.confidence,
+        confidence_tier: md.confidence_tier ?? null,
+        source:         md.source ?? md.tmdb_id ? "tmdb" : null,
+      },
+      counters: {
+        match_locked: true,
+        category:     analysis.category ?? undefined,
+      },
+    });
+  }, [state, analysis]);
+
+  // Latest text mirrored in a ref so the unmount cleanup + the
+  // state-transition snapshot effect can read it without forcing
+  // a re-render dependency.
+  const textRef = useRef("");
+
   const setText = useCallback((value: string) => {
     setText_(value);
+    textRef.current = value;
 
     // Quality coach: regex runs locally on every keystroke (instant
     // feedback, free, no LLM round-trip). Then ~1.5s after the user
@@ -249,7 +349,9 @@ export function useSubmission(): UseSubmissionReturn {
   }, [state, analysis]);
 
   const setRating = useCallback((n: number) => {
-    setRating_(Math.max(0, Math.min(5, n)));
+    const clamped = Math.max(0, Math.min(5, n));
+    setRating_(clamped);
+    funnel.track("rating_set", { payload: { rating: clamped } });
   }, []);
 
   const unlock = useCallback(() => {
@@ -277,6 +379,9 @@ export function useSubmission(): UseSubmissionReturn {
     setAnalysis((prev) => {
       if (!prev?.matched) return prev;
       const md = (prev.matchData ?? {}) as Record<string, any>;
+      funnel.track("match_rejected", {
+        payload: { title: prev.title, category: prev.category },
+      });
       // User said "no" to the primary. Demote tier to low so the
       // alternatives carousel becomes the primary UI. We blank the title
       // so the confirm card disappears, keeping the alternatives intact
@@ -308,6 +413,9 @@ export function useSubmission(): UseSubmissionReturn {
       const md = (prev.matchData ?? {}) as Record<string, any>;
       const alt = Array.isArray(md.alternatives) ? md.alternatives[index] : null;
       if (!alt || !alt.match_data) return prev;
+      funnel.track("alternative_chosen", {
+        payload: { index, title: alt.title, category: alt.category },
+      });
       // Move the picked alternative into the primary slot. We treat a
       // user-picked match as high confidence — they explicitly chose it
       // — so the overlay locks and the "Verify" button activates.
@@ -426,6 +534,9 @@ export function useSubmission(): UseSubmissionReturn {
     // busy flag for the Share button. Avoids the dark syncing-screen flash
     // (we already used that takeover during Verify → Preview enrichment).
     setIsPublishing(true);
+    funnel.track("publish_attempted", {
+      payload: { category: analysis.category, has_rating: rating > 0 },
+    });
 
     // Pull poster_url out of matchData so the API can write items.cover_url
     // immediately (legacy reads), keeping the full match payload around in
@@ -459,6 +570,7 @@ export function useSubmission(): UseSubmissionReturn {
           body: JSON.stringify(payload),
         });
       } catch {
+        funnel.track("publish_failed", { payload: { status: 0, network: true }, counters: { error_delta: 1 } });
         setErrorMessage("Δεν μπορώ να επικοινωνήσω με τον server. Δοκίμασε ξανά.");
         setState("error");
         return;
@@ -466,12 +578,17 @@ export function useSubmission(): UseSubmissionReturn {
 
       if (res.status === 401) {
         setErrorMessage("Πρέπει να συνδεθείς για να προτείνεις.");
+        funnel.track("publish_failed", { payload: { status: 401 }, counters: { error_delta: 1 } });
         setState("error");
         return;
       }
 
       if (res.status === 409) {
         const body = await res.json().catch(() => ({}));
+        funnel.track("publish_failed", {
+          payload: { status: 409, kind: body.kind ?? "other" },
+          counters: { duplicate_hit: true },
+        });
         setDuplicate({
           kind: body.kind === "own" ? "own" : "other",
           suggester: body.suggester ?? null,
@@ -484,6 +601,10 @@ export function useSubmission(): UseSubmissionReturn {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
+        funnel.track("publish_failed", {
+          payload: { status: res.status, error: body.error },
+          counters: { error_delta: 1 },
+        });
         setErrorMessage(body.error || `Αποτυχία αποθήκευσης (${res.status}).`);
         setState("error");
         return;
@@ -500,6 +621,14 @@ export function useSubmission(): UseSubmissionReturn {
         myFollowersCount: typeof body.my_followers_count === "number" ? body.my_followers_count : 0,
         achievement: parseAchievement(body.achievement),
       });
+      funnel.track("publish_succeeded", {
+        payload: {
+          suggestion_id:    body.suggestion_id,
+          item_slug:        body.item_slug,
+          new_suggestion_count: body.new_suggestion_count,
+        },
+        counters: { published: true },
+      });
       setState("published");
     } finally {
       setIsPublishing(false);
@@ -507,6 +636,7 @@ export function useSubmission(): UseSubmissionReturn {
   }, [state, analysis, text, rating]);
 
   const reset = useCallback(() => {
+    funnel.track("flow_reset", {});
     setText_("");
     setAnalysis(null);
     setQuality(null);
@@ -517,6 +647,7 @@ export function useSubmission(): UseSubmissionReturn {
     setErrorMessage(null);
     setState("empty");
     rejectedMatchesRef.current.clear();
+    lockedKeyRef.current = null;
   }, []);
 
   return {

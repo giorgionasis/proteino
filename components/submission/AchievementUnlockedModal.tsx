@@ -1,20 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils/cn";
 import { Icon } from "@/components/ui/Icon";
 import type { IconName } from "@/lib/icons";
+import type { AchievementData } from "@/hooks/useSubmission";
 
 /**
- * Achievement celebration modal — matches Figma screens 1–6 (Suggest
- * Success Popup). Two visual flavors driven by `variant`:
+ * Achievement celebration modal.
  *
- *   progress    — heading toward a tier. Shows progress dots
- *                  (✓/dashed/numbered) leading to the target count,
- *                  with a GREYED badge below + laurels.
- *   tier_unlock — just reached the tier. Shows the colored badge
- *                  centered with sparkles + the tier label in color.
+ * Reads its title/subtitle/body from the DB-driven `moments` table
+ * (see migration 026/027 + lib/moments). The modal is now a pure
+ * renderer — `variant` ("progress" | "tier_unlock"), `badge`, `target`,
+ * `count` come from `achievement.display`. Copy strings come from
+ * `achievement.copy` already interpolated server-side. **Bold**
+ * markdown is parsed inline here for emphasis on numbers/key values.
  *
  * Card architecture mirrors BookmarkSavedModal:
  *   - Portal-mounted to <body>
@@ -22,20 +23,10 @@ import type { IconName } from "@/lib/icons";
  *   - Slide-up + scale entrance, fade-out exit
  *   - Body scroll lock while open
  *   - Backdrop click + X both close, NO auto-dismiss
- *
- * All copy is computed client-side from {variant, count, target,
- * badge}. Server payload stays minimal.
  */
 
 export type AchievementVariant = "progress" | "tier_unlock";
 export type BadgeTier = "verified" | "gold" | "expert" | "platinum";
-
-export interface AchievementData {
-  variant: AchievementVariant;
-  count:   number;
-  target:  number;
-  badge:   BadgeTier;
-}
 
 interface Props {
   open:        boolean;
@@ -52,9 +43,8 @@ const TIER_ICON: Record<BadgeTier, IconName> = {
   platinum: "badge-platinum",
 };
 
-/** Greek display label per tier (the "Επαληθευμένος χρήστης" line under
- *  the hex). Two-word labels are rendered on two lines via <br> in the
- *  component. */
+/** Greek display label per tier ("Επαληθευμένος χρήστης" under the hex).
+ *  Two-word labels render on two lines. */
 const TIER_LABEL: Record<BadgeTier, [string, string]> = {
   verified: ["Επαληθευμένος", "χρήστης"],
   gold:     ["Έμπειρος",      "χρήστης"],
@@ -64,19 +54,10 @@ const TIER_LABEL: Record<BadgeTier, [string, string]> = {
 
 /** Color used for the tier label + sparkles in the unlock variant. */
 const TIER_COLOR: Record<BadgeTier, string> = {
-  verified: "#1D9E75", // emerald — matches existing success color
-  gold:     "#3B82F6", // blue — matches the user's Έμπειρος badge mock
-  expert:   "#7C3AED", // violet
-  platinum: "#64748B", // slate (platinum is desaturated)
-};
-
-/** Ordinal of the badge tier as a Greek possessive adjective used in
- *  copy ("το πρώτο σου επίτευγμα"). */
-const TIER_ORDINAL: Record<BadgeTier, string> = {
-  verified: "πρώτο",
-  gold:     "δεύτερό",
-  expert:   "τρίτο",
-  platinum: "τέταρτο",
+  verified: "#1D9E75",
+  gold:     "#3B82F6",
+  expert:   "#7C3AED",
+  platinum: "#64748B",
 };
 
 // ── Component ─────────────────────────────────────────────────────────
@@ -107,20 +88,24 @@ export function AchievementUnlockedModal({ open, achievement, onClose }: Props) 
   if (!mounted || !achievement) return null;
   if (typeof document === "undefined") return null;
 
-  const { variant, count, target, badge } = achievement;
+  // Pull variant/badge/target/count from the resolved moment's display.
+  // Defaults are defensive — if a misconfigured DB row omits them, the
+  // modal still renders something coherent rather than crashing.
+  const variant: AchievementVariant =
+    (achievement.display.variant as AchievementVariant) ?? "progress";
+  const badge: BadgeTier =
+    (achievement.display.badge as BadgeTier) ?? "verified";
+  const target = typeof achievement.display.target === "number"
+    ? achievement.display.target
+    : 3;
+  const count = typeof achievement.display.count === "number"
+    ? achievement.display.count
+    : 0;
+
   const isUnlock = variant === "tier_unlock";
-  const remaining = Math.max(0, target - count);
-  const ordinal = TIER_ORDINAL[badge];
   const [labelLine1, labelLine2] = TIER_LABEL[badge];
   const tierColor = TIER_COLOR[badge];
 
-  // ── Copy ────────────────────────────────────────────────────────────
-  const { title, subtitle, bottom } = buildCopy(variant, count, target, ordinal);
-
-  // ── Progress dots (progress variant only) ───────────────────────────
-  // Rule: dotCount = max(3, remaining + 1). Dots span the last `dotCount`
-  // positions ending at `target`. Each dot is "done" when its number ≤
-  // current count, otherwise "todo".
   const dots = variant === "progress" ? buildDots(count, target) : null;
 
   return createPortal(
@@ -170,13 +155,13 @@ export function AchievementUnlockedModal({ open, achievement, onClose }: Props) 
           id="achievement-title"
           className="text-center text-[24px] font-extrabold text-zinc-900 leading-[120%] tracking-[-0.005em] px-2"
         >
-          {title}
+          <Bold>{achievement.copy.title}</Bold>
         </h1>
 
         {/* Unlock subtitle sits directly below the title */}
-        {isUnlock && (
+        {isUnlock && achievement.copy.subtitle && (
           <p className="mt-2 text-center text-[15px] text-zinc-600">
-            {subtitle}
+            <Bold>{achievement.copy.subtitle}</Bold>
           </p>
         )}
 
@@ -193,28 +178,18 @@ export function AchievementUnlockedModal({ open, achievement, onClose }: Props) 
         )}
 
         {/* Progress subtitle sits below the dots */}
-        {!isUnlock && (
+        {!isUnlock && achievement.copy.subtitle && (
           <p className="mt-4 text-center text-[15px] text-zinc-600 leading-[150%] px-2">
-            {subtitle}
+            <Bold>{achievement.copy.subtitle}</Bold>
           </p>
         )}
 
         {/* Badge area — laurel + hex + sparkles + tier label */}
         <div className={cn("relative mt-6 flex items-center justify-center", isUnlock ? "min-h-[200px]" : "min-h-[180px]")}>
-          {/* Left + right laurels */}
-          <Icon
-            name="profile-leaves-left"
-            size={120}
-            className="absolute left-2 top-1/2 -translate-y-1/2 opacity-30"
-          />
-          <Icon
-            name="profile-leaves-right"
-            size={120}
-            className="absolute right-2 top-1/2 -translate-y-1/2 opacity-30"
-          />
+          <Icon name="profile-leaves-left"  size={120} className="absolute left-2  top-1/2 -translate-y-1/2 opacity-30" />
+          <Icon name="profile-leaves-right" size={120} className="absolute right-2 top-1/2 -translate-y-1/2 opacity-30" />
 
           <div className="relative flex flex-col items-center">
-            {/* Sparkles around the badge */}
             {isUnlock && <SparkleField color={tierColor} />}
             {!isUnlock && <SparkleField color="#CBD5E1" subtle />}
 
@@ -241,75 +216,36 @@ export function AchievementUnlockedModal({ open, achievement, onClose }: Props) 
         </div>
 
         {/* Bottom copy */}
-        <p className="mt-5 text-center text-[14px] text-zinc-600 leading-[150%] px-2">
-          {bottom}
-        </p>
+        {achievement.copy.body && (
+          <p className="mt-5 text-center text-[14px] text-zinc-600 leading-[150%] px-2">
+            <Bold>{achievement.copy.body}</Bold>
+          </p>
+        )}
       </div>
     </div>,
     document.body,
   );
 }
 
-// ── Copy generation ───────────────────────────────────────────────────
+// ── Inline **bold** parser ────────────────────────────────────────────
+// Templates in the moments table use **N** to emphasise numbers and key
+// words. This tiny renderer splits on **…** and wraps the matches in a
+// <strong> with the zinc-900 emphasis we used before. No nested markup,
+// no HTML injection — pure string-to-React.
 
-interface CopyBundle {
-  title:    React.ReactNode;
-  subtitle: React.ReactNode;
-  bottom:   React.ReactNode;
-}
-
-function buildCopy(
-  variant: AchievementVariant,
-  count:   number,
-  target:  number,
-  ordinal: string,
-): CopyBundle {
-  const remaining = Math.max(0, target - count);
-
-  // ── Tier unlock ──────────────────────────────────────────────────────
-  if (variant === "tier_unlock") {
-    return {
-      title:    "Τα κατάφερες!",
-      subtitle: target === 3
-        ? "Το πρώτο επίτευγμα είναι δικό σου"
-        : `Απέκτησες και ${ordinal} επίτευγμα`,
-      bottom:   target === 3
-        ? <>Ολοκλήρωσες <strong className="text-zinc-900">{count}</strong> προτάσεις και τώρα οι υπόλοιποι γνωρίζουν ότι συμβάλλεις πραγματικά στην κοινότητα του proteino</>
-        : <>Ολοκλήρωσες <strong className="text-zinc-900">{count}</strong> προτάσεις και τώρα οι υπόλοιποι αναγνωρίζουν την αξία σου και τη συνεισφορά σου στην κοινότητα του proteino</>,
-    };
-  }
-
-  // ── Progress ─────────────────────────────────────────────────────────
-  // Title is a small ladder of encouragement keyed on context:
-  //   count = 1                 → "Μόλις έκανες την πρώτη σου πρόταση!"
-  //   tier=3, remaining=1       → "Καταπληκτική αρχή!"
-  //   tier>3, remaining > 1     → "Τα πας περίφημα!"
-  //   tier>3, remaining = 1     → "Είσαι πολύ κοντά!"
-  let title: string;
-  if (count === 1) {
-    title = "Μόλις έκανες την πρώτη σου πρόταση!";
-  } else if (target === 3 && remaining === 1) {
-    title = "Καταπληκτική αρχή!";
-  } else if (remaining === 1) {
-    title = "Είσαι πολύ κοντά!";
-  } else {
-    title = "Τα πας περίφημα!";
-  }
-
-  // Subtitle uses different verbs ("αποκτάς" / "φτάνεις") depending on
-  // proximity, matching Figma copy literally.
-  let subtitle: React.ReactNode;
-  if (remaining === 1) {
-    subtitle = <>Μένει ακόμη <strong className="text-zinc-900">1</strong> πρόταση και αποκτάς το {ordinal} σου επίτευγμα</>;
-  } else if (target === 3) {
-    subtitle = <>Με ακόμη <strong className="text-zinc-900">{remaining}</strong> προτάσεις αποκτάς το {ordinal} σου επίτευγμα</>;
-  } else {
-    subtitle = <>Με ακόμη <strong className="text-zinc-900">{remaining}</strong> προτάσεις φτάνεις το {ordinal} σου επίτευγμα</>;
-  }
-
-  const bottom = "Με τις προτάσεις σου βοηθάς και άλλους να ανακαλύψουν συναρπαστικά πράγματα";
-
-  return { title, subtitle, bottom };
+function Bold({ children }: { children: string }) {
+  const text = typeof children === "string" ? children : String(children ?? "");
+  if (!text.includes("**")) return <>{text}</>;
+  const parts = text.split(/\*\*([^*]+)\*\*/g);
+  return (
+    <>
+      {parts.map((p, i) =>
+        i % 2 === 1
+          ? <strong key={i} className="text-zinc-900">{p}</strong>
+          : <Fragment key={i}>{p}</Fragment>
+      )}
+    </>
+  );
 }
 
 // ── Progress dots ─────────────────────────────────────────────────────
@@ -357,10 +293,10 @@ function ProgressDot({ count, done }: DotState) {
 // ── Sparkles ──────────────────────────────────────────────────────────
 
 interface SparkleSpec {
-  x:     number;   // left % from card center (negative = left)
-  y:     number;   // top  px offset relative to badge center
-  size:  number;   // diameter in px
-  delay: number;   // animation delay in ms
+  x:     number;
+  y:     number;
+  size:  number;
+  delay: number;
 }
 
 const SPARKLES: SparkleSpec[] = [

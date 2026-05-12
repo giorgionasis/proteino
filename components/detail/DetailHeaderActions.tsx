@@ -95,7 +95,7 @@ export function DetailHeaderActions({ category, bookmark, shareTitle, onSaved, o
         // before the celebration modal slides over it.
         await new Promise<void>((resolve) => setTimeout(resolve, 600));
         if (result.status) {
-          onSaved?.({ status: result.status, context: result.context });
+          onSaved?.({ status: result.status, context: result.context, moment: result.moment });
         }
       } else {
         // ── UNBOOKMARK: instant, no orbit ──────────────────────────────

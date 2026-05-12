@@ -186,6 +186,18 @@ const config: Config = {
           "75%":  { transform: "scale(1.08)" },
           "100%": { transform: "scale(1)" },
         },
+        bob: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%":      { transform: "translateY(-4px)" },
+        },
+        twinkle: {
+          "0%, 100%": { transform: "scale(1)",    opacity: "0.9" },
+          "50%":      { transform: "scale(1.25)", opacity: "0.4" },
+        },
+        badgePulse: {
+          "0%, 100%": { transform: "scale(1)" },
+          "50%":      { transform: "scale(1.2)" },
+        },
       },
       animation: {
         "slide-up":   "slideUp 280ms cubic-bezier(0.32, 0.72, 0, 1) forwards",
@@ -200,6 +212,9 @@ const config: Config = {
         "draw-check": "drawCheck 500ms ease forwards",
         "scale-in":        "scaleIn 400ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards",
         "bookmark-bounce": "bookmarkBounce 520ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards",
+        "bob":              "bob 2.4s ease-in-out infinite",
+        "twinkle":          "twinkle 2.2s ease-in-out infinite",
+        "badge-pulse":      "badgePulse 3s ease-in-out infinite",
       },
     },
   },

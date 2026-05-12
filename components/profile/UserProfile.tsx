@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useOverlay } from "@/hooks/useOverlay";
 import { FollowersPopupCentered } from "@/components/profile/FollowersPopupCentered";
 import { AvatarImage } from "@/components/ui/AvatarImage";
 import { Icon } from "@/components/ui/Icon";
+import { badgeIconForSuggestions, badgeLabelForSuggestions } from "@/lib/icons";
 import { ProfileScoreCard } from "@/components/profile/ProfileScoreCard";
 import { ProfileVotesCard } from "@/components/profile/ProfileVotesCard";
 
@@ -18,61 +18,6 @@ function BookmarkIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
       <path d="M3.5 2.5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v11.5l-4.5-3-4.5 3V2.5Z" stroke="#71717A" strokeWidth="1.5" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function PlusCircleIcon() {
-  return (
-    <svg width="19" height="19" viewBox="0 0 19 19" fill="none" aria-hidden>
-      <circle cx="9.5" cy="9.5" r="8.5" stroke="#FAFAFA" strokeWidth="1.5" />
-      <path d="M9.5 5.5v8M5.5 9.5h8" stroke="#FAFAFA" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-/* ── Teal shield badge (Verified) ──────────────────────────── */
-function TealShieldIcon({ size = 70, uid = "a" }: { size?: number; uid?: string }) {
-  const h = Math.round((size / 70) * 78);
-  const g1 = `ts-${uid}`;
-  const g2 = `ts-star-${uid}`;
-  return (
-    <svg width={size} height={h} viewBox="0 0 70 78" fill="none" aria-hidden>
-      <defs>
-        <linearGradient id={g1} x1="9" y1="70" x2="61" y2="8" gradientUnits="userSpaceOnUse">
-          <stop offset="9%" stopColor="#00B58B" />
-          <stop offset="78%" stopColor="rgba(92,237,203,0.56)" />
-          <stop offset="100%" stopColor="rgba(92,237,203,0.3)" />
-        </linearGradient>
-        <linearGradient id={g2} x1="0" y1="15" x2="15" y2="0" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#00B58B" />
-          <stop offset="100%" stopColor="rgba(92,237,203,0.1)" />
-        </linearGradient>
-      </defs>
-      <path d="M35 4L6 16.5V37C6 54.5 18.5 68.5 35 74C51.5 68.5 64 54.5 64 37V16.5L35 4Z" fill={`url(#${g1})`} />
-      <circle cx="35" cy="29" r="9.5" fill="white" fillOpacity="0.92" />
-      <path d="M20 57C20 47.6 26.9 40 35 40C43.1 40 50 47.6 50 57" fill="white" fillOpacity="0.92" />
-      <circle cx="58" cy="66" r="8" fill="white" />
-      <path d="M58 60.5l1.6 4 3.9.3-3 2.9.9 3.9-3.4-1.9-3.4 1.9.9-3.9-3-2.9 3.9-.3z" fill={`url(#${g2})`} />
-    </svg>
-  );
-}
-
-/* ── Blue shield badge (Expert) ────────────────────────────── */
-function BlueShieldIcon({ size = 45 }: { size?: number }) {
-  const h = Math.round((size / 45) * 50);
-  return (
-    <svg width={size} height={h} viewBox="0 0 45 50" fill="none" aria-hidden>
-      <defs>
-        <linearGradient id="blue-shield" x1="4" y1="45" x2="41" y2="5" gradientUnits="userSpaceOnUse">
-          <stop offset="9%" stopColor="#0171C7" />
-          <stop offset="78%" stopColor="rgba(152,210,254,0.56)" />
-          <stop offset="100%" stopColor="rgba(152,210,254,0.1)" />
-        </linearGradient>
-      </defs>
-      <path d="M22.5 2.5L4 10V24C4 34.5 12.2 43.5 22.5 47.5C32.8 43.5 41 34.5 41 24V10L22.5 2.5Z" fill="url(#blue-shield)" />
-      <rect x="11" y="19" width="23" height="15" rx="2.5" fill="white" fillOpacity="0.85" />
-      <path d="M15 19v-4.5C15 11.5 17.5 9 20.5 9H24.5C27.5 9 30 11.5 30 14.5V19" stroke="white" strokeWidth="2" strokeLinecap="round" strokeOpacity="0.85" />
     </svg>
   );
 }
@@ -88,46 +33,204 @@ function SectionHeader({ title }: { title: string }) {
   );
 }
 
-/* ── Progress bar (342×170) ─────────────────────────────────── */
-function ProgressBar({ avatar, name }: { avatar?: string | null; name?: string }) {
+/**
+ * ── Progress bar ─────────────────────────────────────────────
+ *
+ * Track from the user's current tier badge to the next one. The
+ * avatar sits on the track at the exact progress position:
+ *
+ *   [Verified] ════════════[avatar]· · · · · · · [Expert]
+ *
+ * - Solid bar from left badge to avatar (current tier's color)
+ * - Dashed dots from avatar to right badge (tier locked)
+ * - Sparkles twinkle around each badge (staggered, slow)
+ * - Avatar bobs vertically (2.4s loop, ~4px)
+ *
+ * Edge cases handled:
+ *   - 0–2 suggestions → no current tier; placeholder shield on the
+ *     left, Verified on the right
+ *   - ≥50 suggestions → top tier reached; callers render the "Είσαι
+ *     Platinum 🎉" copy + skip this bar entirely
+ */
+
+interface TierDef {
+  min:   number;
+  icon:  "badge-verified" | "badge-gold" | "badge-expert" | "badge-platinum";
+  label: string;
+  color: string;
+}
+
+const PROGRESS_TIERS: TierDef[] = [
+  { min: 3,  icon: "badge-verified", label: "Verified", color: "#1D9E75" },
+  { min: 10, icon: "badge-gold",     label: "Έμπειρος", color: "#3B82F6" },
+  { min: 25, icon: "badge-expert",   label: "Expert",   color: "#7C3AED" },
+  { min: 50, icon: "badge-platinum", label: "Platinum", color: "#64748B" },
+];
+
+/** Pick current-achieved and next-locked tiers from a count.
+ *  Returns null tier slots for users below the first threshold or
+ *  past the last threshold (caller handles those cases). */
+function tiersForCount(count: number): { left: TierDef | null; right: TierDef | null } {
+  let left: TierDef | null = null;
+  let right: TierDef | null = null;
+  for (let i = 0; i < PROGRESS_TIERS.length; i++) {
+    if (count < PROGRESS_TIERS[i].min) {
+      right = PROGRESS_TIERS[i];
+      left  = i > 0 ? PROGRESS_TIERS[i - 1] : null;
+      return { left, right };
+    }
+  }
+  return { left: PROGRESS_TIERS[PROGRESS_TIERS.length - 1], right: null };
+}
+
+function ProgressBar({
+  avatar, name, suggestionCount,
+}: { avatar?: string | null; name?: string; suggestionCount: number }) {
+  const { left, right } = tiersForCount(suggestionCount);
+  if (!right) return null;
+
+  // Track geometry (in % of bar width — keeps it responsive).
+  // The track inset starts after the left badge column and ends
+  // before the right badge column. Avatar position interpolates
+  // along that inner segment.
+  const leftMin  = left?.min ?? 0;
+  const rightMin = right.min;
+  const range    = Math.max(1, rightMin - leftMin);
+  const filled   = Math.max(0, Math.min(suggestionCount - leftMin, range));
+  // Avatar always sits at least 5% in (so it doesn't sit ON the
+  // left badge when count == leftMin) and at most 95% (so it doesn't
+  // overlap the right badge before unlock).
+  const pct = Math.max(0.05, Math.min(0.95, filled / range));
+
+  // Number of "remaining" dashed dots between avatar and right badge.
+  // 8 looks balanced for any progress level — they're decorative, not
+  // a literal count of remaining suggestions.
+  const REMAINING_DOTS = 8;
+  const visibleDots = Math.max(2, Math.round((1 - pct) * REMAINING_DOTS));
+
   return (
-    <div className="relative" style={{ width: 342, height: 170 }}>
-      {/* Milestone dots */}
-      <div className="absolute flex gap-[18px] items-center" style={{ left: 50, top: 19 }}>
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="shrink-0 rounded-full bg-zinc-200" style={{ width: 3, height: 3 }} />
-        ))}
+    <div className="relative w-full max-w-[342px] mx-auto">
+      {/* Track — inset between the two badges (badges are 60px wide,
+          plus a bit of breathing room). */}
+      <div className="relative h-[72px] flex items-center">
+        {/* Left badge column */}
+        <div className="relative flex flex-col items-center w-[60px] shrink-0 z-10">
+          <div className="relative flex items-center justify-center w-12 h-12">
+            <TwinkleField color={left?.color ?? "#10B981"} />
+            {left ? (
+              <Icon name={left.icon} size={48} />
+            ) : (
+              <div className="w-12 h-12 rounded-2xl bg-zinc-200 border-2 border-zinc-300" />
+            )}
+          </div>
+        </div>
+
+        {/* Track inner — solid fill (left side) + dotted (right side) */}
+        <div className="relative flex-1 h-3 mx-[-6px]" aria-hidden>
+          {/* Background track (zinc-200, subtle) */}
+          <div className="absolute inset-y-0 left-0 right-0 rounded-full bg-zinc-100" />
+          {/* Solid fill from left badge → avatar position. Colored
+              with the current tier's accent. */}
+          <div
+            className="absolute top-0 left-0 h-3 rounded-full transition-[width] duration-500"
+            style={{
+              width: `${pct * 100}%`,
+              backgroundColor: left?.color ?? "#10B981",
+              boxShadow: "0 1px 5px 0 rgba(0, 48, 84, 0.18)",
+            }}
+          />
+          {/* Dashed dots from avatar position → right badge. */}
+          <div
+            className="absolute top-1/2 -translate-y-1/2 flex items-center justify-evenly"
+            style={{ left: `${pct * 100}%`, right: 0 }}
+          >
+            {Array.from({ length: visibleDots }).map((_, i) => (
+              <span key={i} className="w-1.5 h-1.5 rounded-full bg-zinc-300" />
+            ))}
+          </div>
+        </div>
+
+        {/* Right badge column */}
+        <div className="relative flex flex-col items-center w-[60px] shrink-0 z-10">
+          <div className="relative flex items-center justify-center w-12 h-12">
+            <TwinkleField color="#CBD5E1" subtle />
+            <div className="opacity-55 grayscale">
+              <Icon name={right.icon} size={48} />
+            </div>
+          </div>
+        </div>
+
+        {/* Avatar — absolute over the whole row, positioned along the
+            inner track between the two badge columns. Calc takes the
+            left badge column width (60px) as offset and `pct` of the
+            inner track (total width minus both columns) for the
+            travel distance. */}
+        <div
+          className="absolute top-1/2 -translate-y-1/2 z-20 transition-[left] duration-500"
+          style={{
+            left: `calc(60px + ${pct} * (100% - 120px))`,
+          }}
+        >
+          <div
+            className="-translate-x-1/2 animate-bob rounded-full overflow-hidden bg-white"
+            style={{
+              width:  44,
+              height: 44,
+              border: "3px solid #FFFFFF",
+              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.18)",
+            }}
+          >
+            <AvatarImage url={avatar} name={name} size={38} className="rounded-full" />
+          </div>
+        </div>
       </div>
 
-      {/* Track background */}
-      <div className="absolute rounded-full bg-zinc-200" style={{ left: 41, top: 74, width: 260, height: 12 }} />
-
-      {/* Green fill */}
-      <div
-        className="absolute rounded-full bg-[#019371]"
-        style={{ left: 41, top: 74, width: 75, height: 12, boxShadow: "0px 1px 5px 0px rgba(0, 48, 84, 0.3)" }}
-      />
-
-      {/* Verified badge (left, unlocked) */}
-      <div className="absolute flex flex-col items-center gap-3" style={{ left: 0, top: 49 }}>
-        <TealShieldIcon size={45} uid="progress" />
-        <p className="text-[14px] font-medium text-zinc-800 text-center leading-[130%]">Verified</p>
-      </div>
-
-      {/* Avatar at progress end point */}
-      <div
-        className="absolute rounded-full overflow-hidden"
-        style={{ left: 115, top: 48, width: 50, height: 50, border: "2px solid #FAFAFA", boxShadow: "0px 0px 9px -1px rgba(0,0,0,0.3)" }}
-      >
-        <AvatarImage url={avatar} name={name} size={50} className="rounded-full" />
-      </div>
-
-      {/* Expert badge (right, locked) */}
-      <div className="absolute flex flex-col items-center gap-3" style={{ left: 297, top: 48, opacity: 0.5 }}>
-        <BlueShieldIcon size={45} />
-        <p className="text-[14px] text-zinc-800 text-center leading-[130%]">Expert</p>
+      {/* Tier labels — sit under the badges, aligned to their columns */}
+      <div className="mt-3 flex items-start justify-between text-center">
+        <p className="w-[60px] text-[13px] font-semibold text-zinc-800 leading-tight">
+          {left?.label ?? "Νέος"}
+        </p>
+        <p className="w-[60px] text-[13px] font-medium text-zinc-400 leading-tight">
+          {right.label}
+        </p>
       </div>
     </div>
+  );
+}
+
+/**
+ * 4 sparkles arranged around a badge, slow stagger. `subtle` desaturates
+ * for locked badges. Uses the global `animate-twinkle` keyframe + per-
+ * sparkle delays so the cluster shimmers rather than pulses in unison.
+ */
+function TwinkleField({ color, subtle = false }: { color: string; subtle?: boolean }) {
+  const SPARKLES = [
+    { x: -16, y: -14, size: 10, delay: 0 },
+    { x:  14, y: -10, size: 12, delay: 600 },
+    { x: -14, y:  16, size:  9, delay: 1200 },
+    { x:  18, y:  14, size: 11, delay: 1800 },
+  ];
+  return (
+    <span className="absolute inset-0 pointer-events-none" aria-hidden>
+      {SPARKLES.map((s, i) => (
+        <span
+          key={i}
+          className="absolute animate-twinkle"
+          style={{
+            left: `calc(50% + ${s.x}px)`,
+            top:  `calc(50% + ${s.y}px)`,
+            transform: "translate(-50%, -50%)",
+            animationDelay: `${s.delay}ms`,
+            color,
+            opacity: subtle ? 0.5 : 1,
+          }}
+        >
+          <svg width={s.size} height={s.size} viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0 L13.5 9 L24 12 L13.5 15 L12 24 L10.5 15 L0 12 L10.5 9 Z" />
+          </svg>
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -168,7 +271,6 @@ export function UserProfile({
     href: string;
   } | null;
 }) {
-  const { openSuggestion } = useOverlay();
   const [popupTab, setPopupTab] = useState<"followers" | "following" | null>(null);
   async function handleLogout() {
     await fetch("/auth/logout", { method: "POST" });
@@ -177,8 +279,14 @@ export function UserProfile({
 
   const name = displayName ?? handle ?? "—";
 
-  // Next level milestone
-  const nextMilestone = suggestionCount < 3 ? 3 : suggestionCount < 10 ? 10 : null;
+  // Next level milestone — extended to all 4 tiers (Verified 3, Έμπειρος
+  // 10, Expert 25, Platinum 50). The ProgressBar component does its own
+  // tier resolution; this top-line headline mirrors it for the copy.
+  const nextMilestone =
+    suggestionCount < 3  ? 3  :
+    suggestionCount < 10 ? 10 :
+    suggestionCount < 25 ? 25 :
+    suggestionCount < 50 ? 50 : null;
   const toNextLevel   = nextMilestone ? nextMilestone - suggestionCount : 0;
 
   // Split "First Last" into two lines for the hero; single names stay on one line
@@ -228,21 +336,40 @@ export function UserProfile({
       </div>
 
       {/* ── 2. Badge Row ────────────────────────────────────── */}
-      <div className="flex items-center justify-center px-5 mt-2">
-        {/* Left wreath leaves */}
-        <Icon name="profile-leaves-left" width={127} height={134} alt="" className="shrink-0" />
-
-        {/* Main badge (design-system verified hexagon + label) */}
-        <div className="flex flex-col items-center gap-4 shrink-0 z-10 -mx-6">
-          <Icon name="badge-verified" width={84} height={94} alt="" />
-          <p className="text-[18px] font-bold text-zinc-700 text-center leading-[130%] whitespace-pre-line">
-            {"Verified\nMember"}
-          </p>
-        </div>
-
-        {/* Right wreath leaves */}
-        <Icon name="profile-leaves-right" width={127} height={134} alt="" className="shrink-0" />
-      </div>
+      {/* Tier is derived from suggestion_count (canonical source per
+          session 20 fix). Below 3 suggestions the user has no badge
+          yet — we hide the whole block so the profile doesn't show a
+          misleading "Verified" to fresh accounts. For Platinum users
+          we also add a motivational line below the badge — there's
+          no next tier to chase, so the only place to congratulate
+          them is here. */}
+      {(() => {
+        const heroBadgeIcon  = badgeIconForSuggestions(suggestionCount);
+        const heroBadgeLabel = badgeLabelForSuggestions(suggestionCount);
+        if (!heroBadgeIcon || !heroBadgeLabel) return null;
+        const isPlatinum = suggestionCount >= 50;
+        return (
+          <div className="flex flex-col items-center px-5 mt-2 gap-4">
+            <div className="flex items-center justify-center">
+              <Icon name="profile-leaves-left" width={140} height={148} alt="" className="shrink-0" />
+              <div className="flex flex-col items-center gap-4 shrink-0 z-10 -mx-7">
+                <span className="inline-block animate-badge-pulse will-change-transform origin-center">
+                  <Icon name={heroBadgeIcon} size={104} alt="" />
+                </span>
+                <p className="text-[18px] font-bold text-zinc-700 text-center leading-[130%] whitespace-pre-line">
+                  {`${heroBadgeLabel}\nMember`}
+                </p>
+              </div>
+              <Icon name="profile-leaves-right" width={140} height={148} alt="" className="shrink-0" />
+            </div>
+            {isPlatinum && (
+              <p className="text-[15px] text-zinc-600 leading-[150%] text-center max-w-[320px] px-2">
+                Έχεις κάνει <strong className="text-zinc-900">{suggestionCount}</strong> προτάσεις. Είσαι από τους κορυφαίους curators της κοινότητας.
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── 3. GeneralStats ─────────────────────────────────── */}
       <div className="px-5 mt-4">
@@ -320,9 +447,14 @@ export function UserProfile({
         </div>
       </div>
 
-      {/* ── 6. MakeSuggestion ───────────────────────────────── */}
-      <div className="flex flex-col items-center gap-8" style={{ padding: "40px 24px" }}>
-        {nextMilestone ? (
+      {/* ── 6. Level progress ───────────────────────────────────
+          Headline + bar for users still climbing. Platinum users skip
+          this entirely (celebration sits in the hero above). The old
+          "Νέα πρόταση" CTA + motivational copy removed — the global
+          FAB already covers the suggest action and the headline above
+          the bar is motivation enough. */}
+      {nextMilestone && (
+        <div className="flex flex-col items-center gap-8" style={{ padding: "40px 24px" }}>
           <p className="text-[26px] text-zinc-800 leading-[130%] text-center">
             <span className="font-normal">Σε </span>
             <span className="font-extrabold">{toNextLevel} {toNextLevel === 1 ? "πρόταση" : "προτάσεις"} </span>
@@ -330,33 +462,9 @@ export function UserProfile({
             <br />
             <span className="font-bold">στο επόμενο επίπεδο!</span>
           </p>
-        ) : (
-          <p className="text-[26px] font-bold text-zinc-800 leading-[130%] text-center">
-            Είσαι Expert! 🎉
-          </p>
-        )}
-
-        <ProgressBar avatar={avatarUrl} name={name} />
-
-        <div className="flex flex-col items-center gap-6 w-full">
-          <p className="text-base font-semibold text-zinc-700 leading-[130%] text-center">
-            Βοήθησε και άλλους χρήστες να <br />ανακαλύψουν νέες προτάσεις
-          </p>
-          <button
-            onClick={() => openSuggestion()}
-            className="w-full flex items-center justify-center gap-2 rounded-lg active:opacity-80 transition-opacity"
-            style={{
-              backgroundColor: "#27272A",
-              border: "1px solid #27272A",
-              padding: "16px 22px",
-              boxShadow: "2px 2px 11px -3px rgba(0,0,0,0.25)",
-            }}
-          >
-            <PlusCircleIcon />
-            <span className="text-xl font-bold text-[#FAFAFA]">Νέα πρόταση</span>
-          </button>
+          <ProgressBar avatar={avatarUrl} name={name} suggestionCount={suggestionCount} />
         </div>
-      </div>
+      )}
 
       {/* ── 7. Highest Rating (shown only when user has a top suggestion) ── */}
       {topSuggestion && <div className="flex flex-col items-center gap-8">

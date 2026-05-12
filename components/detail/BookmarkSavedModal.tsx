@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils/cn";
 import { AvatarImage } from "@/components/ui/AvatarImage";
 import { bookmarkLabels } from "@/lib/bookmarks/labels";
 import type { BookmarkStatus, BookmarkContext } from "@/hooks/useBookmark";
+import type { ResolvedMoment } from "@/lib/moments";
 
 /**
  * Celebration modal shown right after a fresh bookmark save. The
@@ -29,6 +30,11 @@ import type { BookmarkStatus, BookmarkContext } from "@/hooks/useBookmark";
 export interface BookmarkSaveResult {
   status:  BookmarkStatus;
   context: BookmarkContext | null;
+  /** Optional moment resolved from the DB. When present, its copy
+   *  overrides the inline headline + body. When null (no row matched
+   *  OR migration 026/027 not yet applied), the modal renders inline
+   *  fallback copy so behaviour matches the pre-moments era. */
+  moment?: ResolvedMoment | null;
 }
 
 interface Props {
@@ -81,12 +87,16 @@ export function BookmarkSavedModal({ open, result, category, onClose }: Props) {
   const total       = result.context?.bookmarkersTotal ?? 0;
   const overflow    = Math.max(0, total - VISIBLE_AVATARS);
 
-  // Headline: "Αποθηκεύτηκε στις ταινίες σου!" — category-specific
-  // plural form derived from the canonical noun in lib/bookmarks/labels.
+  // Headline + first-mover body come from the resolved moment when
+  // present. Falls back to the inline copy so day-1 behaviour is
+  // preserved if migration 026/027 hasn't been applied.
+  const moment = result.moment ?? null;
   const categoryListLabel = listLabel(category);
+  const fallbackTitle     = `Αποθηκεύτηκε\nστις ${categoryListLabel} σου!`;
+  const titleText         = moment?.copy.title || fallbackTitle;
+  const momentBody        = moment?.copy.body || "";
 
-  // Status hint line — keeps the modal honest about which list it
-  // went to, so the chips below the hero match this message.
+  // Status hint line — kept inline (structural, not edit-worthy).
   const statusLine = `Στη λίστα "${status === "wishlist" ? labels.wishlist : labels.done}"`;
 
   return createPortal(
@@ -131,13 +141,14 @@ export function BookmarkSavedModal({ open, result, category, onClose }: Props) {
           </svg>
         </button>
 
-        {/* Headline */}
+        {/* Headline — sourced from moment.copy.title when set, with
+         *  inline fallback. whitespace-pre-line preserves literal
+         *  \n in templates so admins can split lines visually. */}
         <p
           id="bookmark-saved-title"
-          className="text-center text-[26px] font-extrabold text-zinc-900 leading-[120%] tracking-[-0.01em]"
+          className="text-center text-[26px] font-extrabold text-zinc-900 leading-[120%] tracking-[-0.01em] whitespace-pre-line"
         >
-          Αποθηκεύτηκε<br />
-          στις {categoryListLabel} σου!
+          <Bold>{titleText}</Bold>
         </p>
 
         {/* Status hint */}
@@ -176,15 +187,35 @@ export function BookmarkSavedModal({ open, result, category, onClose }: Props) {
           </>
         )}
 
-        {/* Fallback: nobody else has it yet — first mover gets a hook */}
+        {/* First-mover body — from moment.copy.body when set
+         *  (e.g. seeded "Είσαι ο πρώτος που το αποθηκεύει 🚀"),
+         *  inline fallback otherwise. */}
         {bookmarkers.length === 0 && (
           <p className="mt-8 text-center text-[14px] font-medium text-zinc-600 leading-[140%]">
-            Είσαι ο πρώτος που το αποθηκεύει 🚀
+            <Bold>{momentBody || "Είσαι ο πρώτος που το αποθηκεύει 🚀"}</Bold>
           </p>
         )}
       </div>
     </div>,
     document.body,
+  );
+}
+
+// Inline **bold** parser — same as the AchievementUnlockedModal.
+// Splits on **…** and wraps matches in <strong>. Pure string-to-React,
+// no HTML injection risk.
+function Bold({ children }: { children: string }) {
+  const text = typeof children === "string" ? children : String(children ?? "");
+  if (!text.includes("**")) return <>{text}</>;
+  const parts = text.split(/\*\*([^*]+)\*\*/g);
+  return (
+    <>
+      {parts.map((p, i) =>
+        i % 2 === 1
+          ? <strong key={i} className="text-zinc-900">{p}</strong>
+          : <Fragment key={i}>{p}</Fragment>
+      )}
+    </>
   );
 }
 

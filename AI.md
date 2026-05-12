@@ -18,7 +18,7 @@ Place this file in the project root alongside CLAUDE.md and HOOKS.md.
 
 **🛑 Gemini billing not enabled** — free tier of `gemini-2.5-flash-lite` caps at **20 requests/day** (per-project, not per-key). Once exhausted, `analyzeSearchQuery` and `analyzeSubmission` return passthrough `{categories: []}` and the route falls through to title-only matching. Enable at https://aistudio.google.com → API key → Linked Google Cloud project → Billing. At our ~700-token prompts, paid tier is ~$0.0001 per call.
 
-**🛑 Migration 019 not yet applied** — `scripts/sql/019-ai-cache-and-usage.sql` creates `ai_query_cache` + `ai_usage_log`. The wrapper at `lib/ai/cache-and-log.ts` writes best-effort (silently no-ops if tables missing), but the `/admin/ai-usage` dashboard reads from these — empty until applied.
+**✅ Migration 019 applied** (verified 2026-05-12) — `ai_query_cache` (77 hits) and `ai_usage_log` (111 rows) are live. `/admin/ai-usage` dashboard reads real data.
 
 ---
 

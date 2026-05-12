@@ -22,7 +22,7 @@ import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
 import { ReviewCard } from "@/components/detail/ReviewCard";
 import { Icon } from "@/components/ui/Icon";
 import { UserBadge } from "@/components/ui/UserBadge";
-import { badgeLabelForSuggestions } from "@/lib/icons";
+import { badgeLabelForSuggestions, platformIconForChannel, ICON_PATHS } from "@/lib/icons";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
 import { oscarIconForCategory } from "@/lib/icons";
@@ -251,6 +251,16 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
           </div>
         </div>
       </div>
+
+      {/* ── Airing-today strip — sits below the hero so it can't be
+          missed on the way down to the title. Only renders when the
+          admin booked this movie in `movies_tonight` for today; the
+          page server self-clears at midnight on the next render. */}
+      {data.airingToday && (
+        <div className="px-6 pt-3">
+          <AiringTodayBadge airing={data.airingToday} />
+        </div>
+      )}
 
       {/* ── Title + rating ──────────────────────────────────── */}
       <div className="px-6 pt-5 space-y-3">
@@ -795,5 +805,49 @@ function AwardBadge({ category }: { category: string }) {
         />
       </g>
     </svg>
+  );
+}
+
+/**
+ * Airing-today strip — full-width white card sitting just under the
+ * hero. White surface with a subtle border (not coral — coral was too
+ * loud per design call). The coral live-dot is the only accent colour,
+ * doing the "you're seeing this today" job on its own.
+ *
+ * Layout: pulse-dot + ΑΠΟΨΕ ΣΤΗΝ TV on the left, air time + channel
+ * logo on the right, divider between time and logo.
+ */
+function AiringTodayBadge({ airing }: { airing: { channel: string; air_time: string } }) {
+  const iconName = platformIconForChannel(airing.channel);
+  const time = airing.air_time?.slice(0, 5) ?? "";
+  return (
+    <div className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-[12px] bg-white border border-zinc-200 shadow-sm">
+      <div className="flex items-center gap-2.5 min-w-0">
+        <span className="relative inline-flex w-2.5 h-2.5 shrink-0" aria-hidden>
+          <span className="absolute inset-0 rounded-full bg-coral-600 animate-ping opacity-60" />
+          <span className="relative w-2.5 h-2.5 rounded-full bg-coral-600" />
+        </span>
+        <span className="text-[13px] font-bold uppercase tracking-[0.06em] text-zinc-900 truncate">
+          Απόψε στην TV
+        </span>
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        {time && (
+          <span className="text-[14px] font-bold tabular-nums text-zinc-900">{time}</span>
+        )}
+        <span className="w-px h-4 bg-zinc-200" aria-hidden />
+        {iconName ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={ICON_PATHS[iconName]}
+            alt={airing.channel}
+            title={airing.channel}
+            style={{ height: 18, width: "auto" }}
+          />
+        ) : (
+          <span className="text-[13px] font-bold text-zinc-800">{airing.channel}</span>
+        )}
+      </div>
+    </div>
   );
 }

@@ -1,12 +1,45 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-12 (session 20 — onboarding flow + badge system overhaul + achievement celebration)
+Last updated: 2026-05-12 (session 21 — moments + security + region + notifications + channels + profile + funnel)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 20 (current) finished:**
+**Current state — session 21 (current) finished:**
+
+- ✅ **AI submission funnel tracking — full data layer (migrations 030 + 031 + lib/funnel + instrumented useSubmission).** Authenticated-only event pipeline answers "where do users drop, what did they type, how long did each state take" without any URL-based analytics. Three tables: `submission_sessions` (one per overlay session, NOT NULL user_id, denormalised counters for fast headline funnel queries), `submission_events` (state transitions + decisions + AI heartbeats, jsonb payload), `submission_text_snapshots` (PII-masked text — emails/phones regex-stripped, 500-char cap, 90-day retention via `purge_old_text_snapshots()`). Single SQL ingest function (`ingest_funnel_batch`, SECURITY DEFINER) so the API never needs direct INSERT grants. Client tracker (`lib/funnel/tracker.ts`) buffers 2s, flushes via fetch, closes via `navigator.sendBeacon` so tab-close survives; localStorage retry queue for network failures. Instrumented states: `flow_started`, `state_enter` (every transition, with text_length_max counter + sanitised snapshot), `match_locked` / `match_rejected` / `alternative_chosen`, `rating_set`, `publish_attempted` / `succeeded` / `failed`, `flow_reset`, `flow_closed`. Sweep cron (`sweep_abandoned_funnel_sessions()`) marks 30+ min idles as `abandoned_idle`. Dashboard (`/admin/ai-usage/submission-funnel`) deferred until ~48h of real data accumulates.
+- ✅ **Greek TV channel icons — 8 logos wired into 3 movie-only surfaces.** `public/icons/channels/{ert1,ert2,ert3,mega,skai,star,antenna,alphatv}.svg` registered in `lib/icons.ts`. `platformIconForChannel` matches Greek + Latin variants (`ΕΡΤ1`, `ERT1`, `Αντέννα`, `ANT1`, `ΣΚΑΪ`, `Skai`, …) via accent folding. Surfaces: (1) `/admin/content/movies-tonight` shows logo next to channel select in display row, edit row, and new-draft form; (2) home "Απόψε στην TV" carousel + the same carousel on `/movies` category page (threaded via `tonightAirings` prop into `CategoryPageShell`); (3) movie detail page — white pill strip under the hero with coral pulse-dot + "ΑΠΟΨΕ ΣΤΗΝ TV" + airtime + channel logo, **only when admin booked the movie for today** (server query filtered to `air_date = today`, self-clears at midnight). Strict scope split: `streamingIconForChannel` (Netflix/Disney/Prime/YouTube, used by SeriesDetail) vs. `platformIconForChannel` (full set, used by movie surfaces) so Greek TV channels can never leak into series rendering.
+- ✅ **Profile progress + hero badge redesign.** `ProgressBar` rebuilt to match the user's spec: solid colored track from left tier badge → user avatar (animated `bob` vertical 4px), dashed dots from avatar → next tier badge (greyed + grayscale), tier labels under each badge, 4 twinkling sparkles around both badges (staggered, 2.2s `twinkle` keyframe). Tier ladder now uses all 4 tiers (Verified 3 / Έμπειρος 10 / Expert 25 / Platinum 50). Hero badge under the followers row is now **dynamic per tier** via `badgeIconForSuggestions(suggestionCount)` (bug fix — was hardcoded `badge-verified`/"Verified Member" regardless of actual count). Hero badge size enlarged to 104px + leaves 140×148. **Pulse animation** on the hero badge only (3s loop, scale 1.0 → 1.2 → 1.0, `ease-in-out`). Platinum users (≥50 suggestions): celebration line ("Έχεις κάνει N προτάσεις. Είσαι από τους κορυφαίους curators...") sits directly under the hero badge; the under-rating progress section is hidden entirely (no duplicate celebration, no redundant CTA — the FAB already covers suggesting). "Νέα πρόταση" button + motivational copy removed from the progress section globally.
+- ✅ **User region (structured) — migration 028 + region picker in EditProfile + soft-sort.** `users.region_id` FK added; the legacy `users.region` text column stays populated by the API at save time with the resolved name (for back-compat). Edit profile replaces the free-text "Περιοχή" input with a cascading native `<select>` picker — picks any node in the regions tree (top-level / intermediate / leaf). On the home food carousel + every venue category page (food/bars/hotels/theater/events), items whose region matches (or descends from) the viewer's saved region float to the top — pure ordering, never excludes out-of-region items. Helper: `lib/regions.ts:getRegionMatchSet(sb, regionId)`. NOTE: the personalization makes both the home page and venue category pages effectively dynamic per-request (cookies are read); the existing `revalidate = 60` is a no-op for authed viewers. Acceptable trade-off — discovery beats caching for the user's most explicit ask.
+- ✅ **Notifications system — fully implemented (migration 029 + UI redesign).**
+  - **4 new Postgres triggers wired** in `scripts/sql/029-notifications-fanout.sql`:
+    - `suggestion_rated` — on `reviews` INSERT → notify the suggestion's author (skips self-review)
+    - `new_follower` — on `follows` INSERT → notify the followee
+    - `new_suggestion_from_friend` — on `suggestions` INSERT (or UPDATE to published) → fan-out to every follower
+    - `suggestion_bookmarked` — on `bookmarks` INSERT → notify the suggestion author when bookmark count crosses **5/10/25/50/100** (milestone-based; no per-bookmark spam)
+  - **Preference gate** — central `should_notify(user_id, category)` SQL helper reads `users.preferences.notifications.<category>` + checks the master pause flag. All triggers (including retrofitted `movie_airing` from 011 and `search_match` from 013) consult it before INSERT. Toggle off "Δραστηριότητα στις προτάσεις σου" → no `suggestion_rated` rows hit the DB at all.
+  - **Settings page redesigned** — replaces the placeholder 3-section × 2-row grid with **4 explicit categories** (Activity / Friends / Discoveries / System), each carrying push + email checkboxes. Added at top:
+    - **Master pause** with optional auto-resume datetime ("παύση μέχρι ...")
+    - **Quiet hours** with start/end pickers (default 23:00 → 09:00, enabled)
+  - **Inbox renders all new types** — `NotificationsPage.tsx`'s `renderNotification()` got branches for `suggestion_rated`, `new_follower`, `new_suggestion_from_friend`, `suggestion_bookmarked`, `search_match`. Each with appropriate thumbnail + Greek copy + deeplink.
+  - **Known limitations** — email delivery isn't wired (no SMTP/Resend infra yet; the email toggle is forward-looking and persists). Quiet-hours enforcement applies to the gate (no INSERT in window) — once push delivery exists, it'll respect this automatically. No realtime — the bell badge counts on every layout render, so new notifications appear on next nav.
+- ✅ **Security settings wired to real backend.** `/profile/[handle]/settings/security` is no longer a hardcoded shell — it pulls real email + Supabase identities + device history server-side and renders interactive UI. New API routes:
+  - `PATCH /api/auth/password` — verifies current password (re-auth via `signInWithPassword`) then updates. Validates min-8 / uppercase / digit, blocks reusing current as new.
+  - `DELETE /api/auth/identities/[provider]` — unlinks a social identity. Lockout guard: refuses to remove the last remaining auth method.
+  - `POST /api/auth/signout-all` — `auth.signOut({ scope: "global" })` revokes every refresh token; client redirects to `/login`.
+  - Password change modal (inline form) with live rule-checks (✓/·). Provider list now derived from `user.identities` — only shows Facebook/Google when actually linked, with the provider email under the label.
+  - Device history renders from `public.devices` (currently empty in prod — table isn't auto-populated by any auth hook yet; a future login-hook can fill it without UI changes).
+  - Account deactivation button intentionally shows a "not yet available — write to support" toast since the soft-delete schema doesn't exist yet (`users.is_active` not present).
+- ✅ **DB-driven moments system shipped end-to-end.** Every in-app celebration / nudge (achievement modal copy + 10s timing, bookmark celebration) is now stored as rows in `moments`, editable from `/admin/moments` without a code deploy. Hardcoded `TRIGGERS` table + client-side `buildCopy` switch ladder are gone.
+- ✅ **Migration 026 + 027 applied** — `moments` + `moment_events` tables with RLS, indexes, updated_at trigger; 14 seed rows port the previous hardcoded copy verbatim so day-1 behaviour is unchanged.
+- ✅ **`lib/moments/`** — types, registry of 7 predicate functions (`always`, `suggestion_count_eq`/`gte`, `bookmarkers_count_gte`/`zero`, `category_bookmark_count_eq`, `category_eq`) with admin-form arg schemas, resolver with variant-group selection + priority weighted random + audit logging to `moment_events`, placeholder renderer supporting `{count}` / `{remaining}` / `{ordinal}` / `{category_list_noun}` / `{handle}` / `{first_name}` + `**bold**` markdown.
+- ✅ **Consumers refactored** — `app/api/suggestions/route.ts` calls `resolveOneMoment("suggestion_published", "achievement_modal", …)`; `app/api/bookmarks/route.ts` returns the resolved moment alongside the existing context; `AchievementUnlockedModal` + `BookmarkSavedModal` render directly from the moment's copy strings with inline `<Bold>` parser. `Published.tsx` reads the achievement modal delay from `moment.display.delay_ms` (admin-editable, defaults to 10s).
+- ✅ **`/admin/moments` UI** — list grouped by trigger event with hover-revealed Active/Duplicate/Delete actions, "× fires / 7d" badge from `moment_events`, edit drawer with: identity / trigger + predicate (auto-renders the right input fields per predicate via the registry schema) / copy fields with placeholder reference / display knobs (delay, auto-dismiss, dark theme, variant, badge, target) / lifecycle (priority, variant_group, valid_from/until, is_active). Live preview pane on the right re-renders on every keystroke with category-aware sample data.
+- ✅ **Admin API** — `GET/POST /api/admin/moments`, `GET/PATCH/DELETE /api/admin/moments/[id]`, `GET /api/admin/moments/stats` (last-7d aggregates), `GET /api/admin/moments/registry` (schemas for the form). Sidebar entry added between Users and AI Usage.
+- ✅ **HOOKS.md backfilled** with current state — implementation-status table at the top + per-section ✅ LIVE / ❌ Not built tags + DB-driven §9 flipped to SHIPPED with the remaining hardcoded surfaces called out (duplicate hook, toasts, notifications copy, profile progress bar).
+
+**Previous state — session 20 finished:**
 
 - ✅ **Onboarding flow shipped at `/onboarding`** (4 screens). Hook → Interests → Reward → People → finish. Light theme throughout, no header/bottom-nav/FAB. Gated server-side from the (main) layout when `preferences.onboarded_at` is missing. Both new signups AND existing users hit it. Screens (`components/onboarding/`):
   - **HookScreen** — animated AI demo (looping `Mr. Robot` typing → LISTENING → LOCKED), social proof line, `Ξεκίνα →` + `Παράλειψη`.
@@ -32,9 +65,8 @@ Last updated: 2026-05-12 (session 20 — onboarding flow + badge system overhaul
   - **progress** — title ladder ("Μόλις έκανες την πρώτη σου πρόταση!" / "Καταπληκτική αρχή!" / "Τα πας περίφημα!" / "Είσαι πολύ κοντά!"), progress dots `[start..target]` with ✓/dashed-numbered states (formula `dotCount = max(3, remaining + 1)`), greyed badge under laurels with subtle sparkles.
   - **tier_unlock** — "Τα κατάφερες!" + ordinal subtitle, colored badge (110px) with 4 staggered pop-in sparkles, tier-colored two-line label (Verified emerald / Έμπειρος blue / Expert violet / Platinum slate).
   - Mirrors `BookmarkSavedModal` architecture (portal, 3-phase mount, body-scroll lock, **no auto-dismiss**).
-  - Layered on top of Published screen (opens 350ms after mount so the ✓ moment lands first).
+  - Layered on top of Published screen (opens **10s after mount** so the ✓ moment lands and the user reads their own publish confirmation before the celebration takes over — chosen 2026-05-12, resolving session 20's open question).
   - Showcase entry at `/admin/showcase` → Submission/AI tab with **10 interactive buttons** so design QA doesn't require resetting `suggestion_count`.
-  - **OPEN QUESTION (deferred to next session):** when to display? Currently fires immediately after Published mounts. Alternative: 30s after submission (less interruptive), on the bell icon (passive), or at next home-page visit. **Tied for next session's discussion.**
 
 **Previous state — session 19 finished (still all current):**
 
@@ -88,10 +120,7 @@ Last updated: 2026-05-12 (session 20 — onboarding flow + badge system overhaul
 **Operational blockers (require user action):**
 
 - 🛑 **Gemini paid tier not enabled** — free tier is 20 requests/day on `gemini-2.5-flash-lite`. Today's testing burned through it. Search returns `categories=[]` and falls through to popular when quota is exhausted. Enable billing at https://aistudio.google.com → API key settings. At our prompt size (~700 tokens/call), paid cost is ~$0.0001/search.
-- 🛑 **Migrations 019 / 020 / 021 not yet applied.** All three are idempotent and small. Apply via Supabase SQL Editor in order:
-  - `019-ai-cache-and-usage.sql` — AI cache + usage log tables (enables the cost dashboard)
-  - `020-original-title.sql` — multi-language title column + index
-  - `021-food-tabs-flip-type.sql` — category_filters visibility flip (food.type off, food.cuisine on)
+- ✅ **Migrations 019-025 all applied** (verified 2026-05-12 via `scripts/check-migrations.mjs` + `pg_policies` query for 025). `ai_query_cache` already serving 77 hits, `ai_usage_log` carrying 111 rows, `bookmarks.status` live, food filter flip live, `get_leaderboard` RPC callable, `users.preferences` live, `items.original_title` live, `bookmarks_own_update` policy present.
 - 🛑 **Data gaps for the 3 unmatched search examples** — admin needs to populate:
   - Theater: `item_theater.actors` jsonb with cast (so "θέατρο μπέζος" works)
   - Events: set `event_type = "Συναυλία"` on concert items + valid `dates` jsonb (so "συναυλίες καλοκαίρι αττική" works)
@@ -1012,7 +1041,7 @@ Originally specced for Anthropic Claude Haiku 4.5. Pivoted to **Gemini Flash-Lit
 - Prompt versioning (`PROMPT_VERSION = "v6"`)
 
 **Still pending under Phase A:**
-- 🛑 **Apply migrations 019 / 020 / 021 / 023 / 024 / 025** in the live DB (all idempotent).
+- ✅ **Migrations 019-025 all applied** (verified 2026-05-12).
 - 🛑 **Enable paid Gemini tier** — free tier is 20 req/day. Cost at paid tier ~$0.0001/search.
 - ⏳ Other-category external API match (#16): Google Books for books, Google Places for food/bars/hotels (admin side wired; user-side submission flow still falls back to heuristic), Ticketmaster for theater/events.
 
@@ -1021,12 +1050,14 @@ Originally specced for Anthropic Claude Haiku 4.5. Pivoted to **Gemini Flash-Lit
 After session 20's onboarding + achievement celebration + badge overhaul, the remaining items are:
 
 1. ~~**Onboarding flow**~~ ✅ DONE (session 20). 4 screens shipped at `/onboarding` with conversational expansion. Gated server-side from the (main) layout.
-2. ~~**Achievement unlock celebration**~~ ✅ DONE (session 20). 12-count `TRIGGERS` table → modal at every meaningful step toward a tier. Two variants matching Figma screens 1-6 exactly. **OPEN QUESTION:** when to display it relative to the Published screen — currently fires 350ms after Published mounts. Alternatives discussed: 30s delay, bell icon, next home visit. **Locked for next session's discussion.**
-3. **Security settings page** — `/profile/[handle]/settings/security`. Password change + 2FA placeholder + social unlink + session list (active devices). Schema exists (`devices` table). Backend routes need wiring.
+2. ~~**Achievement unlock celebration**~~ ✅ DONE (session 20). 12-count `TRIGGERS` table → modal at every meaningful step toward a tier. Two variants matching Figma screens 1-6 exactly. **Timing resolved 2026-05-12: 10s delay after Published mount** — gives the user breathing room to read their own confirmation before the celebration takes over.
+3. ~~**Security settings page**~~ ✅ DONE (session 21). Real password change, social unlink, sign-out-from-all-devices, device history from `public.devices`. Three new API routes (`PATCH /api/auth/password`, `DELETE /api/auth/identities/[provider]`, `POST /api/auth/signout-all`). Device list reads real data but `devices` table currently isn't auto-populated by any auth hook — future login-hook to fill it.
 4. **Admin moderation polish** — (a) admin suggestions queue filter (#29: filter by status / category / hidden), (b) reports queue priority sort (#30: oldest unresolved first), (c) bulk ops on items (#28: bulk publish/unpublish/delete).
-5. **Drop legacy `ratings` + `comments` tables** (#25/#26). All UI now reads from `reviews` (migration 016). Two migrations: `026-drop-ratings.sql` (data already wiped) + `027-archive-comments.sql` (export to JSON file in scripts/sql/ first, then DROP).
+5. **Drop legacy `ratings` + `comments` tables** (#25/#26). All UI now reads from `reviews` (migration 016). Two migrations: `029-drop-ratings.sql` (data already wiped) + `030-archive-comments.sql` (export to JSON file in scripts/sql/ first, then DROP).
 6. **Map ↔ list drop-down reveal** (Phase D below — kept separate since it's a structural refactor, not a quick fix).
 7. **CategoryCard migration sweep** — old card still in use on all 9 category pages; migrate to `SuggestionCardPortrait` / `SuggestionCardLandscape` from session 15.
+8. **Geographic distance ranking** — solution #3 from the "nearby" design call (session 21). Add `regions.lat` + `regions.lng` (centroids) so we can compute Haversine from `item.lat/lng` to viewer's region centroid for soft sort. Replaces the current binary in-region / not-in-region split with a real-distance gradient — Γαλάτσι resident sees Αμπελόκηποι items as "near" even when the parent tree disagrees. Admin work: one centroid per region (~100 Athens neighborhoods, ~30 min lookup). Code: extend `lib/regions.ts:getRegionMatchSet` into a `getRegionDistanceMap(centerRegionId): Map<regionId, km>`; soft sort by km ascending.
+9. **Browser geolocation opt-in** — "What's near me right now" toggle. Use the W3C Geolocation API to grab viewer's lat/lng on permission grant, then sort items by direct Haversine from their device. Best for "open now near me" use cases, complements #8 (which is for taxonomy-locked home base). Needs UI: toggle on home + a one-tap "use my location" chip on category pages. Stretch: cache the last grant to avoid re-prompting on every visit.
 
 ### Phase B — Recommendations (pgvector + nightly batch + LLM rerank)
 

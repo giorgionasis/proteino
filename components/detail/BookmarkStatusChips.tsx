@@ -26,7 +26,7 @@ export interface BookmarkController {
   status:     BookmarkStatus | null;
   bookmarked: boolean;
   busy:       boolean;
-  toggle:     () => Promise<{ ok: boolean; status: BookmarkStatus | null; context: any | null }>;
+  toggle:     () => Promise<{ ok: boolean; status: BookmarkStatus | null; context: any | null; moment: any | null }>;
   setStatus:  (next: BookmarkStatus) => Promise<{ ok: boolean; status: BookmarkStatus; context: any | null }>;
 }
 

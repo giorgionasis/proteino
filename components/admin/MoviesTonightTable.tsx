@@ -1,8 +1,36 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ICON_PATHS, platformIconForChannel } from "@/lib/icons";
 
 const CHANNELS = ["MEGA", "ΕΡΤ1", "ΕΡΤ2", "ΕΡΤ3", "ANT1", "ALPHA", "STAR", "ΣΚΑΪ", "OPEN", "COSMOTE TV"];
+
+/**
+ * Inline channel badge — logo if we have one (Greek TV channels live
+ * under `channel-*` in lib/icons.ts), text fallback otherwise.
+ * Used in the display row, the editing row's pill preview, and the
+ * new-draft form so the admin always sees what they picked.
+ */
+function ChannelBadge({ channel, h = 14 }: { channel: string; h?: number }) {
+  const iconName = platformIconForChannel(channel);
+  if (iconName) {
+    return (
+      /* eslint-disable-next-line @next/next/no-img-element */
+      <img
+        src={ICON_PATHS[iconName]}
+        alt={channel}
+        title={channel}
+        style={{ height: h, width: "auto" }}
+        className="inline-block"
+      />
+    );
+  }
+  return (
+    <span className="inline-block px-2 py-0.5 bg-zinc-100 rounded text-xs font-bold text-zinc-700">
+      {channel}
+    </span>
+  );
+}
 
 interface MovieItem {
   id: string;
@@ -528,9 +556,7 @@ function DisplayRow({ row, busy, onEdit, onRemove, onTogglePublish }: {
         </div>
       </td>
       <td className="px-4 py-3">
-        <span className="inline-block px-2 py-0.5 bg-zinc-100 rounded text-xs font-bold text-zinc-700">
-          {row.channel}
-        </span>
+        <ChannelBadge channel={row.channel} h={18} />
       </td>
       <td className="px-4 py-3 text-sm text-zinc-600 whitespace-nowrap">
         {formatDateGreek(row.air_date)}
@@ -576,13 +602,16 @@ function EditingRow({ row, onChange, onSave, onCancel, busy }: {
         <p className="text-xs text-zinc-500">δεν αλλάζει — διαγραφή & δημιουργία αν θες άλλη ταινία</p>
       </td>
       <td className="px-4 py-3">
-        <select
-          value={row.channel}
-          onChange={(e) => onChange({ ...row, channel: e.target.value })}
-          className="px-2 py-1.5 border border-zinc-300 rounded text-sm bg-white"
-        >
-          {CHANNELS.map((ch) => <option key={ch} value={ch}>{ch}</option>)}
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            value={row.channel}
+            onChange={(e) => onChange({ ...row, channel: e.target.value })}
+            className="px-2 py-1.5 border border-zinc-300 rounded text-sm bg-white"
+          >
+            {CHANNELS.map((ch) => <option key={ch} value={ch}>{ch}</option>)}
+          </select>
+          {row.channel && <ChannelBadge channel={row.channel} h={16} />}
+        </div>
       </td>
       <td className="px-4 py-3">
         <input
@@ -645,7 +674,10 @@ function NewAiringForm({ draft, onChange, onSave, onCancel }: {
           />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Κανάλι</label>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5 flex items-center gap-2">
+            <span>Κανάλι</span>
+            {draft.channel && <ChannelBadge channel={draft.channel} h={14} />}
+          </label>
           <select
             value={draft.channel}
             onChange={(e) => onChange({ ...draft, channel: e.target.value })}

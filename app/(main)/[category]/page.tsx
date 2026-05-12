@@ -14,7 +14,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchCategoryFilterConfig } from "@/lib/category-filters";
 import { CATEGORY_FILTERS } from "@/constants/filters";
 import { safeImageUrl } from "@/lib/image-url";
-import { fetchRegionTreeForCategory } from "@/lib/regions";
+import { fetchRegionTreeForCategory, getRegionMatchSet } from "@/lib/regions";
+import { createClient } from "@/lib/supabase/server";
+import { fetchTonightAirings } from "@/lib/movies-tonight";
 import { getAwardsTaxonomy } from "@/lib/awards";
 
 interface Props {
@@ -280,6 +282,33 @@ export default async function CategoryPage({ params }: Props) {
     .order("avg_rating", { ascending: false })) as { data: any[] | null; count: number | null };
 
   const items = (rawItems ?? []).map((item: any) => mapItem(item, category));
+
+  // Region-aware soft sort — for venue categories, items whose region
+  // matches (or is a descendant of) the viewer's saved region_id
+  // float to the top. Pure ordering; nothing is filtered out so a
+  // Thessaloniki user who scrolls still finds Athens venues.
+  const VENUE = new Set(["food", "bars", "hotels", "theater", "events"]);
+  if (VENUE.has(category)) {
+    const userClient = createClient();
+    const { data: { user: viewer } } = await userClient.auth.getUser();
+    if (viewer) {
+      const { data: viewerRow } = await userClient
+        .from("users")
+        .select("region_id")
+        .eq("id", viewer.id)
+        .maybeSingle();
+      const viewerRegion = (viewerRow as { region_id?: string | null } | null)?.region_id ?? null;
+      const matchSet = await getRegionMatchSet(sb, viewerRegion);
+      if (matchSet.size > 0) {
+        items.sort((a, b) => {
+          const aIn = a.regionId && matchSet.has(a.regionId) ? 1 : 0;
+          const bIn = b.regionId && matchSet.has(b.regionId) ? 1 : 0;
+          return bIn - aIn; // in-region first; stable within each group
+        });
+      }
+    }
+  }
+
   const filterData = computeFilterData(items, category);
 
   // Filter config from DB; fall back to constant if migration 008 hasn't run yet.
@@ -293,6 +322,10 @@ export default async function CategoryPage({ params }: Props) {
   // standardized — see lib/awards.ts). Picker UI is wired; counts will be
   // populated in a follow-up round.
   const awardsGroups = (category === "movies" || category === "series") ? getAwardsTaxonomy() : undefined;
+
+  // Tonight's TV airings — movies only. Returns empty array on other
+  // categories so the shell branches off naturally.
+  const tonightAirings = category === "movies" ? await fetchTonightAirings(sb) : [];
 
   let topUser: TopUser | null = null;
   let contributors: ContributorUser[] = [];
@@ -349,6 +382,7 @@ export default async function CategoryPage({ params }: Props) {
       regionChildToParent={regionTreeData.childToParent}
       regionDescendants={regionTreeData.descendantsById}
       awardsGroups={awardsGroups}
+      tonightAirings={tonightAirings}
     />
   );
 }

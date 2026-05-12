@@ -20,15 +20,16 @@ interface PublishedProps {
 }
 
 export function Published({ onDismiss, newSuggestionCount, achievement, shareUrl }: PublishedProps) {
-  // Open the achievement modal on mount when a milestone was crossed.
-  // We don't open it instantly via the `open` prop because the
-  // Published screen is itself sliding in — letting the user see the
-  // ✓ for a beat before the modal pops makes the celebration land
-  // better than stacking the two animations on top of each other.
+  // Open the achievement modal after the configured delay. Delay comes
+  // from the resolved moment's `display.delay_ms` (admin-editable via
+  // /admin/moments). Falls back to 10s when the moment forgot to set it.
   const [achOpen, setAchOpen] = useState(false);
   useEffect(() => {
     if (!achievement) return;
-    const t = setTimeout(() => setAchOpen(true), 350);
+    const delay = typeof achievement.display.delay_ms === "number"
+      ? achievement.display.delay_ms
+      : 10_000;
+    const t = setTimeout(() => setAchOpen(true), delay);
     return () => clearTimeout(t);
   }, [achievement]);
 

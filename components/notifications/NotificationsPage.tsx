@@ -201,6 +201,67 @@ function renderNotification(n: NotificationItem): RenderResult {
         thumbnail: <Thumb cover={cover} fallback="✓" />,
       };
 
+    // ── Migration 029 — real fan-out types ──────────────────────────
+
+    case "suggestion_rated":
+      return {
+        href: slug,
+        content: <>
+          {p.rater_handle && <strong className="font-bold">@{p.rater_handle}</strong>}
+          {p.rater_handle ? " αξιολόγησε" : "Νέα αξιολόγηση"}
+          {typeof p.rating === "number" && <> με <strong className="font-bold">{p.rating}★</strong></>}
+          {" "}την πρότασή σου
+          {p.item_title && <> για <strong className="font-bold">{p.item_title}</strong></>}
+        </>,
+        thumbnail: <Thumb cover={cover} fallback="⭐" />,
+      };
+
+    case "new_follower":
+      return {
+        href: p.follower_handle ? `/profile/${p.follower_handle}` : null,
+        content: <>
+          <strong className="font-bold">{p.follower_display_name || p.follower_handle || "Νέος χρήστης"}</strong>
+          {" "}σε ακολουθεί
+          {typeof p.follower_suggestions === "number" && p.follower_suggestions > 0 && (
+            <> · {p.follower_suggestions} προτάσεις</>
+          )}
+        </>,
+        thumbnail: <Thumb fallback="👤" />,
+      };
+
+    case "new_suggestion_from_friend":
+      return {
+        href: slug,
+        content: <>
+          <strong className="font-bold">{p.author_display || `@${p.author_handle}`}</strong>
+          {" "}πρότεινε
+          {p.item_title && <> <strong className="font-bold">{p.item_title}</strong></>}
+        </>,
+        thumbnail: <Thumb cover={cover} fallback="✨" />,
+      };
+
+    case "suggestion_bookmarked":
+      return {
+        href: slug,
+        content: <>
+          🔥{" "}
+          <strong className="font-bold">{p.milestone ?? p.bookmark_count} χρήστες</strong>
+          {" "}αποθήκευσαν την πρότασή σου
+          {p.item_title && <> για <strong className="font-bold">{p.item_title}</strong></>}
+        </>,
+        thumbnail: <Thumb cover={cover} fallback="🔥" />,
+      };
+
+    case "search_match":
+      return {
+        href: slug,
+        content: <>
+          Βρέθηκε αυτό που έψαχνες:{" "}
+          {p.item_title && <strong className="font-bold">{p.item_title}</strong>}
+        </>,
+        thumbnail: <Thumb cover={cover} fallback="🔎" />,
+      };
+
     default:
       return {
         href: slug,

@@ -162,3 +162,48 @@ export async function fetchRegionTreeForCategory(
 
   return { parents, childToParent, descendantsById };
 }
+
+/**
+ * Given a region id (the one stored on `users.region_id`), return the
+ * set of region ids that should count as "in this user's area" — the
+ * region itself plus every descendant in the tree.
+ *
+ * Used for soft-sorting venue feeds so a Thessaloniki user sees
+ * Thessaloniki items first without filtering Athens out. Empty set
+ * when the user has no region set (caller short-circuits the sort).
+ *
+ * Cheap query — regions is a small table (~hundreds of rows).
+ */
+export async function getRegionMatchSet(
+  sb: SupabaseClient<any>,
+  regionId: string | null | undefined,
+): Promise<Set<string>> {
+  if (!regionId) return new Set();
+
+  const { data: regionsRaw } = await sb
+    .from("regions")
+    .select("id, parent_id");
+
+  const all: { id: string; parent_id: string | null }[] = (regionsRaw ?? []) as any[];
+  const childrenByParent = new Map<string, string[]>();
+  for (const r of all) {
+    if (!r.parent_id) continue;
+    const arr = childrenByParent.get(r.parent_id) ?? [];
+    arr.push(r.id);
+    childrenByParent.set(r.parent_id, arr);
+  }
+
+  const out = new Set<string>([regionId]);
+  const queue = [regionId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    const kids = childrenByParent.get(id) ?? [];
+    for (const k of kids) {
+      if (!out.has(k)) {
+        out.add(k);
+        queue.push(k);
+      }
+    }
+  }
+  return out;
+}

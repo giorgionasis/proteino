@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { resolveOneMoment, buildVars } from "@/lib/moments";
+import type { ResolvedMoment } from "@/lib/moments";
 
 type BookmarkStatus = "wishlist" | "done";
 
@@ -130,7 +132,47 @@ export async function POST(req: NextRequest) {
     console.warn("[POST /api/bookmarks] context fetch failed", e);
   }
 
-  return NextResponse.json({ ok: true, status: rowStatus, context });
+  // Resolve celebration moment from the DB-driven `moments` table.
+  // Resolver returns null when no row matches; client renders inline
+  // fallback copy in that case so behaviour is unchanged pre-migration.
+  let moment: ResolvedMoment | null = null;
+  try {
+    const { data: userMeta } = await supabase
+      .from("users")
+      .select("handle, display_name")
+      .eq("id", user.id)
+      .single();
+
+    moment = await resolveOneMoment(
+      "bookmark_created",
+      "bookmark_modal",
+      {
+        user: {
+          id:           user.id,
+          handle:       (userMeta as any)?.handle ?? null,
+          display_name: (userMeta as any)?.display_name ?? null,
+        },
+        payload: {
+          item_id,
+          category,
+          bookmarkersTotal:       context?.bookmarkersTotal ?? 0,
+          category_bookmark_count: context?.categoryCount    ?? 0,
+        },
+        vars: buildVars({
+          user:     { handle: (userMeta as any)?.handle, display_name: (userMeta as any)?.display_name },
+          category,
+          extra:    {
+            bookmarkersTotal: context?.bookmarkersTotal ?? 0,
+            category_bookmark_count: context?.categoryCount ?? 0,
+          },
+        }),
+      },
+    );
+  } catch (e) {
+    console.warn("[POST /api/bookmarks] moment resolve failed", e);
+  }
+
+  return NextResponse.json({ ok: true, status: rowStatus, context, moment });
 }
 
 // PATCH /api/bookmarks  body: { item_id, category?, status }

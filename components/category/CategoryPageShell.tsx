@@ -10,6 +10,7 @@ import { CategoryCard, isPortraitCategory, type CategoryItem } from "./CategoryC
 import { CategoryTopUsers, type ContributorUser, type TopUser } from "./CategoryTopUsers";
 import { CategorySuggestBox } from "./CategorySuggestBox";
 import { CarouselLandscape, type LandscapeItem } from "@/components/recommendation/CarouselLandscape";
+import { MoviesTonightSection } from "@/components/home/MoviesTonightSection";
 import { CATEGORY_FILTERS, type CategoryFilters } from "@/constants/filters";
 import type { FilterData } from "@/app/(main)/[category]/page";
 import type { CategorySlug } from "@/types";
@@ -249,6 +250,11 @@ interface CategoryPageShellProps {
   regionDescendants?: Record<string, string[]>;
   /** Awards taxonomy with counts (movies/series). */
   awardsGroups?: import("@/components/filters/GroupedCheckboxList").GroupedListGroup[];
+  /** Today's TV airings for movies category — populated server-side
+   *  from `movies_tonight` for the current date. Renders the "Απόψε
+   *  στην TV" carousel above the filter row. Empty / undefined on
+   *  other categories. */
+  tonightAirings?: import("@/lib/movies-tonight").TonightAiring[];
 }
 
 export function CategoryPageShell({
@@ -263,6 +269,7 @@ export function CategoryPageShell({
   regionChildToParent,
   regionDescendants,
   awardsGroups,
+  tonightAirings,
 }: CategoryPageShellProps) {
   const router = useRouter();
   const [activeTab, setActiveTab]       = useState("Όλα");
@@ -493,6 +500,16 @@ export function CategoryPageShell({
 
       {/* Scrollable content */}
       <div className="flex-1 pb-10">
+        {/* "Απόψε στην TV" — movies-only carousel, rendered only when
+            the admin booked airings for today. Channel logos pulled from
+            the icon registry via platformIconForChannel. Hidden on every
+            other category. */}
+        {category === "movies" && tonightAirings && tonightAirings.length > 0 && (
+          <div className="pt-4">
+            <MoviesTonightSection airings={tonightAirings} />
+          </div>
+        )}
+
         {/* Filter row — Φίλτρα button + Κοντά μου + active chips inline.
             Chips share the same horizontal scroll as the buttons to save
             vertical space. Quick-filter dropdown chips removed earlier. */}

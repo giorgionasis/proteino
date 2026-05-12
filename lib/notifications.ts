@@ -23,7 +23,10 @@ export interface NotificationItem {
 }
 
 const ITEM_REFERENCE_TYPES = new Set([
+  // Legacy / pre-wired types (kept for back-compat)
   "movie_airing", "rating", "comment", "suggestion_published",
+  // New types from migration 029
+  "suggestion_rated", "suggestion_bookmarked", "new_suggestion_from_friend", "search_match",
 ]);
 
 export async function fetchUserNotifications(

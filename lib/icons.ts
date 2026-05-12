@@ -26,6 +26,16 @@ export const ICON_PATHS = {
   "prime":              "/icons/brands/prime.svg",
   "youtube":            "/icons/brands/youtube.svg",
 
+  // ── Greek TV channels (broadcast — distinct from streaming brands) ─
+  "channel-ert1":       "/icons/channels/ert1.svg",
+  "channel-ert2":       "/icons/channels/ert2.svg",
+  "channel-ert3":       "/icons/channels/ert3.svg",
+  "channel-mega":       "/icons/channels/mega.svg",
+  "channel-skai":       "/icons/channels/skai.svg",
+  "channel-star":       "/icons/channels/star.svg",
+  "channel-antenna":    "/icons/channels/antenna.svg",
+  "channel-alphatv":    "/icons/channels/alphatv.svg",
+
   // ── Recipe nutrition (full-color illustrated) ──────────────────────
   "vegan":              "/icons/nutrition/vegan.svg",
   "no-milk":            "/icons/nutrition/no-milk.svg",
@@ -236,13 +246,54 @@ export function badgeLabelForSuggestions(count: number): "Verified" | "Gold" | "
  * of the streaming-service brand icons. Returns null when no match —
  * caller renders just the text fallback.
  */
-export function platformIconForChannel(channel: string | null | undefined): IconName | null {
+/**
+ * Streaming-brand subset: only Netflix / Disney / Prime / YouTube.
+ *
+ * Use this in series + non-movie surfaces — Greek broadcast TV
+ * channels are reserved for movie-only contexts (Movies Tonight,
+ * MovieDetail when airing today, the movies_tonight admin table).
+ */
+export function streamingIconForChannel(channel: string | null | undefined): IconName | null {
   if (!channel) return null;
-  const c = channel.toLowerCase();
+  const c = channel.toLowerCase().trim();
   if (c.includes("netflix")) return "netflix";
   if (c.includes("disney")) return "disney";
   if (c.includes("prime") || c.includes("amazon")) return "prime";
   if (c.includes("youtube")) return "youtube";
+  return null;
+}
+
+export function platformIconForChannel(channel: string | null | undefined): IconName | null {
+  if (!channel) return null;
+  const raw = channel.toLowerCase().trim();
+  // Greek-accent-fold for matching against Greek admin input
+  // (Αντέννα → αντεννα, ΣΚΑΪ → σκαι, ΕΡΤ1 → ερτ1, ΜΕΓΑ → μεγα).
+  const c = raw
+    .replace(/[άἀἂἄἆᾳ]/g, "α")
+    .replace(/[έἐἒἔ]/g, "ε")
+    .replace(/[ήἠἢἤἦῃ]/g, "η")
+    .replace(/[ίἰἲἴἶϊΐ]/g, "ι")
+    .replace(/[όὀὂὄ]/g, "ο")
+    .replace(/[ύὐὒὔὖϋΰ]/g, "υ")
+    .replace(/[ώὠὢὤὦῳ]/g, "ω");
+
+  // Streaming brands
+  if (c.includes("netflix")) return "netflix";
+  if (c.includes("disney")) return "disney";
+  if (c.includes("prime") || c.includes("amazon")) return "prime";
+  if (c.includes("youtube")) return "youtube";
+
+  // Greek TV channels — accept both Greek + Latin variants
+  if (c.includes("ert 1") || /\bert1\b/.test(c) || c.includes("ερτ 1") || c.includes("ερτ1")) return "channel-ert1";
+  if (c.includes("ert 2") || /\bert2\b/.test(c) || c.includes("ερτ 2") || c.includes("ερτ2")) return "channel-ert2";
+  if (c.includes("ert 3") || /\bert3\b/.test(c) || c.includes("ερτ 3") || c.includes("ερτ3")) return "channel-ert3";
+  if (c.includes("mega") || c.includes("μεγα"))                                                 return "channel-mega";
+  if (c.includes("skai") || c.includes("σκαι"))                                                 return "channel-skai";
+  if (c.includes("alpha") || c.includes("αλφα"))                                                return "channel-alphatv";
+  if (c.includes("ant1") || c.includes("ant 1") || c.includes("antenna") || c.includes("αντεννα") || c.includes("αντεν")) return "channel-antenna";
+  // "Star" alone collides with too many things — only match when channel-y
+  if (c === "star" || c.includes("star tv") || c.includes("star channel") || c.includes("σταρ")) return "channel-star";
+
   return null;
 }
 

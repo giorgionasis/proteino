@@ -16,6 +16,7 @@
 
 import { useState, useCallback } from "react";
 import { useAuthStore } from "@/stores/authStore";
+import type { ResolvedMoment } from "@/lib/moments";
 
 export type BookmarkStatus = "wishlist" | "done";
 
@@ -36,6 +37,10 @@ interface ToggleResult {
   ok:      boolean;
   status:  BookmarkStatus | null;
   context: BookmarkContext | null;
+  /** Resolved celebration moment from the DB-driven `moments` table.
+   *  Null when no row matched OR migration 026/027 not yet applied —
+   *  in either case the modal falls back to inline copy. */
+  moment:  ResolvedMoment | null;
 }
 
 interface SetStatusResult {
@@ -65,11 +70,11 @@ export function useBookmark(
   const isGuest                    = supabaseUser === null;
 
   const toggle = useCallback(async (): Promise<ToggleResult> => {
-    if (busy) return { ok: false, status, context: null };
+    if (busy) return { ok: false, status, context: null, moment: null };
     if (isGuest) {
       // No-op for guests — the GuestPromptModal handles the prompt
       // upstream (see useGuestGuard wrappers in detail pages).
-      return { ok: false, status, context: null };
+      return { ok: false, status, context: null, moment: null };
     }
 
     const next: BookmarkStatus | null = status === null ? "wishlist" : null;
@@ -96,6 +101,7 @@ export function useBookmark(
           ok:      true,
           status:  body.status ?? "wishlist",
           context: body.context ?? null,
+          moment:  body.moment  ?? null,
         };
       }
 
@@ -107,11 +113,11 @@ export function useBookmark(
         console.error("[useBookmark] DELETE failed", { status: res.status, body });
         throw new Error(body?.error ?? `delete_failed_${res.status}`);
       }
-      return { ok: true, status: null, context: null };
+      return { ok: true, status: null, context: null, moment: null };
     } catch (e) {
       console.warn("[useBookmark] toggle failed, reverting", e);
       setLocalStatus(prev);
-      return { ok: false, status: prev, context: null };
+      return { ok: false, status: prev, context: null, moment: null };
     } finally {
       setBusy(false);
     }
