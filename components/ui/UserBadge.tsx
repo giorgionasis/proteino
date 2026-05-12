@@ -1,7 +1,12 @@
 "use client";
 
 import { Icon } from "@/components/ui/Icon";
-import { badgeIconForLevel } from "@/lib/icons";
+import {
+  badgeIconForLevel,
+  badgeIconForSuggestions,
+  badgeLabelForSuggestions,
+  type IconName,
+} from "@/lib/icons";
 import { cn } from "@/lib/utils/cn";
 
 type BadgeKind = "Verified" | "Gold" | "Expert" | "Platinum";
@@ -14,8 +19,15 @@ const LABEL: Record<BadgeKind, string> = {
 };
 
 interface UserBadgeProps {
-  /** Pass either an explicit kind (legacy) or `level` and we'll derive it. */
+  /** Explicit kind override (legacy / fixtures). */
   kind?: BadgeKind;
+  /** Live suggestion count — preferred input. Derives the tier via
+   *  `badgeIconForSuggestions`. Returns null below 3 suggestions, in
+   *  which case the component renders nothing. */
+  suggestionCount?: number;
+  /** Legacy fallback. `users.level` is currently `1` across the
+   *  migrated corpus so passing this alone always yields "Verified".
+   *  Prefer `suggestionCount` when available. */
   level?: number;
   /** Hide the label text, render the icon only. */
   iconOnly?: boolean;
@@ -28,31 +40,41 @@ interface UserBadgeProps {
 
 /**
  * Single source of truth for the user-level badge across the app.
- * Renders the illustrated badge SVG from /icons/badges/ + (optional) text label.
+ * Renders the illustrated badge SVG from /icons/badges/ + optional label.
  *
- * Replaces the legacy colored text-pill (`<BadgeChip>`) and inline shield
- * SVG (`<VerifiedBadge>`) variants that were duplicated across all 9
- * detail components.
+ * Resolution order: explicit `kind` → `suggestionCount` (preferred) →
+ * `level` (legacy fallback). When `suggestionCount` is given and falls
+ * below the verified threshold (< 3), the component renders nothing —
+ * brand-new users genuinely have no badge to display.
  */
 export function UserBadge({
   kind: kindProp,
+  suggestionCount,
   level,
   iconOnly,
   size = 14,
   variant = "sm",
   className,
 }: UserBadgeProps) {
-  // Derive kind from level if not explicitly passed.
-  const iconName = kindProp
-    ? `badge-${kindProp.toLowerCase()}` as ReturnType<typeof badgeIconForLevel>
-    : badgeIconForLevel(level ?? 0);
+  let iconName: IconName | null;
+  let label: BadgeKind;
 
-  // Pretty-print the label from the iconName ("badge-verified" → "Verified").
-  const label = kindProp ?? (
-    iconName === "badge-platinum" ? "Platinum" :
-    iconName === "badge-expert"   ? "Expert"   :
-    iconName === "badge-gold"     ? "Gold"     : "Verified"
-  ) as BadgeKind;
+  if (kindProp) {
+    iconName = `badge-${kindProp.toLowerCase()}` as IconName;
+    label    = kindProp;
+  } else if (typeof suggestionCount === "number") {
+    iconName = badgeIconForSuggestions(suggestionCount);
+    const lab = badgeLabelForSuggestions(suggestionCount);
+    if (!iconName || !lab) return null;
+    label = lab;
+  } else {
+    iconName = badgeIconForLevel(level ?? 0);
+    label = (
+      iconName === "badge-platinum" ? "Platinum" :
+      iconName === "badge-expert"   ? "Expert"   :
+      iconName === "badge-gold"     ? "Gold"     : "Verified"
+    ) as BadgeKind;
+  }
 
   const textCls = cn(
     "font-semibold text-zinc-800",

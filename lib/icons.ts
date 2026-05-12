@@ -189,12 +189,46 @@ export const NUTRITION_ICON_MAP: Record<string, IconName> = {
   sugar_free: "sugar-free",
 };
 
-/** User level → badge icon. Mirrors the existing `getBadge(level)` pattern. */
+/** User level → badge icon. Mirrors the existing `getBadge(level)` pattern.
+ *  Note: `users.level` is currently `1` for every MySQL-migrated user
+ *  because the migration never backfilled it. Prefer `badgeIconForSuggestions`
+ *  when you have a `suggestion_count` available. */
 export function badgeIconForLevel(level: number): IconName {
   if (level >= 25) return "badge-platinum";
   if (level >= 10) return "badge-expert";
   if (level >= 5) return "badge-gold";
   return "badge-verified";
+}
+
+/**
+ * Suggestion-count → badge tier. The source of truth for badge UI
+ * because `users.level` is unreliable across the migrated corpus.
+ *
+ * Tier thresholds (per CLAUDE.md §10 / HOOKS.md §3):
+ *   < 3  → null (no badge)
+ *   3-9  → verified  ("Επαληθευμένος")
+ *   10-24 → gold     ("Έμπειρος")
+ *   25-49 → expert
+ *   50+  → platinum
+ *
+ * Returns null below threshold so the caller can hide the badge
+ * entirely for brand-new users — showing "Verified" to someone with
+ * zero suggestions would be a lie.
+ */
+export function badgeIconForSuggestions(count: number): IconName | null {
+  if (count >= 50) return "badge-platinum";
+  if (count >= 25) return "badge-expert";
+  if (count >= 10) return "badge-gold";
+  if (count >= 3)  return "badge-verified";
+  return null;
+}
+
+export function badgeLabelForSuggestions(count: number): "Verified" | "Gold" | "Expert" | "Platinum" | null {
+  if (count >= 50) return "Platinum";
+  if (count >= 25) return "Expert";
+  if (count >= 10) return "Gold";
+  if (count >= 3)  return "Verified";
+  return null;
 }
 
 /**

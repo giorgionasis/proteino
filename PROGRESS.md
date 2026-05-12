@@ -1,12 +1,42 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-11 (session 19 — guest guard + bookmark v2 + orbit microinteraction + profile redesign)
+Last updated: 2026-05-12 (session 20 — onboarding flow + badge system overhaul + achievement celebration)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 19 (current) finished:**
+**Current state — session 20 (current) finished:**
+
+- ✅ **Onboarding flow shipped at `/onboarding`** (4 screens). Hook → Interests → Reward → People → finish. Light theme throughout, no header/bottom-nav/FAB. Gated server-side from the (main) layout when `preferences.onboarded_at` is missing. Both new signups AND existing users hit it. Screens (`components/onboarding/`):
+  - **HookScreen** — animated AI demo (looping `Mr. Robot` typing → LISTENING → LOCKED), social proof line, `Ξεκίνα →` + `Παράλειψη`.
+  - **InterestsScreen** — 3×3 emoji-tile grid with live counter ("3 επιλεγμένα ✓"), `≥2 picks` to advance, **conversational expansion** (`✨ Ή πες μου με δικά σου λόγια →` link reveals inline coral textarea; Gemini + heuristic fallback parse → matching cells animate-pop-in).
+  - **RewardScreen** — per-category horizontal carousels of items the user hasn't suggested, each with a coral `"Επειδή..."` reasoning subtitle (3 tiers: top-rated / star-rated / interest-based).
+  - **PeopleScreen** — two sections: `tight` (specialists in user's categories, top 3 by matched count) + `broad` (rest of top contributors). Each card tappable → opens `ProfilePopup`. Canonical `<FollowButton>` (controllable now) wired through `useFollow` so follows actually persist.
+  - **OnboardingSyncing** — 3-step checklist with live numbers from `/api/onboarding/numbers` (`"Διαβάσαμε 1.165 προτάσεις · Φιλτράραμε 1 με ★ 4+ · Συνδέουμε με 189 χρήστες σαν εσένα"`). Animation timing is fixed; numbers hot-swap in as fetch resolves.
+- ✅ **Onboarding APIs** (`app/api/onboarding/`): `complete` (POST — saves interests + stamps `preferences.onboarded_at` only on `final` calls), `reward-feed` (excludes user's own items, 2-tier fallback), `suggested-users` (returns `{ tight, broad }` with `taste` line + excludes already-followed users), `numbers` (live counts), `parse-interests` (Gemini-first with deterministic Greek+English heuristic fallback that handles accent folding).
+- ✅ **`extractInterests` added to AIService abstraction.** Gemini implementation + cache-and-log forwarding for optional methods (`extractInterests`, `getSemanticQualityTip`, `conversationalSearchFallback`). Mock + heuristic-only environments degrade gracefully.
+- ✅ **Bug fix: `FollowButton` now controllable.** Was uncontrolled — `following` prop only seeded mount state. Added `useEffect(() => setActive(following), [following])` so external state changes flow in. Existing uncontrolled consumers unaffected because they never mutate the prop.
+- ✅ **Bug fix: onboarding `AuthProvider` wrap.** `/onboarding` lives outside the (main) layout, so without an explicit `AuthProvider` wrapping the onboarding layout, `useGuestGuard` saw a null user → fired the sign-in modal on follow tap. Fixed.
+- ✅ **Bug fix: `onboarded_at` only stamped on final call.** Original code stamped on the step 2 → 3 transition, which meant any re-render hitting the server entry on `/onboarding` would redirect users out of the flow mid-way. New contract: `final: true` flag controls stamping. Intermediate writes save interests only.
+- ✅ **Badge system overhaul — platform-wide.** Root cause: `users.level` is `1` for every MySQL-migrated user, so the level-based `getBadge` painted everyone "Verified". Fix:
+  - New `badgeIconForSuggestions(count)` + `badgeLabelForSuggestions(count)` in `lib/icons.ts` — canonical thresholds `3 / 10 / 25 / 50` (Verified / Gold / Expert / Platinum). Returns null below 3.
+  - `<UserBadge>` accepts `suggestionCount?: number` (preferred input), falls back to legacy `level` for old callers.
+  - `<UserAvatarWithPopup>` now derives the popup badge from `suggestion_count` — cascades to all 9 detail pages + onboarding popup.
+  - All 9 detail components: local `getBadge(level)` replaced with `getBadge(suggestionCount)` that wraps the central helper. Every call site switched from `r.user.level` to `r.user.suggestion_count`.
+  - Detail-page TS type for `suggestions[].user` + `reviews[].user` extended with `suggestion_count`. Reviews SELECT extended to fetch the column.
+  - `/[category]/[id]/reviews` subpage uses central helper.
+  - Admin `UsersTable` uses suggestion_count with one extra `NEW` tier (count < 3) so the moderation column never has a blank label.
+  - Live verification: top suggesters now correctly show Platinum (was all "Verified"); `foodcouple_gr` (47 suggestions) shows Expert; etc.
+- ✅ **Achievement celebration modal — matches Figma screens 1-6.** Triggers from `/api/suggestions` POST at counts `1 / 2 / 3 / 7 / 9 / 10 / 22 / 24 / 25 / 47 / 49 / 50` (per-count `TRIGGERS` table, server-side). Two variants:
+  - **progress** — title ladder ("Μόλις έκανες την πρώτη σου πρόταση!" / "Καταπληκτική αρχή!" / "Τα πας περίφημα!" / "Είσαι πολύ κοντά!"), progress dots `[start..target]` with ✓/dashed-numbered states (formula `dotCount = max(3, remaining + 1)`), greyed badge under laurels with subtle sparkles.
+  - **tier_unlock** — "Τα κατάφερες!" + ordinal subtitle, colored badge (110px) with 4 staggered pop-in sparkles, tier-colored two-line label (Verified emerald / Έμπειρος blue / Expert violet / Platinum slate).
+  - Mirrors `BookmarkSavedModal` architecture (portal, 3-phase mount, body-scroll lock, **no auto-dismiss**).
+  - Layered on top of Published screen (opens 350ms after mount so the ✓ moment lands first).
+  - Showcase entry at `/admin/showcase` → Submission/AI tab with **10 interactive buttons** so design QA doesn't require resetting `suggestion_count`.
+  - **OPEN QUESTION (deferred to next session):** when to display? Currently fires immediately after Published mounts. Alternative: 30s after submission (less interruptive), on the bell icon (passive), or at next home-page visit. **Tied for next session's discussion.**
+
+**Previous state — session 19 finished (still all current):**
 
 - ✅ **Bookmark orbit microinteraction — final tune.** Hero cover clones and flies a quadratic Bezier from its position into the bookmark IconButton at the top-right. **Shrinks continuously to ~1px at the icon centre** (`END_PX = 1` in `hooks/useBookmarkOrbit.ts`) — the clone collapses into a point rather than landing icon-sized. Bounce on landing is now the new `bookmark-bounce` animation (520ms, `1.0 → 1.35 → 0.88 → 1.08 → 1.0` with `ease-pop`), applied to the **whole 36px IconButton circle** (not just the inner icon). After the bounce, a **600ms beat** is held before the celebration modal slides up — gives the spring time to settle visually. Unbookmark stays instant.
 - ✅ **Profile screen — badge + stats + cards redesign.** `UserProfile.tsx`:
@@ -125,6 +155,66 @@ See §3 for the full ordered roadmap.
 ---
 
 ## 1. COMPLETED
+
+### Session 20 — Onboarding + achievement celebration + badge overhaul ✅ (2026-05-12)
+
+The "make it feel alive" session. Three tightly-related shipments: a real onboarding flow with conversational AI, a 12-trigger achievement celebration system designed to match the user's Figma mocks, and a platform-wide badge correction so every tier finally reflects real activity instead of stuck-at-1 `users.level`.
+
+**Onboarding flow at `/onboarding` (4 screens)**
+
+The give-before-you-ask spec from CLAUDE.md §7, finally built. Light theme throughout, no header / bottom-nav / FAB — the flow owns the viewport. Server-side gate in `app/(main)/layout.tsx` redirects logged-in users without `preferences.onboarded_at` to `/onboarding`. Both new signups and existing migrated users go through it on next login.
+
+- **HookScreen** — animated 4-phase AI demo (typing → LISTENING → LOCKED → reset). Uses the same `ProteínoIntelligence` panel grammar as the live submission flow so the user recognises it the first time they hit the FAB. `Ξεκίνα →` advances; `Παράλειψη` stamps `onboarded_at` so we never nag again.
+- **InterestsScreen** — 3×3 emoji grid, ≥2 picks required, live counter ("3 επιλεγμένα ✓"). Below the counter: discoverable coral pill `✨ Ή πες μου με δικά σου λόγια →` that expands an inline coral textarea on the same screen (no new step, no modal). 700ms debounced parse → `/api/onboarding/parse-interests` → matching grid cells animate-pop-in. Mode indicator at the bottom: `Διαβάζω…` / `Διάβασα: Ταινίες · Βιβλία · Θέατρο` / `Proteíno Intelligence`. Two-tier parsing: Gemini-first via `extractInterests` on the `AIService` abstraction (added this session); deterministic Greek+English keyword matcher fallback handles accent folding via `stripDiacritics`.
+- **RewardScreen** — per-category horizontal carousels of the platform's top items in the user's picked categories, with two important rules: (1) excludes items the user has already suggested (returning users wouldn't be impressed by "your top picks: things you yourself added"), (2) two-tier query — rated-with-cover preferred, cover-only fallback when a category is sparse. Each card has a coral `"Επειδή..."` reasoning subtitle: "Top rated από την κοινότητα" (rating ≥ 4.5 + ≥ 3 raters), "Με ★ X.X · N ψήφους" (rating ≥ 4.0), or "Επειδή επέλεξες σινεμά" (interest fallback). 128×192px posters.
+- **PeopleScreen** — two sections returned by `/api/onboarding/suggested-users`:
+  - **tight** — top 3 specialists in the user's picked categories by `matched` count (suggestions in scope). Section heading: "ΜΕ ΒΑΣΗ ΤΑ ΕΝΔΙΑΦΕΡΟΝΤΑ ΣΟΥ".
+  - **broad** — top 6 general contributors who didn't make the specialist cut. Heading: "ΚΑΙ ΑΛΛΟΙ ΑΠΟ ΤΗΝ ΚΟΙΝΟΤΗΤΑ".
+  - Each user has a `taste` line computed server-side from their suggestion category breakdown ("78 βιβλία · 12 ταινίες"). Tapping the avatar/name opens the canonical `ProfilePopup` (portal, body-scroll lock, full stats). The follow CTA below uses the design-system `<FollowButton>` wired through `useFollow` so follows actually persist.
+  - Both lists exclude the viewer + anyone the viewer already follows.
+- **OnboardingSyncing** — 3-step checklist with live numbers from `/api/onboarding/numbers`. Step labels use `{N}` placeholders: "Διαβάσαμε **1.165** προτάσεις στις κατηγορίες σου · Φιλτράραμε **1** με ★ 4+ για σένα · Συνδέουμε σε με **189** χρήστες σαν εσένα". Step durations are fixed; numbers fetch races the animation and hot-swaps in on resolve. Light theme to match the rest of the flow.
+
+**Important architectural note: `onboarded_at` only stamps on `final` calls.** Original implementation stamped it on the step 2 → 3 transition, which meant any RSC re-render touching `/onboarding`'s server entry (link prefetch, hot-reload, router.refresh anywhere) would re-evaluate the gate, see the stamp, and `redirect("/")` — kicking the user out of the flow before they reached step 4. Fixed: the `/api/onboarding/complete` POST has a `final: boolean` flag. Intermediate writes (step 2 → 3) save interests only; finishing (people → home) or skipping from hook stamps `onboarded_at`. Robust against re-renders mid-flow.
+
+**Bug fixes (onboarding):**
+- `FollowButton` was uncontrolled — `following` prop only seeded mount state. Added `useEffect(() => setActive(following), [following])` so external state changes flow in. Existing uncontrolled consumers unaffected because they never mutate the prop. Critical for onboarding's PeopleScreen where each card drives its own `useFollow`.
+- `/onboarding` lives outside the `(main)` layout, so the auth store stayed empty for client hooks (`useGuestGuard`, `useFollow`). Tapping Follow fired the sign-in modal even though the user was authed. Fixed by wrapping the onboarding layout with `AuthProvider`.
+- Reward feed was showing items the user had already suggested. Added `ownIds` exclusion to both query tiers.
+
+**Achievement celebration modal — matches Figma screens 1-6**
+
+The user provided 6 mock screens (counts 1, 2, 3, 7, 9, 10) for the milestone celebration. Built to match them pixel-for-pixel; extrapolated the same `[T-3, T-1, T]` pattern for Expert (22/24/25) and Platinum (47/49/50).
+
+- **Server** (`/api/suggestions`) — replaced threshold-crossing logic with a per-count `TRIGGERS` table. 12 trigger counts: `1, 2, 3, 7, 9, 10, 22, 24, 25, 47, 49, 50`. Payload reduced to `{ variant: "progress" | "tier_unlock", count, target, badge }` — minimal by design, all copy lives client-side so wording can iterate without API churn.
+- **Modal** (`components/submission/AchievementUnlockedModal.tsx`) — mirrors `BookmarkSavedModal` architecture (portal-mounted to body, 3-phase mount, body-scroll lock, X + backdrop close). **No auto-dismiss** — achievements are intentional pauses.
+- **Progress variant** (screens 1, 2, 4, 5):
+  - Title ladder driven by count + target + remaining: `"Μόλις έκανες την πρώτη σου πρόταση!"` (count=1) → `"Καταπληκτική αρχή!"` (target=3, rem=1) → `"Τα πας περίφημα!"` (target≥10, rem>1) → `"Είσαι πολύ κοντά!"` (target≥10, rem=1).
+  - Progress dots formula: `dotCount = max(3, remaining + 1)`, dots span `[target - dotCount + 1 .. target]`. Position `n` is `done` if `n ≤ count` else `todo` (rendered as dashed circle with the number inside).
+  - Greyed badge (filter: grayscale + opacity-50) under the laurel SVGs (`profile-leaves-left/right` from session 19 at 30% opacity) with subtle slate-300 sparkles.
+- **Tier-unlock variant** (screens 3, 6):
+  - `"Τα κατάφερες!"` + ordinal subtitle (`"Το πρώτο επίτευγμα είναι δικό σου"` / `"Απέκτησες και δεύτερο επίτευγμα"`).
+  - Colored badge at 110px with the tier color, 4 staggered pop-in sparkles, tier-colored two-line label.
+  - Tier colors: Verified `#1D9E75` (emerald), Έμπειρος `#3B82F6` (blue), Expert `#7C3AED` (violet), Platinum `#64748B` (slate).
+- **Layering** — opens 350ms after the Published screen mounts so the ✓ moment lands first, then the badge celebration on top.
+- **Showcase entry** — `/admin/showcase` → Submission/AI tab → 10 interactive buttons portal-mounting the real modal. Removes the need to reset `suggestion_count` for design QA.
+
+**OPEN QUESTION (deferred):** when to display the modal relative to publishing. Currently fires 350ms after Published mounts. Alternatives the user wants to discuss next session: 30s delay (less interruptive), bell icon notification (passive), or surface on next home-page visit.
+
+**Badge system overhaul — platform-wide fix**
+
+Root cause: every MySQL-migrated user has `users.level = 1`. The 9 detail components, the popup, the admin users table — they ALL keyed badge tier off `level`, so everyone showed up as "Verified" regardless of activity. Fixed end-to-end this session.
+
+- **New source of truth** in `lib/icons.ts`:
+  - `badgeIconForSuggestions(count)` — returns null below 3, then verified / gold / expert / platinum at 3 / 10 / 25 / 50.
+  - `badgeLabelForSuggestions(count)` — same thresholds, returns "Verified" / "Gold" / "Expert" / "Platinum" / null.
+  - The old `badgeIconForLevel` is kept but commented as unreliable; new callers should always use the suggestion-count helper.
+- `<UserBadge>` accepts `suggestionCount?: number` (preferred), falls back to legacy `level`. Returns null when `suggestionCount < 3` — brand-new users get no badge rather than a misleading "Verified".
+- `<UserAvatarWithPopup>` derives popup badge from `suggestion_count` — cascades to all 9 detail pages + onboarding `PeopleScreen` popup + carousel cards everywhere.
+- **9 detail components swept**: each local `getBadge(level)` replaced with `getBadge(suggestionCount)` wrapping the central helper. Every call site changed from `r.user.level` to `r.user.suggestion_count ?? 0`.
+- **Data-layer type fix**: `app/(main)/[category]/[id]/page.tsx` extended both `suggestions[].user` and `reviews[].user` types with `suggestion_count`. The reviews SELECT query was missing the column — added. Suggestions SELECT already had it.
+- `/[category]/[id]/reviews` subpage uses the central helper.
+- Admin `UsersTable` uses suggestion_count with one extra `NEW` tier (count < 3) so the moderation column always has a label (hiding it would leave a blank cell in a table — different rule than the public-facing badge).
+- **Live verification**: top suggesters now correctly show Platinum (was all "Verified"); `foodcouple_gr` (47 suggestions) shows Expert; etc.
 
 ### Session 19 — Guest guard + bookmark v2 + orbit + profile redesign ✅ (2026-05-11)
 
@@ -926,12 +1016,12 @@ Originally specced for Anthropic Claude Haiku 4.5. Pivoted to **Gemini Flash-Lit
 - 🛑 **Enable paid Gemini tier** — free tier is 20 req/day. Cost at paid tier ~$0.0001/search.
 - ⏳ Other-category external API match (#16): Google Books for books, Google Places for food/bars/hotels (admin side wired; user-side submission flow still falls back to heuristic), Ticketmaster for theater/events.
 
-### Phase A.5 — Immediate audit-gap punch list (post-session 19)
+### Phase A.5 — Immediate audit-gap punch list (post-session 20)
 
-After session 19's bookmark v2 + leaderboard data wiring, several audit gaps remain. In priority order:
+After session 20's onboarding + achievement celebration + badge overhaul, the remaining items are:
 
-1. **Onboarding flow** (`/onboarding` route) — give-before-you-ask spec from CLAUDE.md §7. Welcome → Interests (2+ categories, min) → Reward feed → Suggested users. Reuses `<InterestsSelector>` (already standalone). Trigger: first login after signup if `users.onboarded_at IS NULL`.
-2. **Achievement unlock celebration** — popup after each milestone suggestion. Triggers from `/api/suggestions` POST when crossing 1 / 3 / 7 / 10 / 25 / 50 thresholds. UI: full-screen reward modal (mirror BookmarkSavedModal architecture) with badge graphic + progress to next milestone + Share CTA.
+1. ~~**Onboarding flow**~~ ✅ DONE (session 20). 4 screens shipped at `/onboarding` with conversational expansion. Gated server-side from the (main) layout.
+2. ~~**Achievement unlock celebration**~~ ✅ DONE (session 20). 12-count `TRIGGERS` table → modal at every meaningful step toward a tier. Two variants matching Figma screens 1-6 exactly. **OPEN QUESTION:** when to display it relative to the Published screen — currently fires 350ms after Published mounts. Alternatives discussed: 30s delay, bell icon, next home visit. **Locked for next session's discussion.**
 3. **Security settings page** — `/profile/[handle]/settings/security`. Password change + 2FA placeholder + social unlink + session list (active devices). Schema exists (`devices` table). Backend routes need wiring.
 4. **Admin moderation polish** — (a) admin suggestions queue filter (#29: filter by status / category / hidden), (b) reports queue priority sort (#30: oldest unresolved first), (c) bulk ops on items (#28: bulk publish/unpublish/delete).
 5. **Drop legacy `ratings` + `comments` tables** (#25/#26). All UI now reads from `reviews` (migration 016). Two migrations: `026-drop-ratings.sql` (data already wiped) + `027-archive-comments.sql` (export to JSON file in scripts/sql/ first, then DROP).

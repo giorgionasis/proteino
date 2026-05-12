@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { CATEGORIES } from "@/constants/categories";
 import { InnerHeader } from "@/components/layout/Header";
 import { ReviewCard } from "@/components/detail/ReviewCard";
+import { badgeLabelForSuggestions } from "@/lib/icons";
 
 interface Props {
   params: { category: string; id: string };
@@ -22,12 +23,9 @@ export async function generateMetadata({ params }: Props) {
   return { title: item?.title ? `Αξιολογήσεις · ${item.title}` : "Αξιολογήσεις" };
 }
 
-function badgeForLevel(level: number): "Verified" | "Expert" | "Gold" | "Platinum" {
-  if (level >= 50) return "Platinum";
-  if (level >= 25) return "Gold";
-  if (level >= 10) return "Expert";
-  return "Verified";
-}
+// Badge tier derived from suggestion_count (not `users.level`, which is
+// `1` for everyone in the migrated corpus). Same helper as the detail
+// pages — lib/icons.badgeLabelForSuggestions is the source of truth.
 
 function relativeDate(iso: string): string {
   const d = new Date(iso);
@@ -75,7 +73,7 @@ export default async function ItemReviewsPage({ params }: Props) {
   const { data: reviewRows } = await sb
     .from("reviews")
     .select(
-      "id, rating, reflection, created_at, vote_up, vote_down, users!reviews_user_id_fkey(id, display_name, handle, avatar_url, level)"
+      "id, rating, reflection, created_at, vote_up, vote_down, users!reviews_user_id_fkey(id, display_name, handle, avatar_url, level, suggestion_count)"
     )
     .eq("item_id", item.id)
     .eq("is_hidden", false)
@@ -148,7 +146,7 @@ export default async function ItemReviewsPage({ params }: Props) {
               date={relativeDate(r.created_at)}
               name={r.users.display_name ?? "Χρήστης"}
               userData={r.users}
-              badge={badgeForLevel(r.users.level ?? 1)}
+              badge={badgeLabelForSuggestions(r.users.suggestion_count ?? 0) ?? "Verified"}
               likes={r.vote_up ?? 0}
               dislikes={r.vote_down ?? 0}
               myVote={myVoteByReview.get(r.id) ?? null}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/utils/cn";
 import { useGuestGuard } from "@/hooks/useGuestGuard";
@@ -21,7 +21,12 @@ export function FollowButton({
   size = "md",
   variant = "default",
 }: FollowButtonProps) {
+  // Local state is seeded by `following` and stays in sync with prop
+  // changes (so a parent that drives state via useFollow() can flip
+  // this button externally). Existing uncontrolled callers — which
+  // never mutate `following` after mount — keep their old behavior.
   const [active, setActive] = useState(following);
+  useEffect(() => { setActive(following); }, [following]);
   const { requireAuth, modalProps } = useGuestGuard("να ακολουθήσεις");
 
   const toggle = () => {

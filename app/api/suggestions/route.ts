@@ -396,6 +396,18 @@ export async function POST(req: NextRequest) {
     .update({ suggestion_count: newCount, last_suggestion_at: now })
     .eq("id", user.id);
 
+  // 4a. Milestone detection. When the publish crosses a milestone
+  //     threshold, the client overlays a celebration modal on top of
+  //     the Published screen. Two flavors:
+  //
+  //       tier_unlock     — a new badge becomes active (3 / 10 / 25 / 50)
+  //       progress_nudge  — encouragement on the way to the next tier
+  //                          (1 = first ever; 7 = "almost Gold")
+  //
+  //     "First ever" is technically a `progress_nudge` but the client
+  //     uses the `type` field to swap copy.
+  const achievement = computeAchievement(newCount);
+
   // 5. Hook moments (HOOKS.md §2B). Three cheap counts that drive the
   //    Published screen's social-proof + variable-reward block. Computed
   //    in parallel; failures degrade gracefully (counts default to 0).
@@ -432,5 +444,70 @@ export async function POST(req: NextRequest) {
     weekly_count: weeklyRes.count ?? 0,
     category_audience_count: audienceRes.count ?? 0,
     my_followers_count: followersRes.count ?? 0,
+    achievement,
   });
+}
+
+// ─── Milestone schedule ─────────────────────────────────────────────────
+//
+// Each badge tier has a small "approach run" of celebration popups so
+// the user feels the tier coming. The schedule (from user Figma mocks):
+//
+//   tier=3  (Verified) — fire at counts 1, 2, 3
+//   tier=10 (Gold)     — fire at counts 7, 9, 10
+//   tier=25 (Expert)   — fire at counts 22, 24, 25
+//   tier=50 (Platinum) — fire at counts 47, 49, 50
+//
+// counts == target → variant "tier_unlock"   (colored badge + sparkles)
+// counts < target  → variant "progress"      (greyed badge + progress dots)
+//
+// The schedule lives server-side so we can extend it (e.g. add count=22
+// for Expert mid-flight) without a client rebuild.
+
+type BadgeTier = "verified" | "gold" | "expert" | "platinum";
+
+interface Trigger {
+  variant: "progress" | "tier_unlock";
+  target:  number;
+  badge:   BadgeTier;
+}
+
+const TRIGGERS: Record<number, Trigger> = {
+  // tier=3 — Verified
+  1:  { variant: "progress",    target: 3,  badge: "verified" },
+  2:  { variant: "progress",    target: 3,  badge: "verified" },
+  3:  { variant: "tier_unlock", target: 3,  badge: "verified" },
+  // tier=10 — Έμπειρος (Gold)
+  7:  { variant: "progress",    target: 10, badge: "gold" },
+  9:  { variant: "progress",    target: 10, badge: "gold" },
+  10: { variant: "tier_unlock", target: 10, badge: "gold" },
+  // tier=25 — Expert
+  22: { variant: "progress",    target: 25, badge: "expert" },
+  24: { variant: "progress",    target: 25, badge: "expert" },
+  25: { variant: "tier_unlock", target: 25, badge: "expert" },
+  // tier=50 — Platinum
+  47: { variant: "progress",    target: 50, badge: "platinum" },
+  49: { variant: "progress",    target: 50, badge: "platinum" },
+  50: { variant: "tier_unlock", target: 50, badge: "platinum" },
+};
+
+export interface AchievementPayload {
+  variant: "progress" | "tier_unlock";
+  /** User's current suggestion_count after this publish. */
+  count:   number;
+  /** The target badge tier this celebration is about. */
+  target:  number;
+  /** The badge tier identifier. */
+  badge:   BadgeTier;
+}
+
+function computeAchievement(newCount: number): AchievementPayload | null {
+  const t = TRIGGERS[newCount];
+  if (!t) return null;
+  return {
+    variant: t.variant,
+    count:   newCount,
+    target:  t.target,
+    badge:   t.badge,
+  };
 }

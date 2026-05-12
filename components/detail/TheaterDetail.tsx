@@ -24,6 +24,7 @@ import { OutlinedPill } from "@/components/ui/OutlinedPill";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
+import { badgeLabelForSuggestions } from "@/lib/icons";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 interface RelatedBook {
@@ -36,10 +37,8 @@ interface RelatedBook {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getBadge(level: number): "Verified" | "Expert" | "Platinum" | "Gold" {
-  if (level >= 10) return "Expert";
-  if (level >= 5) return "Gold";
-  return "Verified";
+function getBadge(suggestionCount: number): "Verified" | "Expert" | "Platinum" | "Gold" {
+  return badgeLabelForSuggestions(suggestionCount) ?? "Verified";
 }
 
 function getActorName(actor: unknown): string {
@@ -136,7 +135,7 @@ export function TheaterDetail({ data }: { data: ItemDetailData }) {
   const reviews: ReviewItem[] = data.reviews.map(r => ({
     id: r.id,
     name: r.user.display_name,
-    badge: getBadge(r.user.level),
+    badge: getBadge(r.user.suggestion_count ?? 0),
     color: "#a5b5c4",
     rating: r.rating,
     date: formatDate(r.created_at),
@@ -183,7 +182,7 @@ export function TheaterDetail({ data }: { data: ItemDetailData }) {
           author={featured.user.display_name}
           date={formatDate(featured.created_at)}
           text={featured.reflection ?? ""}
-          badge={getBadge(featured.user.level)}
+          badge={getBadge(featured.user.suggestion_count ?? 0)}
           user={featured.user}
         />
       )}

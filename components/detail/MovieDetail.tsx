@@ -22,6 +22,7 @@ import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
 import { ReviewCard } from "@/components/detail/ReviewCard";
 import { Icon } from "@/components/ui/Icon";
 import { UserBadge } from "@/components/ui/UserBadge";
+import { badgeLabelForSuggestions } from "@/lib/icons";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
 import { oscarIconForCategory } from "@/lib/icons";
@@ -30,10 +31,11 @@ import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getBadge(level: number): "Expert" | "Platinum" | "Gold" | "Verified" {
-  if (level >= 10) return "Expert";
-  if (level >= 5) return "Gold";
-  return "Verified";
+// Badge tier resolution moved to lib/icons:badgeLabelForSuggestions.
+// `users.level` is unreliable (always 1 across the migrated corpus);
+// suggestion_count is the real signal.
+function getBadge(suggestionCount: number): "Expert" | "Platinum" | "Gold" | "Verified" {
+  return badgeLabelForSuggestions(suggestionCount) ?? "Verified";
 }
 
 function getActorName(actor: unknown): string {
@@ -196,7 +198,7 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
       id: r.user.id,
       handle: r.user.handle,
       name: r.user.display_name,
-      badge: getBadge(r.user.level),
+      badge: getBadge(r.user.suggestion_count ?? 0),
       placeholder_color: "#a5b5c4",
       avatar_url: r.user.avatar_url,
     },
@@ -295,7 +297,7 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
               <UserAvatarWithPopup user={featured.user} size={50} />
               <div className="space-y-1">
                 <p className="text-[14px] font-bold text-zinc-800 leading-none">{featured.user.display_name}</p>
-                <UserBadge level={featured.user.level} />
+                <UserBadge suggestionCount={featured.user.suggestion_count ?? 0} />
               </div>
             </div>
             <div className="flex items-center gap-1.5 text-[13px] font-medium text-zinc-500">

@@ -193,5 +193,20 @@ export function wrapWithCacheAndLog(inner: AIService): AIService {
     generateEmbedding: inner.generateEmbedding.bind(inner),
     rerankRecommendations: inner.rerankRecommendations.bind(inner),
   };
+
+  // Optional methods — forwarded only when the inner service implements
+  // them. Keeps the wrapped object structurally consistent with the
+  // interface while letting the parse-interests route detect AI
+  // availability via `typeof ai.extractInterests === "function"`.
+  if (typeof inner.extractInterests === "function") {
+    wrapped.extractInterests = inner.extractInterests.bind(inner);
+  }
+  if (typeof inner.getSemanticQualityTip === "function") {
+    wrapped.getSemanticQualityTip = inner.getSemanticQualityTip.bind(inner);
+  }
+  if (typeof inner.conversationalSearchFallback === "function") {
+    wrapped.conversationalSearchFallback = inner.conversationalSearchFallback.bind(inner);
+  }
+
   return wrapped;
 }

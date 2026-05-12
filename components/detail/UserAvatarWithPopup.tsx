@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AvatarImage } from "@/components/ui/AvatarImage";
 import { ProfilePopup } from "@/components/profile/ProfilePopup";
+import { badgeLabelForSuggestions } from "@/lib/icons";
 
 interface UserData {
   id?: string;
@@ -13,12 +14,6 @@ interface UserData {
   level?: number;
   suggestion_count?: number;
   avg_quality_score?: number | null;
-}
-
-function getBadgeLabel(level: number): string {
-  if (level >= 10) return "Expert";
-  if (level >= 5) return "Gold";
-  return "Verified";
 }
 
 interface Props {
@@ -65,7 +60,10 @@ export function UserAvatarWithPopup({ user, size = 50, className }: Props) {
           avatar_url: user.avatar_url,
           suggestion_count: user.suggestion_count ?? 0,
           avg_rating: user.avg_quality_score ?? 0,
-          badge: getBadgeLabel(user.level ?? 1),
+          // Derive from suggestion_count when available — `level` is
+          // stuck at 1 across the migrated user corpus, so the legacy
+          // level-based mapping painted everyone "Verified".
+          badge: badgeLabelForSuggestions(user.suggestion_count ?? 0),
         }}
         open={open}
         onClose={() => setOpen(false)}

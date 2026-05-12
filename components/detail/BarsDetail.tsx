@@ -20,14 +20,13 @@ import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
+import { badgeLabelForSuggestions } from "@/lib/icons";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getBadge(level: number): "Expert" | "Platinum" | "Gold" | "Verified" {
-  if (level >= 10) return "Expert";
-  if (level >= 5) return "Gold";
-  return "Verified";
+function getBadge(suggestionCount: number): "Expert" | "Platinum" | "Gold" | "Verified" {
+  return badgeLabelForSuggestions(suggestionCount) ?? "Verified";
 }
 
 function formatDate(iso: string): string {
@@ -91,7 +90,7 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
   const reviews = data.reviews.map(r => ({
     id: r.id,
     name: r.user.display_name,
-    badge: getBadge(r.user.level),
+    badge: getBadge(r.user.suggestion_count ?? 0),
     color: "#a5b5c4",
     rating: r.rating,
     date: formatDate(r.created_at),

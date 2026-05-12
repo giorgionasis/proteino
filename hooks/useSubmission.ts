@@ -25,6 +25,24 @@ export interface DuplicateInfo {
   suggestion_id: string;
 }
 
+export type AchievementVariant = "progress" | "tier_unlock";
+export type BadgeTier          = "verified" | "gold" | "expert" | "platinum";
+
+/**
+ * Server-side achievement payload — minimal by design. The client
+ * computes all copy (title/subtitle/dots) from these four fields so
+ * the wording can evolve without touching the API.
+ */
+export interface AchievementData {
+  variant: AchievementVariant;
+  /** User's current suggestion_count after this publish. */
+  count:   number;
+  /** The target badge tier this celebration is about (3 / 10 / 25 / 50). */
+  target:  number;
+  /** The badge tier identifier. */
+  badge:   BadgeTier;
+}
+
 export interface PublishResult {
   suggestionId: string;
   itemId: string;
@@ -39,12 +57,33 @@ export interface PublishResult {
   categoryAudienceCount: number;
   /** Followers of the current user. */
   myFollowersCount: number;
+  /** Milestone-crossing payload from the server. Null when this publish
+   *  did not cross a milestone threshold. Drives the achievement
+   *  celebration modal on top of the Published screen. */
+  achievement: AchievementData | null;
 }
 
 /** Key for the AI-rejection set. We dedupe matches the user explicitly
  *  said "no, that's not it" to so they don't reappear on every keystroke. */
 function rejectionKey(category: string | null, title: string | null): string {
   return `${(category ?? "").toLowerCase()}:${(title ?? "").trim().toLowerCase()}`;
+}
+
+/** Defensive parser for the achievement payload — returns null on any
+ *  shape mismatch so a server-side schema drift can never break the
+ *  Published screen. */
+function parseAchievement(raw: unknown): AchievementData | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (r.variant !== "progress" && r.variant !== "tier_unlock") return null;
+  if (typeof r.count !== "number" || typeof r.target !== "number") return null;
+  if (typeof r.badge !== "string" || !["verified","gold","expert","platinum"].includes(r.badge)) return null;
+  return {
+    variant: r.variant,
+    count:   r.count,
+    target:  r.target,
+    badge:   r.badge as BadgeTier,
+  };
 }
 
 interface UseSubmissionReturn {
@@ -459,6 +498,7 @@ export function useSubmission(): UseSubmissionReturn {
         weeklyCount: typeof body.weekly_count === "number" ? body.weekly_count : 0,
         categoryAudienceCount: typeof body.category_audience_count === "number" ? body.category_audience_count : 0,
         myFollowersCount: typeof body.my_followers_count === "number" ? body.my_followers_count : 0,
+        achievement: parseAchievement(body.achievement),
       });
       setState("published");
     } finally {

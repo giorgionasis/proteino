@@ -28,7 +28,7 @@ import { OutlinedPill } from "@/components/ui/OutlinedPill";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
-import { AMENITY_ICON_MAP, AMENITY_LABELS, getActiveAmenities } from "@/lib/icons";
+import { AMENITY_ICON_MAP, AMENITY_LABELS, getActiveAmenities, badgeLabelForSuggestions } from "@/lib/icons";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 /** Parse an external_ratings entry that can be plain string or {score, count}. */
@@ -42,10 +42,8 @@ function parseRating(v: unknown): { score: string; count?: number } {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getBadge(level: number): "Verified" | "Expert" | "Platinum" | "Gold" {
-  if (level >= 10) return "Expert";
-  if (level >= 5) return "Gold";
-  return "Verified";
+function getBadge(suggestionCount: number): "Verified" | "Expert" | "Platinum" | "Gold" {
+  return badgeLabelForSuggestions(suggestionCount) ?? "Verified";
 }
 
 function formatDate(iso: string): string {
@@ -159,7 +157,7 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
   const reviews: ReviewItem[] = data.reviews.map(r => ({
     id: r.id,
     name: r.user.display_name,
-    badge: getBadge(r.user.level),
+    badge: getBadge(r.user.suggestion_count ?? 0),
     color: "#a5b5c4",
     rating: r.rating,
     date: formatDate(r.created_at),
@@ -219,7 +217,7 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
           author={featured.user.display_name}
           date={formatDate(featured.created_at)}
           text={featured.reflection ?? ""}
-          badge={getBadge(featured.user.level)}
+          badge={getBadge(featured.user.suggestion_count ?? 0)}
           user={featured.user}
         />
       )}

@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Camera, Link2, List, Mic, RotateCcw, Star, X } from "lucide-react";
 import { OverlayHeader } from "@/components/layout/Header";
-import { useSubmission } from "@/hooks/useSubmission";
+import { useSubmission, type AchievementData } from "@/hooks/useSubmission";
 import { AchievementProgress } from "@/components/submission/AchievementProgress";
+import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
 import { cn } from "@/lib/utils/cn";
 import Link from "next/link";
 
@@ -506,6 +507,7 @@ function PublishedScreen({
   onSuggestAnother,
   newSuggestionCount,
   hooks,
+  achievement,
 }: {
   title:              string;
   itemSlug:           string;
@@ -517,6 +519,7 @@ function PublishedScreen({
   onSuggestAnother:   () => void;
   newSuggestionCount: number | null;
   hooks:              HookMoments | null;
+  achievement:        AchievementData | null;
 }) {
   const [shareToast, setShareToast] = useState<string | null>(null);
 
@@ -715,7 +718,30 @@ function PublishedScreen({
           </button>
         </div>
       </div>
+
+      <AchievementOverlay achievement={achievement} />
     </div>
+  );
+}
+
+/** Auto-opens the AchievementUnlockedModal a beat after the Published
+ *  screen mounts so the user gets the ✓ moment first, then the badge
+ *  celebration lands cleanly on top. Closing the modal returns the
+ *  user to the Published screen — they can still hit Share or Δες
+ *  την →. */
+function AchievementOverlay({ achievement }: { achievement: AchievementData | null }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!achievement) return;
+    const t = setTimeout(() => setOpen(true), 350);
+    return () => clearTimeout(t);
+  }, [achievement]);
+  return (
+    <AchievementUnlockedModal
+      open={open}
+      achievement={achievement}
+      onClose={() => setOpen(false)}
+    />
   );
 }
 
@@ -1124,6 +1150,7 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
           categoryAudienceCount: publishResult.categoryAudienceCount,
           myFollowersCount: publishResult.myFollowersCount,
         } : null}
+        achievement={publishResult?.achievement ?? null}
       />
     );
   }

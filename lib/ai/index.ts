@@ -15,6 +15,12 @@ export interface AIService {
    *  Greek question that helps them narrow down. Null = no useful
    *  question (caller renders default chips instead). */
   conversationalSearchFallback?(query: string, hint?: string): Promise<string | null>;
+  /** Extract category interests from a free-text self-description.
+   *  Used by the onboarding flow's conversational expansion: the user
+   *  types "λατρεύω το σινεμά και τα βιβλία", we return
+   *  ["movies", "books"]. Caller falls back to a keyword matcher when
+   *  this method is missing or returns null. */
+  extractInterests?(text: string): Promise<string[] | null>;
   generateEmbedding(text: string): Promise<number[]>;
   rerankRecommendations(userId: string, candidates: Item[]): Promise<Item[]>;
 }

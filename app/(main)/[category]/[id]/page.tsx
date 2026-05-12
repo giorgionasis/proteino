@@ -32,7 +32,7 @@ export type ItemDetailData = {
     reflection: string | null;
     rating: number | null;
     created_at: string;
-    user: { id: string; display_name: string; handle: string; avatar_url: string | null; level: number };
+    user: { id: string; display_name: string; handle: string; avatar_url: string | null; level: number; suggestion_count: number };
   }>;
   related: Array<Record<string, any>>;
   /** Populated only for hotels (proximity-based, sorted by distance asc). */
@@ -56,7 +56,7 @@ export type ItemDetailData = {
    */
   reviews: Array<{
     id: string;
-    user: { id: string; display_name: string; handle: string; avatar_url: string | null; level: number };
+    user: { id: string; display_name: string; handle: string; avatar_url: string | null; level: number; suggestion_count: number };
     rating: number;
     reflection: string | null;
     created_at: string;
@@ -127,7 +127,7 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
   // one user's rating (mandatory) + optional reflection. Carousel + /reviews
   // page read from this. Histogram + headline avg/count computed from it.
   const { data: reviewRows } = (await (sb.from("reviews") as any)
-    .select("id, rating, reflection, created_at, vote_up, vote_down, users!reviews_user_id_fkey(id, display_name, handle, avatar_url, level)")
+    .select("id, rating, reflection, created_at, vote_up, vote_down, users!reviews_user_id_fkey(id, display_name, handle, avatar_url, level, suggestion_count)")
     .eq("item_id", item.id)
     .eq("is_hidden", false)
     .order("created_at", { ascending: false })
@@ -161,6 +161,7 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
       handle: r.users.handle ?? "user",
       avatar_url: r.users.avatar_url ?? null,
       level: r.users.level ?? 1,
+      suggestion_count: r.users.suggestion_count ?? 0,
     },
     rating: Number(r.rating),
     reflection: r.reflection,

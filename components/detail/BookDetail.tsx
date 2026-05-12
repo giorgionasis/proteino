@@ -21,12 +21,11 @@ import { AuthorCard } from "@/components/detail/AuthorCard";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
+import { badgeLabelForSuggestions } from "@/lib/icons";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
-function getBadge(level: number): "Expert" | "Platinum" | "Gold" | "Verified" {
-  if (level >= 10) return "Expert";
-  if (level >= 5) return "Gold";
-  return "Verified";
+function getBadge(suggestionCount: number): "Expert" | "Platinum" | "Gold" | "Verified" {
+  return badgeLabelForSuggestions(suggestionCount) ?? "Verified";
 }
 
 function formatDate(iso: string): string {
@@ -100,7 +99,7 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
   const reviews = data.reviews.map(r => ({
     id: r.id,
     name: r.user.display_name,
-    badge: getBadge(r.user.level),
+    badge: getBadge(r.user.suggestion_count ?? 0),
     color: "#a5b5c4",
     rating: r.rating,
     date: formatDate(r.created_at),
@@ -170,7 +169,7 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
                 </div>
                 <div className="space-y-1">
                   <p className="text-[14px] font-bold text-zinc-800">{s.user.display_name}</p>
-                  <UserBadge level={s.user.level} />
+                  <UserBadge suggestionCount={s.user.suggestion_count ?? 0} />
                 </div>
               </div>
               <span className="text-[13px] font-medium text-zinc-500">{formatDate(s.created_at)}</span>

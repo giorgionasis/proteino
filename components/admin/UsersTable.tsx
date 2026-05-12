@@ -34,11 +34,17 @@ function getSupabase() {
   );
 }
 
-function getBadge(level: number): { label: string; color: string } {
-  if (level >= 10) return { label: "PLATINUM", color: "text-blue-600" };
-  if (level >= 7) return { label: "GOLD", color: "text-amber-500" };
-  if (level >= 4) return { label: "EXPERT", color: "text-purple-600" };
-  if (level >= 2) return { label: "VERIFIED", color: "text-emerald-600" };
+// Tier thresholds match the platform-wide canonical mapping in
+// lib/icons.badgeLabelForSuggestions. `users.level` is unreliable
+// (stuck at 1 across the migrated corpus) so we key off
+// suggestion_count directly. Admin keeps an extra "NEW" tier for
+// users below the public Verified threshold — every row needs a
+// label in a moderation table, hiding it would just leave a gap.
+function getBadge(suggestionCount: number): { label: string; color: string } {
+  if (suggestionCount >= 50) return { label: "PLATINUM", color: "text-blue-600" };
+  if (suggestionCount >= 25) return { label: "EXPERT",   color: "text-purple-600" };
+  if (suggestionCount >= 10) return { label: "GOLD",     color: "text-amber-500" };
+  if (suggestionCount >= 3)  return { label: "VERIFIED", color: "text-emerald-600" };
   return { label: "NEW", color: "text-zinc-400" };
 }
 
@@ -176,7 +182,7 @@ export function UsersTable() {
               </tr>
             )}
             {rows.map((row) => {
-              const badge = getBadge(row.level);
+              const badge = getBadge(row.suggestions);
               return (
                 <tr key={row.id} className="border-b border-zinc-100 hover:bg-zinc-50/50 transition-colors">
                   <td className="px-4 py-3">

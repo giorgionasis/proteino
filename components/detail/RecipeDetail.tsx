@@ -23,15 +23,13 @@ import { Icon } from "@/components/ui/Icon";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
-import type { IconName } from "@/lib/icons";
+import { badgeLabelForSuggestions, type IconName } from "@/lib/icons";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getBadge(level: number): "Verified" | "Expert" | "Platinum" | "Gold" {
-  if (level >= 10) return "Expert";
-  if (level >= 5) return "Gold";
-  return "Verified";
+function getBadge(suggestionCount: number): "Verified" | "Expert" | "Platinum" | "Gold" {
+  return badgeLabelForSuggestions(suggestionCount) ?? "Verified";
 }
 
 function formatDate(iso: string): string {
@@ -146,7 +144,7 @@ export function RecipeDetail({ data }: { data: ItemDetailData }) {
   const reviews: ReviewItem[] = data.reviews.map(r => ({
     id: r.id,
     name: r.user.display_name,
-    badge: getBadge(r.user.level),
+    badge: getBadge(r.user.suggestion_count ?? 0),
     color: "#a5b5c4",
     rating: r.rating,
     date: formatDate(r.created_at),
@@ -214,7 +212,7 @@ export function RecipeDetail({ data }: { data: ItemDetailData }) {
               <UserAvatarWithPopup user={featured.user} size={45} />
               <div className="space-y-1">
                 <p className="text-[14px] font-bold text-zinc-800">{featured.user.display_name}</p>
-                <UserBadge level={featured.user.level} variant="xs" />
+                <UserBadge suggestionCount={featured.user.suggestion_count ?? 0} variant="xs" />
               </div>
             </div>
             <span className="text-[14px] font-medium text-zinc-500">{formatDate(featured.created_at)}</span>

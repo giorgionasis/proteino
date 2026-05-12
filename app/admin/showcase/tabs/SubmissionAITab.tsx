@@ -6,6 +6,7 @@ import { ShowcaseSection, Variant } from "@/components/admin/showcase/ShowcaseSe
 import { ProgressBar } from "@/components/ai/ProgressBar";
 import { ProteínoIntelligence } from "@/components/ai/ProteínoIntelligence";
 import { AchievementProgress } from "@/components/submission/AchievementProgress";
+import { AchievementUnlockedModal, type AchievementData } from "@/components/submission/AchievementUnlockedModal";
 import type { SubmissionAnalysis } from "@/types";
 
 const ANALYSIS_LISTENING: SubmissionAnalysis = {
@@ -44,7 +45,60 @@ export function SubmissionAITab() {
       <ProgressBarShowcase />
       <ProteinoIntelligenceShowcase />
       <AchievementProgressShowcase />
+      <AchievementUnlockedModalShowcase />
     </>
+  );
+}
+
+// ── AchievementUnlockedModal ─────────────────────────────────────────
+//
+// One click per state — opens the actual modal portal-mounted to body
+// so what you see here is byte-for-byte what users see post-submission.
+
+const ACH_STATES: { label: string; data: AchievementData }[] = [
+  { label: "#1 — Πρώτη πρόταση",      data: { variant: "progress",    count: 1,  target: 3,  badge: "verified" } },
+  { label: "#2 — Καταπληκτική αρχή",  data: { variant: "progress",    count: 2,  target: 3,  badge: "verified" } },
+  { label: "#3 — Verified UNLOCKED",  data: { variant: "tier_unlock", count: 3,  target: 3,  badge: "verified" } },
+  { label: "#7 — Τα πας περίφημα",    data: { variant: "progress",    count: 7,  target: 10, badge: "gold"     } },
+  { label: "#9 — Είσαι πολύ κοντά",   data: { variant: "progress",    count: 9,  target: 10, badge: "gold"     } },
+  { label: "#10 — Έμπειρος UNLOCKED", data: { variant: "tier_unlock", count: 10, target: 10, badge: "gold"     } },
+  { label: "#22 — Approach Expert",   data: { variant: "progress",    count: 22, target: 25, badge: "expert"   } },
+  { label: "#25 — Expert UNLOCKED",   data: { variant: "tier_unlock", count: 25, target: 25, badge: "expert"   } },
+  { label: "#49 — Πολύ κοντά (Plat.)",data: { variant: "progress",    count: 49, target: 50, badge: "platinum" } },
+  { label: "#50 — Platinum UNLOCKED", data: { variant: "tier_unlock", count: 50, target: 50, badge: "platinum" } },
+];
+
+function AchievementUnlockedModalShowcase() {
+  const [active, setActive] = useState<AchievementData | null>(null);
+  return (
+    <ShowcaseSection
+      name="AchievementUnlockedModal"
+      filePath="components/submission/AchievementUnlockedModal.tsx"
+      description="Celebration modal layered over the Published screen on milestone crossings. Click any state to preview the real modal. Server fires at counts 1/2/3 (Verified run), 7/9/10 (Gold), 22/24/25 (Expert), 47/49/50 (Platinum)."
+      contextLinks={[
+        { label: "/api/suggestions POST", href: "/api/suggestions" },
+        { label: "Trigger after a real publish", href: "/" },
+      ]}
+    >
+      <Variant label="All states (interactive)">
+        <div className="flex flex-wrap gap-2 max-w-[640px]">
+          {ACH_STATES.map((s) => (
+            <button
+              key={s.label}
+              onClick={() => setActive(s.data)}
+              className="h-9 px-3 rounded-full bg-zinc-100 hover:bg-zinc-200 text-[12px] font-semibold text-zinc-700 transition-colors"
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </Variant>
+      <AchievementUnlockedModal
+        open={active !== null}
+        achievement={active}
+        onClose={() => setActive(null)}
+      />
+    </ShowcaseSection>
   );
 }
 

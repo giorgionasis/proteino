@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-11 (session 19 — guest guard / bookmark v2 + orbit microinteraction / profile redesign)
+**Last meaningful update:** 2026-05-12 (session 20 — onboarding flow / achievement celebration / badge system overhaul)
 
 ---
 
@@ -967,7 +967,7 @@ import { Icon } from "@/components/ui/Icon";
 - `FOOD_AMENITY_OPTIONS` — restaurant amenity subset (parking/wifi/pet/...)
 
 ### Reusable primitives
-- `<UserBadge>` — level badge + label (replaces 3 legacy patterns: colored text pills, inline shield SVG, BadgeChip)
+- `<UserBadge>` — suggestion-tier badge + label. Accepts `suggestionCount` (preferred — derives tier via `badgeLabelForSuggestions`) or legacy `level`. Returns `null` for users with fewer than 3 suggestions. Replaces 3 legacy patterns: colored text pills, inline shield SVG, BadgeChip.
 - `<OutlinedPill>` — pill button with arrow used by Booking, Public, Delivery, Theater ticket cards
 - `<IconToggleGrid>` — visual checkbox grid in admin (icon + label, coral active state)
 - `<ReviewCardFooter>` — vote up/down + αναφορά footer used by all 9 detail pages
@@ -1358,3 +1358,128 @@ The following inline helpers became unreferenced after the redesign and were del
 Both new cards have full showcase coverage at `/admin/showcase` → Profile tab with 3 variants each:
 - `ProfileScoreCard`: healthy (4.56, 213 ratings) / new user (0, 0) / perfect (5.00, 3)
 - `ProfileVotesCard`: 27 votes / 0 votes / 1,247 votes (volume test)
+
+---
+
+## 34. Onboarding flow (session 20)
+> ✅ Shipped — 4 screens at `/onboarding`, gated server-side from `(main)/layout.tsx`
+
+The give-before-you-ask onboarding spec from §7, finally built. Both new signups AND existing users go through it on next login.
+
+### Gate
+`app/(main)/layout.tsx` reads `users.preferences` in the same admin query it already uses for the avatar/displayName lookup. When `preferences.onboarded_at` is missing, `redirect("/onboarding")` fires. Safe against migration 022 not being applied (the SELECT failing falls through cleanly rather than trapping users).
+
+### Stamping rule (critical)
+`preferences.onboarded_at` is stamped ONLY on the **final** call to `/api/onboarding/complete`. Intermediate writes (step 2 → 3 transition saving interests) pass `final: false`. If `onboarded_at` were stamped mid-flow, any RSC re-render hitting `/onboarding`'s server entry (link prefetch, hot reload, router refresh anywhere) would see the stamp, redirect, and kick the user out of the flow before they reached step 4. The split flag keeps the user in the flow until they truly finish or skip.
+
+### Storage location
+All onboarding state lives under `users.preferences` jsonb (migration 022):
+- `preferences.interests` — array of category slugs
+- `preferences.onboarded_at` — ISO timestamp; presence = done
+- (other top-level keys like `notifications`, `tour_seen` live alongside)
+
+No new migration needed — `onboarded_at` is just another key in the existing prefs jsonb.
+
+### Screens (`components/onboarding/`)
+| File | Trigger | Key behavior |
+|---|---|---|
+| `HookScreen.tsx` | step 1 | 4-phase looping AI demo: typing → LISTENING → LOCKED → reset. Same visual grammar as the live submission flow. "Παράλειψη" stamps onboarded_at — never nag again. |
+| `InterestsScreen.tsx` | step 2 | 3×3 emoji grid, ≥2 picks. Live counter. Discoverable coral pill expands an inline textarea: AI parses Greek/greeklish → matching cells animate-pop-in. |
+| `RewardScreen.tsx` | step 3 | Horizontal carousels per picked category. Excludes user's own suggestions. Two-tier query (rated+covered preferred, cover-only fallback). Each card has a coral "Επειδή..." reason. |
+| `PeopleScreen.tsx` | step 4 | Two sections: `tight` specialists + `broad` general contributors. Avatar tap → ProfilePopup. Canonical FollowButton wired through useFollow so follows actually persist. |
+| `OnboardingSyncing.tsx` | finishing | 3-step checklist with live numbers from `/api/onboarding/numbers`. Animation timing fixed; numbers hot-swap in on fetch resolve. |
+
+### APIs (`app/api/onboarding/`)
+- `complete` — POST `{ interests?, final?, skipped? }`. Saves interests + conditionally stamps `onboarded_at`.
+- `reward-feed` — GET `?categories=...`. Per-category carousels. Excludes user's own item_ids. Tier-A (rated + cover) with tier-B fallback.
+- `suggested-users` — GET `?categories=...`. Returns `{ tight, broad }` ranked by `matched` count in scope. Each user carries a `taste` line ("78 βιβλία · 12 ταινίες"). Excludes viewer + already-followed.
+- `numbers` — GET `?categories=...`. Three live counts for the syncing screen + a `totalSuggestions` for the skip path. Edge-cached 60s.
+- `parse-interests` — POST `{ text }`. Two-tier extraction: Gemini's `extractInterests` first, deterministic accent-folded keyword matcher fallback.
+
+### `extractInterests` on AIService
+New optional method on the `AIService` interface. Gemini implementation lives in `lib/ai/gemini.ts:extractInterests`. The cache-and-log wrapper forwards optional methods (including `getSemanticQualityTip`, `conversationalSearchFallback`) only when the inner service implements them — keeps the wrapped object structurally consistent with the interface.
+
+### Notes
+- `<FollowButton>` is now properly controllable (added `useEffect(() => setActive(following), [following])`). Existing uncontrolled consumers (`SuggestedUsers`, `CategoryTopUsers`, `ProfilePopup`) are unaffected because they never mutate `following`.
+- `/onboarding` needs its own `AuthProvider` wrap in the layout — it lives outside `(main)` so otherwise the auth store stays null and `useGuestGuard` fires the sign-in modal on follow tap.
+
+---
+
+## 35. Achievement celebration (session 20)
+> ✅ Shipped — modal layered on Published screen at 12 trigger counts
+
+Achievement unlock celebration matching the user's Figma screens 1-6. Two visual variants (`progress` + `tier_unlock`); 12 trigger counts arranged in 4 "approach runs" toward each badge tier.
+
+### Trigger schedule (server-side)
+
+`/api/suggestions` looks up `newCount` in a `TRIGGERS` map. Hits fire the modal; misses return `achievement: null`.
+
+| Tier | Counts | Variant pattern |
+|---|---|---|
+| Verified (3) | 1, 2 → progress · 3 → tier_unlock | |
+| Έμπειρος (10) | 7, 9 → progress · 10 → tier_unlock | |
+| Expert (25) | 22, 24 → progress · 25 → tier_unlock | |
+| Platinum (50) | 47, 49 → progress · 50 → tier_unlock | |
+
+Server payload reduced to `{ variant, count, target, badge }`. All copy lives client-side so wording can iterate without API churn.
+
+### Visual variants
+
+**`progress`** (screens 1, 2, 4, 5 — heading toward a tier):
+- Title ladder: "Μόλις έκανες την πρώτη σου πρόταση!" (count=1) → "Καταπληκτική αρχή!" (target=3, rem=1) → "Τα πας περίφημα!" (target≥10, rem>1) → "Είσαι πολύ κοντά!" (target≥10, rem=1)
+- Progress dots formula: `dotCount = max(3, remaining + 1)`. Dots span `[target - dotCount + 1 .. target]`. Position `n` rendered ✓-filled if `n ≤ count`, else dashed with the number inside.
+- Greyed badge (`filter: grayscale opacity-50`) under laurel SVGs (30% opacity) with subtle slate-300 sparkles.
+
+**`tier_unlock`** (screens 3, 6 — just reached the tier):
+- "Τα κατάφερες!" + ordinal subtitle ("Το πρώτο επίτευγμα είναι δικό σου" / "Απέκτησες και δεύτερο επίτευγμα" / etc.)
+- Colored badge (110px) with tier-colored 4-point sparkles popping in with staggered delays (320/420/500/380ms).
+- Tier colors: Verified `#1D9E75` (emerald) · Έμπειρος `#3B82F6` (blue) · Expert `#7C3AED` (violet) · Platinum `#64748B` (slate).
+
+### Architecture
+Modal mirrors `BookmarkSavedModal` — portal-mounted to body, 3-phase mount (DOM presence → next-frame transform target), body-scroll lock, X + backdrop both close. **NO auto-dismiss** — achievements are intentional pauses.
+
+Layered above the Published screen: `Published.tsx` opens the modal `350ms` after mount so the ✓ checkmark beat lands first, then the badge celebration on top.
+
+### Open question (deferred to next session)
+Currently fires 350ms after Published mounts. Alternatives under discussion:
+- 30s delay after submission (less interruptive in-flow)
+- Bell-icon notification (passive — user discovers when they want)
+- Surface on next home-page visit (turns it into a return-trip hook)
+
+### Showcase
+`/admin/showcase` → Submission/AI tab → 10 interactive buttons. Each portal-mounts the real modal so what design QA sees is byte-identical to what users see. Removes the need to reset `suggestion_count` for design review.
+
+---
+
+## 36. Badge tier source of truth (session 20)
+> ✅ Shipped — derived from `suggestion_count`, not `users.level`
+
+Root cause of the "everyone is Verified" bug: `users.level` is `1` for every MySQL-migrated user. The 9 detail components, the ProfilePopup, the admin UsersTable — they all keyed badge tier off `level`.
+
+### Canonical helpers (lib/icons.ts)
+- `badgeIconForSuggestions(count): IconName | null` — returns `null` below 3, then `badge-verified` / `-gold` / `-expert` / `-platinum` at 3 / 10 / 25 / 50.
+- `badgeLabelForSuggestions(count): "Verified" | "Gold" | "Expert" | "Platinum" | null` — same thresholds.
+
+The old `badgeIconForLevel(level)` is kept (commented as unreliable) for any legacy caller; new callers should always use the suggestion-count helpers.
+
+### Tier thresholds (canonical, platform-wide)
+
+| Suggestions | Badge | Label |
+|---|---|---|
+| 0–2 | (none) | brand-new user shows no badge |
+| 3–9 | Verified | Επαληθευμένος χρήστης |
+| 10–24 | Gold | Έμπειρος χρήστης |
+| 25–49 | Expert | Expert |
+| 50+ | Platinum | Platinum |
+
+Admin `UsersTable` has one extra **NEW** tier (count < 3) so the moderation column always has a label — different rule than the public UI, where below-threshold users get no badge.
+
+### `<UserBadge>` contract
+Accepts: `kind` (explicit) → `suggestionCount` (preferred) → `level` (legacy fallback). When `suggestionCount` is supplied and falls below 3, the component renders `null`.
+
+### Consumers (updated platform-wide this session)
+- `<UserAvatarWithPopup>` derives popup badge from `suggestion_count`. Cascades to all 9 detail pages + onboarding popup + every carousel that uses it.
+- All 9 detail components: local `getBadge(level)` → `getBadge(suggestionCount)` wrapping the central helper.
+- `/[category]/[id]/reviews` subpage uses the central helper.
+- Admin `UsersTable` uses suggestion-count thresholds.
+- The detail-page TypeScript types for `suggestions[].user` and `reviews[].user` were extended with `suggestion_count`. The reviews SELECT was missing the column — added.

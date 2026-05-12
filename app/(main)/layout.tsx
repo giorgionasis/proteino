@@ -1,5 +1,6 @@
 import { createClient }        from "@/lib/supabase/server";
 import { createAdminClient }    from "@/lib/supabase/admin";
+import { redirect }             from "next/navigation";
 import { AuthProvider }         from "@/components/layout/AuthProvider";
 import { ClientAwareHeader }    from "@/components/layout/ClientAwareHeader";
 import { BottomNav }            from "@/components/layout/BottomNav";
@@ -14,6 +15,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   let displayName: string | null = null;
   let notificationCount = 0;
   let maintenance = { mode: false, message: "" };
+  let needsOnboarding = false;
   if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
       const sb = createClient();
@@ -33,26 +35,44 @@ export default async function MainLayout({ children }: { children: React.ReactNo
           u.user_metadata?.full_name ??
           u.user_metadata?.name ??
           null;
-        // Look up public.users for missing fields. Most users (post-MySQL
-        // migration) have a row keyed by id; Google OAuth occasionally
-        // creates a new auth UUID with no matching row, so fall back to
-        // email lookup. Same pattern as /you and /profile pages.
-        if (!avatarUrl || !displayName) {
-          const admin = createAdminClient();
-          const { data: byId } = await (admin.from("users") as any)
-            .select("avatar_url, display_name, handle")
-            .eq("id", u.id)
+        // Look up public.users for missing fields + preferences.
+        // We fetch preferences in the same query so the onboarding
+        // gate adds 0 extra round-trips. If `preferences` column is
+        // missing (migration 022 not applied) the entire select fails
+        // with 42703 — fall through and skip the gate rather than
+        // trap logged-in users.
+        type UserRow = {
+          avatar_url: string | null;
+          display_name: string | null;
+          handle: string | null;
+          preferences: { onboarded_at?: string } | null;
+        };
+        const admin = createAdminClient();
+        let row: UserRow | null = null;
+        const { data: byId, error: byIdErr } = await (admin.from("users") as any)
+          .select("avatar_url, display_name, handle, preferences")
+          .eq("id", u.id)
+          .maybeSingle();
+        if (!byIdErr) {
+          row = (byId as UserRow | null) ?? null;
+        }
+        if (!row && u.email) {
+          const { data: byEmail, error: byEmailErr } = await (admin.from("users") as any)
+            .select("avatar_url, display_name, handle, preferences")
+            .eq("email", u.email)
             .maybeSingle();
-          let row = byId as { avatar_url: string | null; display_name: string | null; handle: string | null } | null;
-          if (!row && u.email) {
-            const { data: byEmail } = await (admin.from("users") as any)
-              .select("avatar_url, display_name, handle")
-              .eq("email", u.email)
-              .maybeSingle();
-            row = byEmail as typeof row;
+          if (!byEmailErr) {
+            row = (byEmail as UserRow | null) ?? null;
           }
-          avatarUrl = avatarUrl ?? row?.avatar_url ?? null;
-          displayName = displayName ?? row?.display_name ?? row?.handle ?? null;
+        }
+        avatarUrl = avatarUrl ?? row?.avatar_url ?? null;
+        displayName = displayName ?? row?.display_name ?? row?.handle ?? null;
+        // Onboarding gate. Only fires when we successfully read the
+        // preferences column AND there's no onboarded_at timestamp.
+        // If the column read failed (migration 022 missing), `row` is
+        // either null or has no preferences key → we skip the gate.
+        if (row && !row.preferences?.onboarded_at) {
+          needsOnboarding = true;
         }
         // Real unread notification count for the bell badge
         const { count } = await sb
@@ -65,6 +85,10 @@ export default async function MainLayout({ children }: { children: React.ReactNo
       const settings = await fetchAppSettings(sb);
       maintenance = { mode: settings.maintenance_mode, message: settings.maintenance_message };
     } catch { /* network error — render as guest */ }
+  }
+
+  if (needsOnboarding) {
+    redirect("/onboarding");
   }
 
   return (
