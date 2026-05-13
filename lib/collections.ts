@@ -99,7 +99,7 @@ async function fetchPlacedCollections(
   const now = new Date().toISOString();
 
   let q = sb
-    .from("collection_placements")
+    .from("page_sections")
     .select("display_order, collections!inner(*)")
     .eq("context", context)
     .order("display_order");

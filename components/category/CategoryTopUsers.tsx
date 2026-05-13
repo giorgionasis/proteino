@@ -4,6 +4,8 @@ import Link from "next/link";
 import { AvatarImage } from "@/components/ui/AvatarImage";
 import { FollowButton } from "@/components/ui/FollowButton";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
+import { useAuthStore } from "@/stores/authStore";
+import { useFollow } from "@/hooks/useFollow";
 
 export interface TopUser {
   id: string;
@@ -15,6 +17,8 @@ export interface TopUser {
   avg_rating: number;
   badge: string;
   placeholder_color?: string;
+  /** Server-fetched: viewer already follows this user. */
+  is_following?: boolean;
 }
 
 export interface ContributorUser {
@@ -23,6 +27,8 @@ export interface ContributorUser {
   handle: string;
   suggestion_count: number;
   placeholder_color?: string;
+  /** Server-fetched: viewer already follows this user. */
+  is_following?: boolean;
 }
 
 interface Props {
@@ -32,6 +38,16 @@ interface Props {
 }
 
 export function CategoryTopUsers({ categoryLabel, topUser, contributors }: Props) {
+  const viewerId = useAuthStore((s) => s.supabaseUser?.id ?? null);
+  const topIsSelf = !!viewerId && viewerId === topUser.id;
+
+  // Single useFollow for the featured top user. The contributor grid each
+  // get their own via <ContributorCard> below.
+  const { following: topFollowing, toggle: topToggle } = useFollow(
+    topUser.id,
+    topUser.is_following ?? false,
+  );
+
   return (
     <section className="space-y-6 px-6">
       {/* Section header */}
@@ -79,37 +95,32 @@ export function CategoryTopUsers({ categoryLabel, topUser, contributors }: Props
           />
         </div>
 
-        {/* Follow button */}
-        <FollowButton variant="dark" size="lg" />
+        {/* Follow button — or self-link when viewer is this top user */}
+        {topIsSelf ? (
+          <Link
+            href={`/profile/${topUser.handle}`}
+            className="px-6 py-3 rounded-full bg-zinc-900 text-white text-sm font-semibold hover:bg-zinc-800 transition-colors"
+          >
+            Δες το προφίλ σου →
+          </Link>
+        ) : (
+          <FollowButton
+            variant="dark"
+            size="lg"
+            following={topFollowing}
+            onToggle={topToggle}
+          />
+        )}
       </div>
 
       {/* Contributor grid */}
       <div className="grid grid-cols-2 gap-5">
         {contributors.map((user) => (
-          <div
+          <ContributorCard
             key={user.id}
-            className="border border-zinc-200 rounded-lg py-4 px-3 flex flex-col items-center gap-6"
-            style={{ width: 161 }}
-          >
-            <div className="flex flex-col items-center gap-5">
-              <UserAvatarWithPopup
-                user={{ id: user.id, display_name: user.name, handle: user.handle, suggestion_count: user.suggestion_count }}
-                size={75}
-              />
-              <div className="flex flex-col items-center gap-3">
-                <Link href={`/profile/${user.handle}`} className="active:opacity-75">
-                  <p className="text-lg font-bold text-zinc-800 leading-[22px] text-center line-clamp-2" style={{ width: 131 }}>
-                    {user.name}
-                  </p>
-                </Link>
-                <p className="text-base text-center leading-[22px]" style={{ letterSpacing: "-0.5px" }}>
-                  <span className="font-bold text-zinc-700">{user.suggestion_count}</span>
-                  <span className="text-zinc-700"> προτάσεις</span>
-                </p>
-              </div>
-            </div>
-            <FollowButton size="md" className="w-[127px]" />
-          </div>
+            user={user}
+            isSelf={!!viewerId && viewerId === user.id}
+          />
         ))}
       </div>
 
@@ -121,6 +132,53 @@ export function CategoryTopUsers({ categoryLabel, topUser, contributors }: Props
         Δες όλο το Leaderboard
       </Link>
     </section>
+  );
+}
+
+function ContributorCard({ user, isSelf }: { user: ContributorUser; isSelf: boolean }) {
+  // useFollow per card so each contributor's Follow button actually
+  // persists. The hook is no-op when the button isn't rendered (self),
+  // but calling it unconditionally keeps the hook-order rule happy.
+  const { following, toggle } = useFollow(user.id, user.is_following ?? false);
+
+  return (
+    <div
+      className="border border-zinc-200 rounded-lg py-4 px-3 flex flex-col items-center gap-6"
+      style={{ width: 161 }}
+    >
+      <div className="flex flex-col items-center gap-5">
+        <UserAvatarWithPopup
+          user={{ id: user.id, display_name: user.name, handle: user.handle, suggestion_count: user.suggestion_count }}
+          size={75}
+        />
+        <div className="flex flex-col items-center gap-3">
+          <Link href={`/profile/${user.handle}`} className="active:opacity-75">
+            <p className="text-lg font-bold text-zinc-800 leading-[22px] text-center line-clamp-2" style={{ width: 131 }}>
+              {user.name}
+            </p>
+          </Link>
+          <p className="text-base text-center leading-[22px]" style={{ letterSpacing: "-0.5px" }}>
+            <span className="font-bold text-zinc-700">{user.suggestion_count}</span>
+            <span className="text-zinc-700"> προτάσεις</span>
+          </p>
+        </div>
+      </div>
+      {isSelf ? (
+        <Link
+          href={`/profile/${user.handle}`}
+          className="w-[127px] text-center py-2 rounded-full border border-zinc-300 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 transition-colors"
+        >
+          Το προφίλ σου →
+        </Link>
+      ) : (
+        <FollowButton
+          size="md"
+          className="w-[127px]"
+          following={following}
+          onToggle={toggle}
+        />
+      )}
+    </div>
   );
 }
 

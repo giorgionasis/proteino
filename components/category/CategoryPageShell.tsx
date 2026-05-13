@@ -16,6 +16,7 @@ import type { FilterData } from "@/app/(main)/[category]/page";
 import type { CategorySlug } from "@/types";
 import { cn } from "@/lib/utils/cn";
 import type { RenderedSection } from "@/lib/layout/types";
+import { toLandscapeItem as hydratedToLandscape } from "@/lib/collections";
 
 const CategoryMapView = dynamic(
   () => import("./CategoryMapView").then((m) => m.CategoryMapView),
@@ -563,7 +564,25 @@ export function CategoryPageShell({
           limit?: number;
           category?: string;
         };
-        // Category pages slice from the already-fetched items array.
+
+        // Manual item override — resolver pre-hydrated specific items in
+        // the admin's chosen order. Honour even when items cross the
+        // current page's category (admin picked them deliberately).
+        if (section.items && section.items.length > 0) {
+          const manualItems = section.items.map(hydratedToLandscape);
+          return (
+            <div key={section.row.id} className="mt-12">
+              <CarouselLandscape
+                title={config.title ?? ""}
+                items={manualItems}
+                seeAllHref={`/${category}`}
+                portrait={isPortraitCategory(category)}
+              />
+            </div>
+          );
+        }
+
+        // Auto-source path — slice from the already-fetched items array.
         // config.category cross-category override is honoured only on
         // home; on category pages it's intentionally ignored so the
         // admin doesn't accidentally surface bars on the movies page.
@@ -636,7 +655,15 @@ export function CategoryPageShell({
   return (
     <div className="flex flex-col min-h-full">
       {useLayout ? (
-        layoutSections!.map(renderSection)
+        layoutSections!.map((section) => {
+          const node = renderSection(section);
+          if (node === null || node === undefined || node === false) return null;
+          return (
+            <div key={section.row.id} data-section-id={section.row.id}>
+              {node}
+            </div>
+          );
+        })
       ) : (
         <LegacyCategoryStack
           category={category}

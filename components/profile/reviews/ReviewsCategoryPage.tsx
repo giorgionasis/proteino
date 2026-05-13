@@ -18,6 +18,8 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 export interface ProfileReview {
   id: string;
   score: number;
+  /** Optional text body — reviews on the new model may carry one. */
+  reflection?: string | null;
   createdAt: string;
   item: {
     id: string;
@@ -130,7 +132,7 @@ export function ReviewsCategoryPage({ handle, isOwner, reviews }: Props) {
     setPendingDelete(true);
     setError(null);
     try {
-      const res = await fetch(`/api/ratings/${deleting.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/reviews?id=${encodeURIComponent(deleting.id)}`, { method: "DELETE" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         setError(body.error || `Αποτυχία (${res.status})`);

@@ -185,6 +185,7 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
             shareTitle={data.item.title}
             onSaved={(r) => setSavedModal(r)}
             onToast={showToast}
+            showBookmark={!mySuggestion}
           />
         }
       />
@@ -323,7 +324,7 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
 
       {/* Bookmark status chips — always visible, save affordance + state setter. */}
       <div className="px-6 mt-8">
-        <BookmarkStatusChips category="hotels" bookmark={bookmark} onToast={showToast} />
+        {!mySuggestion && <BookmarkStatusChips category="hotels" bookmark={bookmark} onToast={showToast} />}
       </div>
 
       {/* Community */}

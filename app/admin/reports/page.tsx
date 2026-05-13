@@ -5,8 +5,9 @@ export const dynamic = "force-dynamic";
 
 /**
  * /admin/reports — moderation queue for the new content_reports table
- * (migration 015). Shows unresolved reports across both target_types
- * (suggestion + comment), grouped by target. Admin actions: Dismiss / Hide.
+ * (migration 015). Shows unresolved reports across three target_types
+ * (suggestion + comment + review — review added in migration 035),
+ * grouped by target. Admin actions: Dismiss / Hide.
  *
  * Uses the service-role client so RLS doesn't filter out anything.
  */
@@ -23,9 +24,10 @@ export default async function AdminReportsPage() {
   const reports = (rawReports ?? []) as any[];
 
   // Hydrate target context: for each report, fetch a tiny excerpt of the
-  // suggestion/comment + the item title (where applicable).
+  // underlying suggestion/comment/review + the item title (where applicable).
   const suggestionIds = Array.from(new Set(reports.filter(r => r.target_type === "suggestion").map(r => r.target_id)));
-  const commentIds = Array.from(new Set(reports.filter(r => r.target_type === "comment").map(r => r.target_id)));
+  const commentIds    = Array.from(new Set(reports.filter(r => r.target_type === "comment").map(r => r.target_id)));
+  const reviewIds     = Array.from(new Set(reports.filter(r => r.target_type === "review").map(r => r.target_id)));
 
   const targetMap = new Map<string, { excerpt: string; itemTitle?: string; authorName?: string }>();
 
@@ -52,6 +54,22 @@ export default async function AdminReportsPage() {
       targetMap.set(`comment:${c.id}`, {
         excerpt: c.body ?? "(κενό σχόλιο)",
         authorName: c.users?.display_name,
+      });
+    }
+  }
+
+  if (reviewIds.length > 0) {
+    const { data: revRows } = await sb
+      .from("reviews")
+      .select("id, rating, reflection, users(display_name), items(title)")
+      .in("id", reviewIds);
+    for (const r of (revRows ?? []) as any[]) {
+      const stars = typeof r.rating === "number" ? "★".repeat(r.rating) : "";
+      const text  = r.reflection ?? "(αξιολόγηση χωρίς κείμενο)";
+      targetMap.set(`review:${r.id}`, {
+        excerpt: stars ? `${stars} · ${text}` : text,
+        itemTitle: r.items?.title,
+        authorName: r.users?.display_name,
       });
     }
   }

@@ -2,9 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { AvatarImage } from "@/components/ui/AvatarImage";
 import { FollowButton } from "@/components/ui/FollowButton";
 import { Icon } from "@/components/ui/Icon";
+import { useAuthStore } from "@/stores/authStore";
+import { useFollow } from "@/hooks/useFollow";
 import type { IconName } from "@/lib/icons";
 
 interface ProfilePopupUser {
@@ -48,6 +51,32 @@ interface ProfilePopupProps {
 export function ProfilePopup({ user, open, onClose }: ProfilePopupProps) {
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
+  const viewerId = useAuthStore((s) => s.supabaseUser?.id ?? null);
+  const isSelf = !!viewerId && !!user.id && viewerId === user.id;
+
+  // Real follow persistence. Initial state defaults to `false` and is
+  // corrected by the GET below once the popup opens (a popup-only fetch
+  // avoids pre-fetching follow state for every avatar in a long carousel
+  // — most never get tapped). useFollow's setFollowing isn't externally
+  // exposed, so we re-mount via key when the seed changes.
+  const [initialFollowing, setInitialFollowing] = useState(false);
+  const [followKey, setFollowKey] = useState(0);
+
+  useEffect(() => {
+    if (!open || !user.id || isSelf || !viewerId) return;
+    let cancelled = false;
+    fetch(`/api/follows?user_id=${encodeURIComponent(user.id)}`)
+      .then((r) => (r.ok ? r.json() : { following: false }))
+      .then((data: { following?: boolean }) => {
+        if (cancelled) return;
+        if (data.following) {
+          setInitialFollowing(true);
+          setFollowKey((k) => k + 1);
+        }
+      })
+      .catch(() => { /* keep default false */ });
+    return () => { cancelled = true; };
+  }, [open, user.id, isSelf, viewerId]);
 
   // Phase 1: react to `open` prop changes.
   useEffect(() => {
@@ -173,15 +202,40 @@ export function ProfilePopup({ user, open, onClose }: ProfilePopupProps) {
             </div>
           </div>
 
-          {/* Follow button */}
+          {/* Follow button — or self-link when viewer is the popup user */}
           <div className="w-full flex justify-center">
-            <FollowButton variant="dark" size="lg" />
+            {isSelf ? (
+              <Link
+                href={`/profile/${user.handle}`}
+                onClick={onClose}
+                className="px-6 py-3 rounded-full bg-zinc-900 text-white text-sm font-semibold hover:bg-zinc-800 transition-colors"
+              >
+                Δες το προφίλ σου →
+              </Link>
+            ) : (
+              <PopupFollowButton
+                key={followKey}
+                targetUserId={user.id}
+                initialFollowing={initialFollowing}
+              />
+            )}
           </div>
         </div>
       </div>
     </div>,
     document.body,
   );
+}
+
+function PopupFollowButton({
+  targetUserId,
+  initialFollowing,
+}: {
+  targetUserId: string;
+  initialFollowing: boolean;
+}) {
+  const { following, toggle } = useFollow(targetUserId, initialFollowing);
+  return <FollowButton variant="dark" size="lg" following={following} onToggle={toggle} />;
 }
 
 function StatItem({ value, label }: { value: string; label: string }) {

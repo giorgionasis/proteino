@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
-const VALID_TARGETS = ["comment", "suggestion"] as const;
+const VALID_TARGETS = ["comment", "suggestion", "review"] as const;
 const VALID_REASONS = ["inaccurate", "fraud", "offensive", "other"] as const;
 
 type TargetType = (typeof VALID_TARGETS)[number];
@@ -72,7 +72,10 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
 
   // Sanity check: target exists. Prevents orphan reports.
-  const targetTable = targetType === "comment" ? "comments" : "suggestions";
+  const targetTable =
+    targetType === "comment" ? "comments" :
+    targetType === "review"  ? "reviews"  :
+    "suggestions";
   const { data: target } = await admin
     .from(targetTable)
     .select("id, user_id")

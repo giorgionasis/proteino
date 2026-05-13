@@ -8,14 +8,14 @@ export default async function EditCollectionPage({ params }: { params: { id: str
   const sb = createAdminClient();
   const { data, error } = await sb
     .from("collections")
-    .select("*, collection_placements(*)")
+    .select("*, page_sections(*)")
     .eq("id", params.id)
     .single();
 
   if (error || !data) notFound();
 
   const row = data as any;
-  const placements: Placement[] = (row.collection_placements ?? []).map((p: any) => ({
+  const placements: Placement[] = (row.page_sections ?? []).map((p: any) => ({
     context: p.context,
     category: p.category,
   }));

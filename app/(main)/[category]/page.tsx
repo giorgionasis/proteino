@@ -15,6 +15,7 @@ import { fetchCategoryFilterConfig } from "@/lib/category-filters";
 import { CATEGORY_FILTERS } from "@/constants/filters";
 import { safeImageUrl } from "@/lib/image-url";
 import { fetchRegionTreeForCategory, getRegionMatchSet } from "@/lib/regions";
+import { getFollowedSet } from "@/lib/follows";
 import { createClient } from "@/lib/supabase/server";
 import { fetchTonightAirings } from "@/lib/movies-tonight";
 import { getAwardsTaxonomy } from "@/lib/awards";
@@ -362,6 +363,12 @@ export default async function CategoryPage({ params }: Props) {
 
     const sorted = Array.from(userMap.values()).sort((a, b) => b.count - a.count);
 
+    // Hydrate the viewer's follow state for everyone in the top-5 (the
+    // featured top user + the 4-contributor grid) in one batched query
+    // so each card renders with the correct initial Follow state.
+    const candidateIds = sorted.slice(0, 5).map((e) => e.user.id);
+    const followed = await getFollowedSet(sb, viewer?.id ?? null, candidateIds);
+
     if (sorted.length > 0) {
       const top = sorted[0];
       topUser = {
@@ -373,6 +380,7 @@ export default async function CategoryPage({ params }: Props) {
         suggestion_count: top.count,
         avg_rating: 0,
         badge: top.count >= 10 ? "PLATINUM" : top.count >= 5 ? "GOLD" : "SILVER",
+        is_following: followed.has(top.user.id),
       };
     }
 
@@ -381,6 +389,7 @@ export default async function CategoryPage({ params }: Props) {
       name: entry.user.display_name,
       handle: entry.user.handle,
       suggestion_count: entry.count,
+      is_following: followed.has(entry.user.id),
     }));
   }
 

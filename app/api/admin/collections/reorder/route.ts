@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   // Update each placement's display_order. Sequential to keep behavior simple.
   for (let i = 0; i < ordered_placement_ids.length; i++) {
     const id = ordered_placement_ids[i];
-    let q = (supabase.from("collection_placements") as any)
+    let q = (supabase.from("page_sections") as any)
       .update({ display_order: i })
       .eq("id", id)
       .eq("context", context);

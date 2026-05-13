@@ -17,8 +17,11 @@ export interface Database {
           role: "user" | "admin";
           gender: string | null;
           region: string | null;
+          /** Migration 028 — structured region FK; takes precedence over the legacy text column. */
+          region_id: string | null;
           birthday: string | null;
           points: number;
+          /** Legacy column — stuck at 1 across the migrated corpus. Prefer `suggestion_count` for badge derivation. */
           level: number;
           suggestion_count: number;
           rating_count: number;
@@ -26,6 +29,8 @@ export interface Database {
           embedding: unknown | null;
           is_private: boolean;
           is_verified: boolean;
+          /** Migration 022 — jsonb bag for onboarding (`onboarded_at`, `interests`) + notifications preferences. */
+          preferences: Json;
           created_at: string;
           last_login_at: string | null;
           last_suggestion_at: string | null;
@@ -452,17 +457,75 @@ export interface Database {
         Insert: Omit<Database["public"]["Tables"]["collections"]["Row"], "id" | "created_at" | "modified_at">;
         Update: Partial<Database["public"]["Tables"]["collections"]["Row"]>;
       };
-      collection_placements: {
+      page_sections: {
         Row: {
           id: string;
-          collection_id: string;
+          // section_type / widget_key / config / audience / lifecycle / is_active
+          // were added by migration 032 — page_sections is the rename of
+          // collection_placements, extended to hold widgets + dividers + collections.
+          section_type: "collection" | "widget" | "divider";
+          widget_key: string | null;
+          collection_id: string | null;
           context: "home" | "category" | "suggestions";
           category: string | null;
           display_order: number;
+          audience: "all" | "registered" | "guest";
+          config: Json;
+          is_active: boolean;
+          valid_from: string | null;
+          valid_until: string | null;
+          created_at: string;
+          modified_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["page_sections"]["Row"], "id" | "created_at" | "modified_at">;
+        Update: Partial<Database["public"]["Tables"]["page_sections"]["Row"]>;
+      };
+      reviews: {
+        Row: {
+          id: string;
+          user_id: string;
+          item_id: string;
+          rating: number;
+          reflection: string | null;
+          vote_up: number;
+          vote_down: number;
+          report_count: number;
+          is_hidden: boolean;
+          hidden_at: string | null;
+          hidden_reason: string | null;
+          hidden_by: string | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["collection_placements"]["Row"], "id" | "created_at">;
-        Update: Partial<Database["public"]["Tables"]["collection_placements"]["Row"]>;
+        Insert: Omit<Database["public"]["Tables"]["reviews"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["reviews"]["Row"]>;
+      };
+      review_votes: {
+        Row: {
+          user_id: string;
+          review_id: string;
+          vote: -1 | 1;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["review_votes"]["Row"], "created_at">;
+        Update: Partial<Database["public"]["Tables"]["review_votes"]["Row"]>;
+      };
+      content_reports: {
+        Row: {
+          id: string;
+          target_type: "comment" | "suggestion" | "review";
+          target_id: string;
+          reporter_id: string;
+          reason: "inaccurate" | "fraud" | "offensive" | "other";
+          description: string;
+          resolved: boolean;
+          resolution_action: "kept" | "hidden" | null;
+          resolution_note: string | null;
+          resolved_by: string | null;
+          resolved_at: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["content_reports"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["content_reports"]["Row"]>;
       };
       notifications: {
         Row: {

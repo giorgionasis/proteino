@@ -77,7 +77,7 @@ export async function PATCH(
     return NextResponse.json({ error: "report already resolved" }, { status: 409 });
   }
 
-  const targetType = (report as any).target_type as "comment" | "suggestion";
+  const targetType = (report as any).target_type as "comment" | "suggestion" | "review";
   const targetId = (report as any).target_id as string;
   const now = new Date().toISOString();
 
@@ -93,10 +93,15 @@ export async function PATCH(
 
   if (action === "hidden") {
     // 1. Mark the target as hidden
-    const targetTable = targetType === "comment" ? "comments" : "suggestions";
+    const targetTable =
+      targetType === "comment" ? "comments" :
+      targetType === "review"  ? "reviews"  :
+      "suggestions";
     const targetPatch: any = { hidden_at: now, hidden_reason: note, hidden_by: user.id };
-    // Comments also use is_hidden boolean from migration 003 — keep both in sync.
-    if (targetType === "comment") targetPatch.is_hidden = true;
+    // comments (migration 003) + reviews (migration 016) both carry an
+    // is_hidden boolean alongside hidden_at — keep them in sync. suggestions
+    // (migration 015) only have hidden_at/_reason/_by.
+    if (targetType === "comment" || targetType === "review") targetPatch.is_hidden = true;
 
     const { error: targetErr } = await (admin.from(targetTable) as any)
       .update(targetPatch)

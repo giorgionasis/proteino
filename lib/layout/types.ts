@@ -57,7 +57,19 @@ export interface PageSectionRow {
 
 export type RenderedSection =
   | { kind: "collection"; row: PageSectionRow; collection: ResolvedCollection; items: HydratedItem[] }
-  | { kind: "widget";     row: PageSectionRow; widgetKey: string; config: Record<string, unknown> }
+  | {
+      kind: "widget";
+      row: PageSectionRow;
+      widgetKey: string;
+      config: Record<string, unknown>;
+      /**
+       * Pre-hydrated items, populated by the resolver when the widget has
+       * a manual item source (e.g. `static_carousel` with `config.itemIds`).
+       * When absent the bridge falls back to slicing from page-level buckets
+       * via `config.source` / `config.offset` / `config.limit`.
+       */
+      items?: HydratedItem[];
+    }
   | { kind: "divider";    row: PageSectionRow; config: Record<string, unknown> };
 
 export interface ResolvedCollection {
@@ -83,10 +95,12 @@ export type ConfigField =
   | { kind: "toggle";   key: string; label: string; defaultValue?: boolean }
   | { kind: "select";   key: string; label: string; options: { value: string; label: string }[]; defaultValue?: string }
   | { kind: "category"; key: string; label: string; defaultValue?: CategorySlug }
-  /** Curated source picker — replaces hardcoded sort/filter choices in
-   *  static_carousel-style widgets. UI offers presets like top-rated,
-   *  newest, most-bookmarked. */
-  | { kind: "item-source"; key: string; label: string };
+  /** Manual item picker — admin searches by title + picks a specific
+   *  ordered set of items. Stored as a string[] of item UUIDs in config.
+   *  When non-empty, overrides the widget's auto source (e.g. on
+   *  `static_carousel`, item IDs win over `source` / `offset` / `limit`).
+   *  The accompanying admin UI lives in `SectionConfigDrawer`. */
+  | { kind: "item-source"; key: string; label: string; description?: string };
 
 export interface WidgetSpec {
   /** Stable DB key. Never change once a row references it. */

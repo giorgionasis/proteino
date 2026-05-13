@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-13 (session 22 — admin-controlled page layouts + related sections)
+**Last meaningful update:** 2026-05-14 (session 23 — Phase A.6 close + audit cleanup + Google rich-results SEO)
 
 ---
 
@@ -224,19 +224,19 @@ created_at, PRIMARY KEY(user_id, review_id)
 ```
 Postgres trigger `trg_sync_review_votes` keeps `reviews.vote_up`/`vote_down` in sync. Self-vote blocked at the API layer.
 
-#### ratings — LEGACY (frozen, not read by new UI)
+#### ratings — LEGACY (frozen, no longer written or read)
 ```sql
 id uuid PK, user_id FK, item_id FK, suggestion_id FK,
 score float, vote_up int, vote_down int, created_at
 ```
-Wiped clean by migration 016. Kept in schema for archive. Future cleanup: drop the table.
+Wiped clean by migration 016 (0 rows). The hook (`useRating`), the API (`/api/ratings`), and the legacy `ReviewsCategoryPage` reader were all retired in session 23 — the table sits idle in the schema. Future cleanup: drop the table once the archive is confirmed unwanted.
 
-#### comments — LEGACY (frozen, not read by new UI)
+#### comments — LEGACY (frozen, archive only)
 ```sql
 id uuid PK, user_id FK, suggestion_id FK,
 parent_id FK (for replies), body text, created_at
 ```
-343 K2 rows. Kept in schema for archive. The new flow (reviews) replaces both `ratings` and `comments`.
+343 K2 rows. `CommentComposer` / `CommentThread` / `/api/comments` were all deleted in session 23 — no new comments are written. The admin surface at `/admin/reviews` is now labelled **"Comments (Legacy)"** in the sidebar and exists only to moderate the historic K2 rows; new review moderation flows through `/admin/reports` (which understands `target_type='review'` as of migration 035). The new flow (reviews + reviews moderation via content_reports) replaces both `ratings` and `comments`.
 
 #### bookmarks
 ```sql
@@ -1602,6 +1602,30 @@ All writes call `revalidatePath` for the affected page.
 
 Migrations 032 + 033 together seed every (context, category, audience) bucket with widget rows that reproduce the previous hardcoded JSX **exactly**. The first render after applying them is visually identical to before. Admin then edits from there.
 
+### Resolver behaviour notes (locked invariants)
+
+These are the small contracts the resolver + bridges already enforce. Calling them out explicitly so future changes don't break them silently.
+
+- **Audience filter** — `viewerAudience='registered'` matches rows where `audience IN ('all','registered')`; `'guest'` matches `('all','guest')`. `null` (admin "show all" preview) skips the audience filter entirely. Lifecycle + `is_active` still apply in all three modes.
+- **Lifecycle** — `valid_from > now` hides the row; `valid_until < now` hides. NULLs always pass. Computed in JS over the bounded row set, not as Postgres `WHERE`.
+- **Empty collection drop** — collection rows whose hydration returns 0 items are silently filtered out of the resolver output, so the consumer never sees a zero-item carousel. Widget + divider rows pass through regardless of internal state.
+- **Singleton enforcement** — `WidgetSpec.singleton` is enforced at the application layer in `POST /api/admin/page-sections` (409 on duplicate). No DB UNIQUE constraint covers this, by design — widgets share `(NULL collection_id)` so a unique index would over-fire.
+- **Fixed widget delete** — `DELETE /api/admin/page-sections/[id]` refuses with 4xx when `isWidgetFixed(widget_key)`. Admin can mark fixed widgets `is_active=false` instead.
+- **RLS shape** — widgets/dividers visible when `is_active=true`. Collection-backed sections additionally require `collections.is_published=true` (enforced both by RLS and by a defensive JS filter in the resolver — the JS filter handles the case where the join returns the row but the collection is unpublished).
+
+### Static-carousel rendering contract
+
+The `static_carousel` widget is repeatable (non-singleton). Its render path is **NOT** the same as a collection — there's no per-row DB query. The bridges slice from buckets the page already fetched at the top:
+
+- **On home** (`lib/layout/home-bridge.tsx`): `config.category` selects which pre-fetched bucket to slice from (`ctx.movies/series/books/food/recipes`). When `config.category` is missing the fallback is `food`. `PORTRAIT_CATEGORIES = {movies, series, books}` decides whether to render `CarouselPortrait` or `CarouselLandscape`.
+- **On category pages** (`CategoryPageShell.renderSection`): `config.category` is **intentionally ignored**. The slice is always taken from the page's own `items` array — so a `static_carousel` placed on `/movies` cannot accidentally surface bars. Portrait/landscape branching uses `isPortraitCategory(category)`.
+- **`config.offset` + `config.limit`** apply `Array.prototype.slice(offset, offset+limit)` against the bucket. If the slice is empty (offset beyond bucket length, or bucket is empty) the bridge returns `null` and the section drops gracefully.
+- **`config.source`** (top_rated / newest / most_bookmarked / most_reviewed) is currently a label hint — the buckets are already ordered when fetched at the page level, so source selection is effectively whatever order the live page chose. `lib/layout/resolver.ts:fetchStaticCarousel` exists for a future "source-aware per-section query" path but is **not wired** today; treat it as dead code until a configurable item-source picker lands.
+
+### Postmessage iframe scroll (session 23)
+
+`/admin/layout`'s section stack is fully interactive — clicking a section row posts `{type:'scroll-to-section', sectionId}` to the iframe via `iframe.contentWindow.postMessage`. The preview routes mount `PreviewScrollListener` (in `app/preview/layout.tsx`) which receives the message, scrolls the matching `[data-section-id]` element into view, and applies a 1.6s coral highlight ring. Origin is checked for safety. The wrapper that carries the attribute is added at the render-bridge boundary (`renderHomeSection` / `CategoryPageShell.renderSection`), so production gets the attribute too — it's harmless outside the preview iframe.
+
 ---
 
 ## 38. Admin-configurable "More from {axis}" detail-page sections (session 22)
@@ -1683,3 +1707,77 @@ API: `GET/POST /api/admin/related-sections` + `PATCH/DELETE /[id]`. All writes c
 - **Use `related_sections_config` + `/admin/related-sections`** when the section content depends on the specific item being viewed (other books by *this* author, other movies by *this* director).
 
 The two systems are intentionally separate — `page_sections` is layout (static composition per page); related sections are rules (dynamic content per item).
+
+### Architectural decision: two tables, not `context='item_detail'` (locked session 22)
+
+The forward-compatible alternative would have been to add `context='item_detail'` to `page_sections` and let related sections share the same row shape as home + category widgets. We considered it and explicitly chose two tables. The reasons:
+
+- **Mental model mismatch.** A `page_sections` row says "section #N on this page is X". A related-sections row says "for every item in this category, derive a section from this rule". The first is static composition per page; the second is a function from item → sections. Folding them into one table forces admins to think about both meanings whenever they touch either surface.
+- **Cardinality.** `page_sections` rows-per-page is bounded (≤ ~30 visible sections per bucket). Related sections rows-per-category are bounded by axes (writer / director / cast / …, ≤ ~6 per category in practice). The shapes coincidentally compress, but their growth rates don't.
+- **Admin UX.** `/admin/layout` is dnd-kit + audience picker + iframe preview — heavy machinery justified for whole-page composition. `/admin/related-sections` is a grouped list with inline title-template edit + min/max number inputs — light. Cramming the latter into the former would force admins through audience selection and a preview that can't actually preview (no specific item to bind `{value}` to).
+- **Query path.** Layout resolver does one parallel collection hydration per page request. Related-sections fetcher does one query per item view, filtered to a small per-category rule set. Different hot paths, different cache shapes.
+
+**When to revisit:** if any of these signals appear, fold related sections into `page_sections` with `context='item_detail'`:
+
+1. Admin asks to reorder related sections per-item (drag handles inside the carousels) — implies the rules need to behave like layout rows.
+2. Admin asks for non-related-sections widgets on detail pages (e.g. "show this banner only when item.subcategory = X") — implies detail pages need a layout system of their own, at which point the two systems should merge.
+3. The number of rule axes grows past ~30 per category and admins want pagination / filtering UI similar to the layout admin — implies the rules table has outgrown the simple list.
+
+**Migration path if we ever do unify:** keep `related_sections_config` as the rules table, add `context='item_detail'` to `page_sections` for any per-detail-page widgets that aren't rules (none today). Don't merge until there's a concrete second widget type for detail pages — premature unification adds complexity without payoff.
+
+---
+
+## 39. Google rich-results SEO (session 23)
+> ✅ Shipped — JSON-LD per category, sitemap.ts, robots.ts, Open Graph + Twitter Card metadata. Verified live on movie / series / recipe detail pages.
+
+Every detail page emits a Schema.org JSON-LD payload matching Google's rich-results spec for the category's @type. Sitemap + robots wired at the App Router level. Per-page OG / Twitter / canonical metadata via `generateMetadata`.
+
+### Architecture
+
+| Layer | File | Role |
+|---|---|---|
+| Mapper | `lib/seo/structured-data.ts` | One function per category. Pure data → JSON. `compact()` strips nulls so the Google validator doesn't reject. |
+| Emitter | `components/seo/JsonLd.tsx` | Server component. `<script type="application/ld+json">` with `<` escape. |
+| Wiring | `app/(main)/[category]/[id]/page.tsx` | Calls `buildItemStructuredData(category, item, ext, reviews, ctx, suggester)` + renders `<JsonLd>` as a fragment sibling of the detail component. |
+| Sitemap | `app/sitemap.ts` | Home + leaderboard + support + 9 category indexes + 5000 most-recent items. Defensive try/catch. |
+| Robots | `app/robots.ts` | Allow / + disallow admin/api/auth/preview/onboarding/settings/auth-flow routes. Points crawlers at sitemap. |
+| Root metadata | `app/layout.tsx` | `metadataBase`, Greek title template `"%s — Proteino"`, default OG + Twitter + robots. |
+
+### @type per category
+
+| Category | @type | Notes |
+|---|---|---|
+| Movies | `Movie` | director, actor[], trailer (VideoObject with YT/Vimeo embed), award[], genre, alternateName |
+| Series | `TVSeries` | + numberOfSeasons, startDate/endDate |
+| Books | `Book` | author, publisher, isbn, bookFormat (default Paperback), sameAs from metadata.publisher_url, alternateName |
+| Recipes | `Recipe` | **author = suggester** (Person with URL), datePublished, keywords, recipeIngredient[], recipeInstructions[] as HowToStep, nutrition with suitableForDiet for vegan/vegetarian/glutenFree |
+| Food | `Restaurant` | address (PostalAddress), geo (GeoCoordinates), servesCuisine |
+| Bars | `BarOrPub` | LocalBusiness subtype — same fields minus servesCuisine |
+| Hotels | `Hotel` | LodgingBusiness subtype + priceRange + amenityFeature[] from facilities jsonb |
+| Theater | `TheaterEvent` | location (Place), startDate/endDate from dates jsonb, eventStatus + eventAttendanceMode, director, performer[], offers |
+| Events | `Event` | Same as TheaterEvent except performer is PerformingGroup |
+
+Every type emits `aggregateRating` (from items.avg_rating + rating_count, when ≥1) + `review[]` (up to 8 text reviews, rating-only entries skipped).
+
+### Env var
+
+`NEXT_PUBLIC_SITE_URL` (default `https://proteino.gr`) feeds `@id`, sitemap loc, canonical, and OG url. Set on Vercel before deploying so prod doesn't emit dev URLs.
+
+### Gaps (admin data, not code)
+
+Adding any of these is one-line code work + an admin form field:
+- `contentRating` for movies/series (MPAA/IMDb age rating)
+- `isbn` for books
+- `numberOfEpisodes` for series
+- `starRating` for hotels (as a number, not embedded in the type string)
+- `openingHours` / `acceptsReservations` for restaurants/bars
+- `organizer` for events
+- `video` for recipes
+
+### Operational follow-ups (next session)
+
+1. **Sitemap index** when corpus passes 5K items. Google's per-file cap is 50K, total is 50M.
+2. **Image sitemap extension** (`image:image`) for richer image indexing.
+3. **`noindex` on thin pages**: empty category lists, profile pages with 0 suggestions, `/onboarding`. Robots blocks crawling but Google can still index URLs it learned about elsewhere; a `noindex` meta tag is stronger.
+4. **Canonical URLs** on category + profile pages (only detail pages have them today).
+5. **301 redirect map from legacy K2 URLs** — preserves incoming Google traffic + backlinks. Need a sample of the old URL format to design. Options: static `next.config.mjs` redirects (≤100 entries), middleware lookup against a Postgres `legacy_redirects` table loaded into an in-memory map at build time (necessary at scale, careful with the session-11 edge-middleware leanness constraint).

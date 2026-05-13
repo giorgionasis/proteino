@@ -221,7 +221,17 @@ export function ReviewsTable({ stats }: Props) {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-zinc-800 mb-6">Reviews / Comments</h1>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-zinc-800">Comments (Legacy)</h1>
+        <p className="text-sm text-zinc-500 mt-1">
+          Frozen archive από το K2 — δεν δημιουργούνται νέα σχόλια. Νέες αξιολογήσεις
+          μετριάζονται από το{" "}
+          <Link href="/admin/reports" className="text-coral-700 underline hover:text-coral-800">
+            /admin/reports
+          </Link>
+          .
+        </p>
+      </div>
 
       {/* Stats cards — clickable for filter */}
       <div className="flex gap-4 mb-6 flex-wrap">

@@ -19,6 +19,12 @@ export interface ReviewCardProps {
   myVote?: 1 | -1 | null;
   /** "carousel" → fixed-width 310px, used in horizontal scroll. "list" → full-width column. */
   variant?: "carousel" | "list";
+  /**
+   * Review author's user id. Forwarded to ReviewCardFooter so it can
+   * detect the "this is my own review" case and hide vote/report controls.
+   * Optional — when omitted, the footer always renders the controls.
+   */
+  authorId?: string;
 }
 
 /**
@@ -46,6 +52,7 @@ export function ReviewCard({
   dislikes = 0,
   myVote = null,
   variant = "carousel",
+  authorId,
 }: ReviewCardProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -103,7 +110,7 @@ export function ReviewCard({
           </div>
         </div>
       </div>
-      <ReviewCardFooter reviewId={id} likes={likes} dislikes={dislikes} myVote={myVote} />
+      <ReviewCardFooter reviewId={id} likes={likes} dislikes={dislikes} myVote={myVote} authorId={authorId ?? userData?.id} />
     </article>
   );
 }

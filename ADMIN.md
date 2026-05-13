@@ -1,7 +1,7 @@
 # Proteino — Admin Panel
 
 > Route: `/admin` — protected via `public.users.role === 'admin'` (`ADMIN_DEV_BYPASS=1` for local skip)
-> Last updated: 2026-05-13 (session 22 — admin-controlled layouts + related sections)
+> Last updated: 2026-05-14 (session 23 — Phase A.6 close + audit cleanup + SEO infrastructure)
 
 The admin panel is the back-office for managing all platform content, structure, metadata, and what users see on the frontend.
 
@@ -27,7 +27,7 @@ Admins never touch code. Everything is managed through the admin UI.
 | Suggestions list | ✅ | ✅ | Filters: category/subcategory/author/published/search/sort |
 | Suggestion editor | ✅ | ✅ | Saves items + suggestions + extension tables; DB-backed extra options; Portrait/Landscape image uploads + Trailer URL wired |
 | Users | ✅ | ✅ | Search, sort, pagination, badges by level |
-| Reviews list | ✅ | ✅ | Votes (▲/▼), report badges, hide/delete inline, filter modes |
+| Comments (Legacy) | ✅ | ✅ | Frozen K2-archive comments table — moderation surface for historic content. New reviews live in the `reviews` table; their moderation flows via `/admin/reports`. Old name was "Reviews list" — kept the route under `/admin/reviews` so existing bookmarks still work. |
 | Review detail | ✅ | ✅ | Reports section, hide w/ reason, author flagged history |
 | Extra Fields | ✅ | ✅ | Collapsed cards + wizard (paste options bulk) |
 | Data Quality | ✅ | ✅ | NULL subcategory triage + inline subcategory creation |
@@ -80,8 +80,8 @@ Proteino•
 │   ├── Regions           → /admin/content/regions
 │   ├── Filters           → /admin/content/filters
 │   └── Movies Tonight    → /admin/content/movies-tonight
-├── Reviews               → /admin/reviews
-├── Reports               → /admin/reports
+├── Comments (Legacy)     → /admin/reviews   [route preserved — frozen K2 comments archive]
+├── Reports               → /admin/reports   [unified moderation queue — suggestion / comment / review reports]
 ├── Users                 → /admin/users
 ├── Layout                → /admin/layout                 [session 22]
 ├── Related Sections      → /admin/related-sections       [session 22]
@@ -334,7 +334,7 @@ deploy. Collections turns this into a CMS surface.
 
 **Data model:**
 - `collections` — what & how it looks (type, title, image, source_category, tags, audience, lifecycle)
-- `collection_placements` — where & in what order (context: home/category/suggestions; per-bucket display_order)
+- `page_sections` — where & in what order (context: home/category/suggestions; per-bucket display_order). Migration 032 renamed `collection_placements` → `page_sections` and extended it to also hold widgets + dividers; collection placements are stored as rows with `section_type='collection'`. See CLAUDE.md §37 for the full layout system.
 - An item belongs to a collection if `items.category = source_category` (when set) AND `metadata.tags @> selected_tags`
 
 **Two visual formats:**
@@ -621,20 +621,31 @@ Custom map (`α→a`, `β→v`, etc.) used for slug generation across subcategor
 
 ## 15. Pending Work
 
-### Critical (next priorities — from session-11 deep audit)
-1. **User-action persistence** — submission, rating, comment, follow, report all have UIs but **none persist to DB**. The user-side engagement loop is hollow. Affects every metric that matters
-2. **Replace mock `/api/search` and `/api/recommendations`** — currently return 3 hardcoded items; real Supabase query needed
-3. **Real leaderboard** — `LeaderboardPage` renders hardcoded TOP_USERS array; switch to `users` ranked by suggestion_count
-4. **Onboarding flow** (CLAUDE.md priority 3) — 4 steps not built; users land on guest-like home after register
-5. **Rebuild remaining 7 detail components** against Figma (Series, Food, Bars, Hotels, Recipes, Theater, Events) — only Book + Movie done
-6. **Migration drift** — `items.poster_url` and `items.backdrop_url` columns referenced in code + types but **created by no migration**; consolidate `scripts/sql/*` into `supabase/migrations/`
-7. **Hooks from HOOKS.md** — 21 notification triggers + 10 in-app moments specified, only 1 implemented (movie_airing reminder)
+The session-11 audit list below is preserved for posterity, but most items have shipped. Live "what's next" is in PROGRESS.md §3.
 
-### Less critical
-- **Item gallery on FoodDetail / BarsDetail / HotelDetail** — `<ItemGalleryViewer>` exists but not wired (placeholder block remains)
-- **Bulk enrichment** for items missing covers (script `bulk-enrich.js` exists; run it)
-- **Filters v3** — admin can edit existing filter rows, but full-on filter widget config (drop-zone, segmented, price-range options) needs richer UI
-- **Tags editor in SuggestionEditor** — admin can fix subcategory but not `metadata.tags`
+### From the session-11 audit — current state
+1. ~~User-action persistence~~ — ✅ shipped session 12 (suggestions / ratings → reviews / follows / bookmarks / reports all persist).
+2. ~~Replace mock `/api/search` and `/api/recommendations`~~ — ✅ `/api/search` rewritten end-to-end in session 17 (Search v2 with structured Gemini filters). `/api/recommendations` is intentionally deferred until Phase B (pgvector recs).
+3. ~~Real leaderboard~~ — ✅ shipped session 19 (RPC `get_leaderboard` + real ranking).
+4. ~~Onboarding flow~~ — ✅ shipped session 20 (4 screens at `/onboarding`, gated server-side from the `(main)` layout).
+5. **Detail pages Figma alignment** — partial: Book + Movie are aligned; Series / Food / Bars / Hotels / Recipes / Theater / Events still on legacy InfoCell layout. Still real outstanding work.
+6. **Migration consolidation** — `scripts/sql/*` is the source of truth; consolidation into `supabase/migrations/` hasn't happened. `items.poster_url` / `backdrop_url` are present in production (added by deployment scripts) but no `scripts/sql/` file owns the ADD COLUMN. Not blocking but worth tidying.
+7. **Hooks from HOOKS.md** — partial: migration 029 added rating / follow / suggestion / bookmark-milestone triggers + the moments table (sessions 21). Still TBD: TMDB new-season webhook, dormant-14d, event-passed, streak threshold, anniversary.
+
+### Open follow-ups (current)
+- **Item gallery on FoodDetail / BarsDetail / HotelDetail** — `<ItemGalleryViewer>` is wired; verify on detail pages.
+- **Tags editor in SuggestionEditor** — admin can fix subcategory but not `metadata.tags`.
+- **Filters v3** — admin can edit existing filter rows; widget-config UI (drop-zone, segmented, price-range options) needs richer UI.
+- **Drop legacy `ratings` + `comments` tables** — both tables are no longer written to; the user-facing surfaces that read from them have been retired. Final cleanup migration once admin has reviewed the archive.
+
+### Known data quality issues (manual review)
+- 24 "bars" miscategorized in source data (παγωτατζίδικα, escape rooms, παιδότοποι, soccer academies)
+- 11 books with single-of-a-kind exotic tags
+- 6 food with "33" placeholder cuisine
+- 3 events untagged
+- 2 hotels with bad data ("bbbb", empty)
+- 2 series with only generic tag
+All visible and manageable from `/admin/data-quality`.
 
 ### Known data quality issues (manual review)
 - 24 "bars" miscategorized in source data (παγωτατζίδικα, escape rooms, παιδότοποι, soccer academies)

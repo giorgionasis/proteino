@@ -25,6 +25,7 @@ import { fetchHomeCollections, type HydratedCollection } from "@/lib/collections
 import { safeImageUrl } from "@/lib/image-url";
 import { fetchTonightAirings, type TonightAiring } from "@/lib/movies-tonight";
 import { getRegionMatchSet } from "@/lib/regions";
+import { getFollowedSet } from "@/lib/follows";
 import { resolvePageLayout } from "@/lib/layout/resolver";
 import { renderHomeSection } from "@/lib/layout/home-bridge";
 
@@ -207,21 +208,33 @@ async function fetchRecipes(sb: SB, limit = 5): Promise<LandscapeItem[]> {
   });
 }
 
-async function fetchTopUsers(sb: SB, limit = 6): Promise<SuggestedUser[]> {
-  const { data } = await sb
+async function fetchTopUsers(sb: SB, limit = 6, viewerId: string | null = null): Promise<SuggestedUser[]> {
+  // Exclude the viewer — showing a user themselves in a "people you might
+  // want to follow" carousel is nonsensical (and clicking Follow on
+  // yourself does nothing). Over-fetch by 1 to keep the result count
+  // stable when the viewer would otherwise have been included.
+  let q = sb
     .from("users")
     .select("id, display_name, handle, avatar_url, suggestion_count")
     .order("suggestion_count", { ascending: false })
     .gt("suggestion_count", 0)
-    .limit(limit);
+    .limit(viewerId ? limit + 1 : limit);
+  if (viewerId) q = q.neq("id", viewerId);
 
-  return (data ?? []).map((u: any) => ({
-    id: u.id,
-    name: u.display_name,
-    handle: u.handle,
-    avatar_url: u.avatar_url,
-    suggestion_count: u.suggestion_count,
+  const { data } = await q;
+  const users = (data ?? []).slice(0, limit).map((u: any) => ({
+    id: u.id as string,
+    name: u.display_name as string,
+    handle: u.handle as string,
+    avatar_url: u.avatar_url as string | null,
+    suggestion_count: u.suggestion_count as number | undefined,
   }));
+
+  // Hydrate the viewer's existing follow state for each card so the
+  // FollowButton renders with the correct initial state and the toggle
+  // hits the right transition direction.
+  const followed = await getFollowedSet(sb, viewerId, users.map((u) => u.id));
+  return users.map((u) => ({ ...u, is_following: followed.has(u.id) }));
 }
 
 async function fetchCategoryChips(sb: SB): Promise<CategoryChip[]> {
@@ -290,6 +303,7 @@ export default async function HomePage() {
   let isRegistered = false;
   let displayName = "";
   let viewerRegionId: string | null = null;
+  let viewerId: string | null = null;
 
   if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
@@ -297,6 +311,7 @@ export default async function HomePage() {
       if (session?.user) {
         isRegistered = true;
         const u = session.user;
+        viewerId = u.id;
         displayName =
           u.user_metadata?.display_name ??
           u.user_metadata?.full_name ??
@@ -324,7 +339,7 @@ export default async function HomePage() {
       fetchSeries(sb, 15),
       fetchBooks(sb, 15),
       fetchRecipes(sb, 15),
-      fetchTopUsers(sb),
+      fetchTopUsers(sb, 6, viewerId),
       fetchCategoryChips(sb),
       fetchSuggestionFeedItems(sb),
       fetchHomeCollections(sb, isRegistered),

@@ -132,6 +132,7 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
             shareTitle={title}
             onSaved={(r) => setSavedModal(r)}
             onToast={showToast}
+            showBookmark={!mySuggestion}
           />
         }
       />
@@ -269,7 +270,7 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
 
       {/* Bookmark status chips — always visible, save affordance + state setter. */}
       <div className="px-6 mt-8">
-        <BookmarkStatusChips category="food" bookmark={bookmark} onToast={showToast} />
+        {!mySuggestion && <BookmarkStatusChips category="food" bookmark={bookmark} onToast={showToast} />}
       </div>
 
       {/* Community */}

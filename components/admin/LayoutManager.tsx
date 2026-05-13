@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -74,6 +74,17 @@ export function LayoutManager() {
   const [previewKey, setPreviewKey] = useState(0); // bump to reload iframe
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<ApiSectionRow | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  /* ── Scroll iframe to a specific section via postMessage ── */
+  const scrollToSection = useCallback((sectionId: string) => {
+    const iframe = iframeRef.current;
+    if (!iframe?.contentWindow) return;
+    iframe.contentWindow.postMessage(
+      { type: "scroll-to-section", sectionId },
+      window.location.origin,
+    );
+  }, []);
 
   const bucket: BucketKey = useMemo(() => {
     const p = PAGES.find((x) => x.key === pageKey)!;
@@ -255,6 +266,7 @@ export function LayoutManager() {
                       onChangeAudience={(a) => changeRowAudience(s, a)}
                       onDelete={() => handleDelete(s)}
                       onEdit={() => setEditingRow(s)}
+                      onScrollTo={() => scrollToSection(s.id)}
                     />
                   ))}
                 </div>
@@ -284,6 +296,7 @@ export function LayoutManager() {
         src={previewSrc}
         previewKey={previewKey}
         onReload={() => setPreviewKey((k) => k + 1)}
+        iframeRef={iframeRef}
       />
     </div>
 
@@ -352,6 +365,7 @@ function SortableSection({
   onChangeAudience,
   onDelete,
   onEdit,
+  onScrollTo,
 }: {
   row: ApiSectionRow;
   busy: boolean;
@@ -359,6 +373,7 @@ function SortableSection({
   onChangeAudience: (a: LayoutAudience) => void;
   onDelete: () => void;
   onEdit: () => void;
+  onScrollTo: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: row.id,
@@ -381,14 +396,17 @@ function SortableSection({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-3 bg-white border rounded-md py-2 pr-2 ${
+      onClick={onScrollTo}
+      className={`group flex items-center gap-3 bg-white border rounded-md py-2 pr-2 cursor-pointer ${
         inactive ? "border-zinc-200 opacity-60" : "border-zinc-200 hover:border-coral-200"
       }`}
+      title="Κλικ για να το βρεις στο preview"
     >
       {/* Drag handle */}
       <button
         {...attributes}
         {...listeners}
+        onClick={(e) => e.stopPropagation()}
         className="px-2 py-2 text-zinc-300 hover:text-zinc-500 cursor-grab active:cursor-grabbing touch-none"
         aria-label="Σύρε για να αλλάξεις θέση"
       >
@@ -432,7 +450,7 @@ function SortableSection({
       {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
         <button
-          onClick={onToggleActive}
+          onClick={(e) => { e.stopPropagation(); onToggleActive(); }}
           disabled={busy}
           className={`w-9 h-7 rounded-full inline-flex items-center px-0.5 transition-colors ${
             row.is_active ? "bg-emerald-500" : "bg-zinc-200"
@@ -447,7 +465,7 @@ function SortableSection({
         </button>
 
         <button
-          onClick={onEdit}
+          onClick={(e) => { e.stopPropagation(); onEdit(); }}
           className="p-1.5 text-zinc-400 hover:text-zinc-700 rounded opacity-0 group-hover:opacity-100 transition-opacity"
           aria-label="Επεξεργασία"
           title="Επεξεργασία"
@@ -458,7 +476,7 @@ function SortableSection({
         </button>
 
         <button
-          onClick={onDelete}
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
           disabled={isFixed || busy}
           className={`p-1.5 rounded transition-opacity ${
             isFixed
@@ -505,12 +523,14 @@ function PreviewPane({
   src,
   previewKey,
   onReload,
+  iframeRef,
 }: {
   audience: AdminPreviewAudience;
   onAudienceChange: (a: AdminPreviewAudience) => void;
   src: string;
   previewKey: number;
   onReload: () => void;
+  iframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
 }) {
   return (
     <aside className="w-[420px] shrink-0 bg-zinc-100 overflow-y-auto flex flex-col">
@@ -545,6 +565,7 @@ function PreviewPane({
       <div className="flex-1 flex items-center justify-center p-5 overflow-y-auto">
         <PhoneFrame>
           <iframe
+            ref={iframeRef}
             key={previewKey}
             src={src}
             className="w-full h-full border-0"

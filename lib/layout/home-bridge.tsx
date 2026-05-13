@@ -26,7 +26,7 @@ import { RegisterPromo } from "@/components/home/guest/RegisterPromo";
 import { SupportSection } from "@/components/home/SupportSection";
 import { CollectionRenderer } from "@/components/recommendation/CollectionRenderer";
 import { MoviesTonightSection } from "@/components/home/MoviesTonightSection";
-import type { HydratedCollection, HydratedItem } from "@/lib/collections";
+import { toLandscapeItem, toPortraitItem, type HydratedCollection, type HydratedItem } from "@/lib/collections";
 import type { TonightAiring } from "@/lib/movies-tonight";
 import type { RenderedSection } from "./types";
 
@@ -46,10 +46,29 @@ export interface HomeRenderContext {
 
 const PORTRAIT_CATEGORIES = new Set(["movies", "series", "books"]);
 
+/**
+ * Public render entry point — wraps the actual render in a section anchor
+ * div so `/admin/layout`'s preview iframe can postMessage scroll-to-section
+ * (the wrapper carries `data-section-id` matching the section row id).
+ *
+ * The wrapper is a plain block-level div with no styles, so production
+ * layout is unaffected — child sections handle their own spacing via
+ * `space-y-*` on the home page wrapper.
+ */
 export function renderHomeSection(section: RenderedSection, ctx: HomeRenderContext): React.ReactNode {
+  const node = renderHomeSectionInner(section, ctx);
+  if (node === null || node === undefined || node === false) return null;
+  return (
+    <div key={section.row.id} data-section-id={section.row.id}>
+      {node}
+    </div>
+  );
+}
+
+function renderHomeSectionInner(section: RenderedSection, ctx: HomeRenderContext): React.ReactNode {
   if (section.kind === "divider") {
     const config = section.config as { spacing?: number };
-    return <div key={section.row.id} style={{ height: config.spacing ?? 24 }} aria-hidden />;
+    return <div style={{ height: config.spacing ?? 24 }} aria-hidden />;
   }
 
   if (section.kind === "collection") {
@@ -109,9 +128,44 @@ export function renderHomeSection(section: RenderedSection, ctx: HomeRenderConte
         offset?: number;
         limit?: number;
       };
-      const cat = config.category ?? "food";
       const offset = typeof config.offset === "number" ? config.offset : 0;
       const limit  = typeof config.limit  === "number" ? config.limit  : 5;
+
+      // Manual item override — resolver pre-hydrated specific items.
+      // Treat their dominant category as the variant signal (portrait
+      // for movies/series/books, landscape otherwise). When `config.category`
+      // is also set, we still trust it as the visual hint; otherwise infer
+      // from the first manual item.
+      if (section.items && section.items.length > 0) {
+        const inferredCat = config.category ?? section.items[0]?.category ?? "food";
+        const isPortrait = PORTRAIT_CATEGORIES.has(inferredCat);
+        if (isPortrait) {
+          const items = manualToPortrait(section.items);
+          if (items.length === 0) return null;
+          return (
+            <CarouselPortrait
+              key={section.row.id}
+              title={config.title ?? ""}
+              items={items}
+              seeAllHref={`/${inferredCat}`}
+              showLiveIndicator={inferredCat === "movies"}
+            />
+          );
+        }
+        const items = manualToLandscape(section.items);
+        if (items.length === 0) return null;
+        return (
+          <CarouselLandscape
+            key={section.row.id}
+            title={config.title ?? ""}
+            items={items}
+            seeAllHref={`/${inferredCat}`}
+          />
+        );
+      }
+
+      // Auto-source path — slice from page-level buckets.
+      const cat = config.category ?? "food";
       const isPortrait = PORTRAIT_CATEGORIES.has(cat);
 
       const sliceBucket = <T,>(bucket: T[]) => bucket.slice(offset, offset + limit);
@@ -168,6 +222,18 @@ export function renderHomeSection(section: RenderedSection, ctx: HomeRenderConte
       }
       return null;
   }
+}
+
+/* ─── Manual-item adapters ───────────────────────────────────────────── */
+/*  Thin wrappers around lib/collections' canonical converters so the
+ *  manual-pick path renders byte-identically to the collections path.   */
+
+function manualToPortrait(items: HydratedItem[]): PortraitItem[] {
+  return items.map(toPortraitItem);
+}
+
+function manualToLandscape(items: HydratedItem[]): LandscapeItem[] {
+  return items.map(toLandscapeItem);
 }
 
 function GreetingBlock({ displayName }: { displayName: string }) {

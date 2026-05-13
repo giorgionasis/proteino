@@ -34,9 +34,16 @@ interface Props {
   onSaved?:    (result: BookmarkSaveResult) => void;
   /** Toast for inline error messages (failed save). */
   onToast?:    (message: string) => void;
+  /**
+   * Hide the bookmark icon. Set when the viewer is the original
+   * suggester of this item — a suggester has demonstrably experienced
+   * the item, so wishlist/done states are nonsensical for them.
+   * Share button stays visible.
+   */
+  showBookmark?: boolean;
 }
 
-export function DetailHeaderActions({ category, bookmark, shareTitle, onSaved, onToast }: Props) {
+export function DetailHeaderActions({ category, bookmark, shareTitle, onSaved, onToast, showBookmark = true }: Props) {
   const { bookmarked, toggle } = bookmark;
   const { share, copied }      = useShareLink({ title: shareTitle });
   const fly                    = useBookmarkOrbit();
@@ -109,23 +116,25 @@ export function DetailHeaderActions({ category, bookmark, shareTitle, onSaved, o
 
   return (
     <>
-      <span
-        key={popKey}
-        className={popKey > 0 ? "inline-flex animate-bookmark-bounce" : "inline-flex"}
-      >
-        <IconButton
-          onClick={handleToggle}
-          aria-label="Αποθήκευση"
-          data-orbit-target
+      {showBookmark && (
+        <span
+          key={popKey}
+          className={popKey > 0 ? "inline-flex animate-bookmark-bounce" : "inline-flex"}
         >
-          <Icon
-            name={visualBookmarked ? "bookmark-added" : "bookmark-add"}
-            width={16}
-            height={20}
-            alt=""
-          />
-        </IconButton>
-      </span>
+          <IconButton
+            onClick={handleToggle}
+            aria-label="Αποθήκευση"
+            data-orbit-target
+          >
+            <Icon
+              name={visualBookmarked ? "bookmark-added" : "bookmark-add"}
+              width={16}
+              height={20}
+              alt=""
+            />
+          </IconButton>
+        </span>
+      )}
 
       <IconButton
         onClick={share}

@@ -2,6 +2,7 @@
 
 import { ReportLink } from "@/components/report/ReportLink";
 import { useReviewVote, type Vote } from "@/hooks/useReviewVote";
+import { useAuthStore } from "@/stores/authStore";
 
 interface ReviewCardFooterProps {
   reviewId: string;
@@ -9,6 +10,12 @@ interface ReviewCardFooterProps {
   dislikes: number;
   /** The current user's existing vote on this review, or null. Server provides. */
   myVote?: Vote;
+  /**
+   * Review author's user id. When provided + matches the current viewer,
+   * the vote + report controls hide (you can't vote on or report your
+   * own review). When omitted, controls always render.
+   */
+  authorId?: string;
 }
 
 /**
@@ -21,12 +28,36 @@ interface ReviewCardFooterProps {
  * `review_votes` and is passed in via `myVote` so the active thumb is
  * highlighted. Optimistic updates inside the hook.
  */
-export function ReviewCardFooter({ reviewId, likes, dislikes, myVote = null }: ReviewCardFooterProps) {
+export function ReviewCardFooter({ reviewId, likes, dislikes, myVote = null, authorId }: ReviewCardFooterProps) {
+  const viewerId = useAuthStore((s) => s.supabaseUser?.id ?? null);
+  const isOwnReview = !!viewerId && !!authorId && viewerId === authorId;
+
   const { myVote: vote, voteUp, voteDown, toggleUp, toggleDown, busy } = useReviewVote(reviewId, {
     myVote,
     voteUp: likes,
     voteDown: dislikes,
   });
+
+  // Author viewing their own review — show vote counts as a static display
+  // (so the totals are still visible) but no clickable thumbs and no report.
+  if (isOwnReview) {
+    return (
+      <div className="flex items-center justify-between px-6 py-3 bg-[#F4F4F5] text-zinc-500">
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1.5 text-[13px] font-semibold">
+            <ThumbUpIcon filled={false} />
+            {likes}
+          </span>
+          <span className="w-px h-5 bg-zinc-300" />
+          <span className="flex items-center gap-1.5 text-[13px] font-semibold">
+            <ThumbDownIcon filled={false} />
+            {dislikes}
+          </span>
+        </div>
+        <span className="text-[12px] font-medium text-zinc-400">η αξιολόγησή σου</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center justify-between px-6 py-3 bg-[#F4F4F5]">
@@ -59,7 +90,7 @@ export function ReviewCardFooter({ reviewId, likes, dislikes, myVote = null }: R
           <span className="text-[13px] font-semibold">{voteDown}</span>
         </button>
       </div>
-      <ReportLink targetType="suggestion" targetId={reviewId} />
+      <ReportLink targetType="review" targetId={reviewId} />
     </div>
   );
 }

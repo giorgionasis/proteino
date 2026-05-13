@@ -99,17 +99,20 @@ export const WIDGET_REGISTRY: Record<string, WidgetSpec> = {
   static_carousel: {
     key: "static_carousel",
     label: "Carousel (auto)",
-    description: "Carousel με αυτόματη πηγή (top-rated, νεότερα, …). Μπορείς να βάλεις πολλά σε ένα page.",
+    description: "Carousel με αυτόματη πηγή (top-rated, νεότερα, …) ή με χειροκίνητη επιλογή items. Μπορείς να βάλεις πολλά σε ένα page.",
     icon: "🎞",
     contexts: ["home", "category"],
     configSchema: [
       { kind: "text",   key: "title",  label: "Τίτλος",        placeholder: "π.χ. Δημοφιλή Μαγαζιά", required: true },
-      { kind: "select", key: "source", label: "Πηγή",
+      { kind: "select", key: "source", label: "Πηγή (αν δεν επιλέξεις items)",
         options: STATIC_CAROUSEL_SOURCES.map((s) => ({ value: s.value, label: s.label })),
         defaultValue: "top_rated" },
-      { kind: "category", key: "category", label: "Κατηγορία (override)" },
+      { kind: "category", key: "category", label: "Κατηγορία (override — μόνο στο Home)" },
       { kind: "number", key: "offset", label: "Offset", min: 0, defaultValue: 0 },
       { kind: "number", key: "limit",  label: "Limit",  min: 1, max: 20, defaultValue: 6 },
+      { kind: "item-source", key: "itemIds",
+        label: "Συγκεκριμένα items (override)",
+        description: "Αν επιλέξεις εδώ items, το carousel αγνοεί την πηγή και τα δείχνει με τη σειρά που τα έβαλες. Άφησέ το άδειο για auto." },
     ],
   },
 

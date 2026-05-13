@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
-export type ReportTargetType = "comment" | "suggestion";
+export type ReportTargetType = "comment" | "suggestion" | "review";
 type ReportReason = "inaccurate" | "fraud" | "offensive" | "other";
 
 interface ReportFlowModalProps {

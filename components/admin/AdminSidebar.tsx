@@ -10,7 +10,7 @@ interface NavItem {
   href: string;
   icon: React.ReactNode;
   /** Source key for the live-counter badge (matches /api/admin/counters response). */
-  counterKey?: "unpublishedSuggestions" | "reportedReviews" | "dataQualityIssues" | "pendingReports";
+  counterKey?: "unpublishedSuggestions" | "reportedComments" | "dataQualityIssues" | "pendingReports";
   /** Visual tone for the badge. */
   counterTone?: "red" | "amber";
 }
@@ -44,7 +44,7 @@ const NAV: NavEntry[] = [
       { label: "Movies Tonight", href: "/admin/content/movies-tonight", icon: <IconFilm /> },
     ],
   },
-  { label: "Reviews",  href: "/admin/reviews",  icon: <IconStar />, counterKey: "reportedReviews", counterTone: "red" },
+  { label: "Comments (Legacy)", href: "/admin/reviews", icon: <IconStar />, counterKey: "reportedComments", counterTone: "red" },
   { label: "Reports",  href: "/admin/reports",  icon: <IconFlag />, counterKey: "pendingReports",  counterTone: "red" },
   { label: "Users",    href: "/admin/users",    icon: <IconUsers /> },
   { label: "Layout",          href: "/admin/layout",            icon: <IconLayout /> },
@@ -57,7 +57,7 @@ const NAV: NavEntry[] = [
 
 interface Counters {
   unpublishedSuggestions: number;
-  reportedReviews: number;
+  reportedComments: number;
   dataQualityIssues: number;
   pendingReports: number;
 }
@@ -75,7 +75,7 @@ export function AdminSidebar({ user }: Props) {
   const [contentOpen, setContentOpen] = useState(true);
   const [counters, setCounters] = useState<Counters>({
     unpublishedSuggestions: 0,
-    reportedReviews: 0,
+    reportedComments: 0,
     dataQualityIssues: 0,
     pendingReports: 0,
   });

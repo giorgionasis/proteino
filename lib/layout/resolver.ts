@@ -105,11 +105,34 @@ export async function resolvePageLayout(
   const sections = await Promise.all(
     rows.map(async (row): Promise<RenderedSection | null> => {
       if (row.section_type === "widget") {
+        const config = (row.config ?? {}) as Record<string, unknown>;
+
+        // Widget with a manual item source override (today: `static_carousel`
+        // with `config.itemIds`). When present we hydrate the items here
+        // server-side so the bridges render them directly instead of slicing
+        // a pre-fetched bucket.
+        let items: HydratedItem[] | undefined;
+        const itemIds = config.itemIds;
+        if (
+          row.widget_key === "static_carousel" &&
+          Array.isArray(itemIds) &&
+          itemIds.length > 0
+        ) {
+          const ids = (itemIds as unknown[]).filter(
+            (x): x is string => typeof x === "string" && x.length > 0,
+          );
+          if (ids.length > 0) {
+            items = await hydrateManualItems(sb, ids);
+            if (items.length === 0) items = undefined; // bridge falls back to auto
+          }
+        }
+
         return {
           kind: "widget",
           row,
           widgetKey: row.widget_key ?? "",
-          config: (row.config ?? {}) as Record<string, unknown>,
+          config,
+          ...(items ? { items } : {}),
         };
       }
       if (row.section_type === "divider") {
@@ -195,6 +218,47 @@ async function hydrateCollectionItems(
     return [];
   }
   return (data ?? []) as HydratedItem[];
+}
+
+/* ─── Manual item hydration ────────────────────────────────────────────
+ *  Used when an admin pins a specific ordered set of items to a widget
+ *  (e.g. `static_carousel` with `config.itemIds`). Returns the items in
+ *  the exact order requested so the admin's hand-curation is preserved.
+ *  Unpublished + missing IDs are silently dropped. Hard-capped at 30. */
+
+async function hydrateManualItems(
+  sb: SupabaseLike,
+  ids: string[],
+): Promise<HydratedItem[]> {
+  const capped = ids.slice(0, 30);
+  if (capped.length === 0) return [];
+
+  const suggesterJoin =
+    "suggestions(users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, level, suggestion_count, avg_quality_score))";
+
+  const { data, error } = await (sb.from("items") as any)
+    .select(
+      `id, title, slug, cover_url, category, avg_rating, rating_count, metadata, ${suggesterJoin}`,
+    )
+    .in("id", capped)
+    .eq("is_published", true);
+
+  if (error) {
+    console.error("[layout/resolver] hydrateManualItems failed:", error.message);
+    return [];
+  }
+
+  // Re-order to match the admin's `ids` order. Postgres returns items in
+  // arbitrary order on `.in(...)`; this restores the curation.
+  const byId = new Map<string, HydratedItem>(
+    (data ?? []).map((it: HydratedItem) => [it.id, it]),
+  );
+  const ordered: HydratedItem[] = [];
+  for (const id of capped) {
+    const it = byId.get(id);
+    if (it) ordered.push(it);
+  }
+  return ordered;
 }
 
 /* ─── Static carousel source resolution ────────────────────────────────

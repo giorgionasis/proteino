@@ -24,18 +24,22 @@ export default async function ReviewsPage({ params }: Props) {
 
   const isOwner = !!viewer && (viewer.id === (profileUser as any).id);
 
+  // Source of truth is the `reviews` table (migration 016). The legacy
+  // `ratings` table was wiped clean and is no longer written to.
   const { data: rows } = await supabase
-    .from("ratings")
+    .from("reviews")
     .select(`
-      id, score, created_at,
+      id, rating, reflection, created_at,
       items!inner(id, slug, title, category, cover_url, poster_url)
     `)
     .eq("user_id", (profileUser as any).id)
+    .eq("is_hidden", false)
     .order("created_at", { ascending: false });
 
   const reviews = (rows ?? []).map((r: any) => ({
     id: r.id as string,
-    score: typeof r.score === "number" ? r.score : 0,
+    score: typeof r.rating === "number" ? r.rating : 0,
+    reflection: r.reflection as string | null,
     createdAt: r.created_at as string,
     item: {
       id: r.items.id as string,

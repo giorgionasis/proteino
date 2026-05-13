@@ -352,10 +352,210 @@ function ConfigFieldInput({
 
     case "item-source":
       return (
-        <label className="block">
-          {label}
-          <p className="text-xs text-zinc-400">Item source picker — coming soon</p>
-        </label>
+        <ItemSourcePicker
+          label={field.label}
+          description={field.description}
+          value={Array.isArray(value) ? (value as string[]) : []}
+          onChange={(ids) => onChange(ids.length > 0 ? ids : undefined)}
+        />
       );
   }
+}
+
+/* ─── Item-source picker ────────────────────────────────────────────────
+ *  Search-by-title input + checkbox of matches + ordered "selected" list
+ *  with reorder/remove. Stored value is `string[]` of item UUIDs.
+ *  Empty array becomes `undefined` so the bridge falls back to auto mode.
+ */
+
+interface SearchResultItem {
+  id: string;
+  title: string;
+  slug: string;
+  category: string;
+  cover_url: string | null;
+  avg_rating: number;
+  rating_count: number;
+}
+
+function ItemSourcePicker({
+  label,
+  description,
+  value,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  value: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResultItem[]>([]);
+  const [selectedItems, setSelectedItems] = useState<Record<string, SearchResultItem>>({});
+  const [loading, setLoading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Hydrate display info for already-selected ids on first open.
+  useEffect(() => {
+    if (hydrated) return;
+    if (value.length === 0) { setHydrated(true); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const ids = value.join(",");
+        const res = await fetch(`/api/admin/items/search?ids=${encodeURIComponent(ids)}`);
+        if (!res.ok) { setHydrated(true); return; }
+        const data = await res.json();
+        const items = (data?.items ?? []) as SearchResultItem[];
+        if (!cancelled) {
+          const out: Record<string, SearchResultItem> = {};
+          for (const it of items) out[it.id] = it;
+          setSelectedItems(out);
+          setHydrated(true);
+        }
+      } catch {
+        if (!cancelled) setHydrated(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [value, hydrated]);
+
+  // Debounced search.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setResults([]); return; }
+    let cancelled = false;
+    setLoading(true);
+    const t = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/items/search?q=${encodeURIComponent(q)}&limit=10`);
+        const data = await res.json();
+        if (!cancelled) setResults((data?.items ?? []) as SearchResultItem[]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 300);
+    return () => { cancelled = true; window.clearTimeout(t); };
+  }, [query]);
+
+  function toggle(item: SearchResultItem) {
+    if (value.includes(item.id)) {
+      onChange(value.filter((id) => id !== item.id));
+    } else {
+      setSelectedItems((s) => ({ ...s, [item.id]: item }));
+      onChange([...value, item.id]);
+    }
+  }
+
+  function remove(id: string) {
+    onChange(value.filter((x) => x !== id));
+  }
+
+  function move(id: string, delta: -1 | 1) {
+    const idx = value.indexOf(id);
+    if (idx < 0) return;
+    const next = [...value];
+    const target = idx + delta;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target]!, next[idx]!];
+    onChange(next);
+  }
+
+  return (
+    <div className="space-y-2">
+      <span className="text-xs font-medium text-zinc-700 block">{label}</span>
+      {description && <p className="text-[11px] text-zinc-500 leading-snug">{description}</p>}
+
+      {/* Selected list */}
+      {value.length > 0 && (
+        <div className="rounded-md border border-zinc-200 bg-zinc-50 p-2 space-y-1">
+          {value.map((id, i) => {
+            const item = selectedItems[id];
+            return (
+              <div key={id} className="flex items-center gap-2 bg-white border border-zinc-200 rounded px-2 py-1.5">
+                <span className="shrink-0 w-5 text-[11px] text-zinc-400 text-center">{i + 1}</span>
+                {item?.cover_url ? (
+                  <img src={item.cover_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
+                ) : (
+                  <div className="w-8 h-8 rounded bg-zinc-100 shrink-0" aria-hidden />
+                )}
+                <span className="flex-1 text-xs text-zinc-800 truncate">
+                  {item?.title ?? <span className="text-zinc-400">Loading…</span>}
+                  {item && <span className="text-zinc-400 ml-1">· {item.category}</span>}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => move(id, -1)}
+                  disabled={i === 0}
+                  className="p-1 text-zinc-400 hover:text-zinc-700 disabled:opacity-30"
+                  aria-label="Πάνω"
+                  title="Πάνω"
+                >▲</button>
+                <button
+                  type="button"
+                  onClick={() => move(id, 1)}
+                  disabled={i === value.length - 1}
+                  className="p-1 text-zinc-400 hover:text-zinc-700 disabled:opacity-30"
+                  aria-label="Κάτω"
+                  title="Κάτω"
+                >▼</button>
+                <button
+                  type="button"
+                  onClick={() => remove(id)}
+                  className="p-1 text-zinc-400 hover:text-red-600"
+                  aria-label="Αφαίρεση"
+                  title="Αφαίρεση"
+                >✕</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Search */}
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Αναζήτηση τίτλου (≥2 χαρακτήρες)…"
+        className="w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:border-coral-400 focus:outline-none"
+      />
+
+      {loading && <p className="text-[11px] text-zinc-400">Αναζήτηση…</p>}
+
+      {/* Results */}
+      {results.length > 0 && (
+        <div className="max-h-56 overflow-y-auto rounded-md border border-zinc-200 divide-y divide-zinc-100">
+          {results.map((r) => {
+            const isPicked = value.includes(r.id);
+            return (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => toggle(r)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-left transition-colors ${
+                  isPicked ? "bg-coral-50" : "hover:bg-zinc-50"
+                }`}
+              >
+                {r.cover_url ? (
+                  <img src={r.cover_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
+                ) : (
+                  <div className="w-8 h-8 rounded bg-zinc-100 shrink-0" aria-hidden />
+                )}
+                <span className="flex-1 min-w-0">
+                  <span className="block text-xs text-zinc-800 truncate">{r.title}</span>
+                  <span className="block text-[10px] text-zinc-400">
+                    {r.category} · ★ {r.avg_rating?.toFixed(1) ?? "—"}
+                  </span>
+                </span>
+                <span className={`text-xs shrink-0 ${isPicked ? "text-coral-700" : "text-zinc-400"}`}>
+                  {isPicked ? "✓" : "+"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }

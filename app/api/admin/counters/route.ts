@@ -8,7 +8,10 @@ import { NextResponse } from "next/server";
  * admin sidebar badges. Polled every 60s by the sidebar.
  *
  * - suggestions: unpublished count (red dot if > 0)
- * - reviews: unresolved-reports count (red dot if > 0)
+ * - reportedComments: legacy `comments` table — frozen K2 archive surfaced
+ *   under the "Comments (Legacy)" tab. New review moderation flows
+ *   through `pendingReports` (content_reports across all target_types,
+ *   including 'review' from migration 035).
  * - dataQuality: NULL-subcategory items + items with no cover (amber if > 0)
  */
 export async function GET() {
@@ -19,13 +22,13 @@ export async function GET() {
     sb.from("comments").select("id", { count: "exact", head: true }).gt("report_count", 0),
     sb.from("items").select("id", { count: "exact", head: true }).is("subcategory_id", null),
     sb.from("items").select("id", { count: "exact", head: true }).is("cover_url", null),
-    // Unresolved reports across both target_types (migration 015).
+    // Unresolved reports across all target_types (migration 015 + 035).
     sb.from("content_reports").select("id", { count: "exact", head: true }).eq("resolved", false),
   ]);
 
   return NextResponse.json({
     unpublishedSuggestions: unpubRes.count ?? 0,
-    reportedReviews: reportedRes.count ?? 0,
+    reportedComments: reportedRes.count ?? 0,
     nullSubcategory: nullSubcatRes.count ?? 0,
     missingCover: missingCoverRes.count ?? 0,
     dataQualityIssues: (nullSubcatRes.count ?? 0) + (missingCoverRes.count ?? 0),

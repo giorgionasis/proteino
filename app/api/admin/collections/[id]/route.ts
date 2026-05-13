@@ -6,7 +6,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("collections")
-    .select("*, collection_placements(*)")
+    .select("*, page_sections(*)")
     .eq("id", params.id)
     .single();
 
@@ -52,7 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   // Preserves display_order for placements that didn't change.
   if (Array.isArray(placements)) {
     const { data: existing } = await supabase
-      .from("collection_placements")
+      .from("page_sections")
       .select("id, context, category")
       .eq("collection_id", params.id);
 
@@ -75,7 +75,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       .map((p: any) => p.id);
 
     if (toRemove.length > 0) {
-      await supabase.from("collection_placements").delete().in("id", toRemove);
+      await supabase.from("page_sections").delete().in("id", toRemove);
     }
 
     // Add placements that don't exist yet, appending to bucket
@@ -85,7 +85,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       if (existingMap.has(k)) continue;
 
       const { data: maxRow } = await supabase
-        .from("collection_placements")
+        .from("page_sections")
         .select("display_order")
         .eq("context", p.context)
         .is("category", cat as any)
@@ -93,7 +93,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         .limit(1);
       const next = ((maxRow as any)?.[0]?.display_order ?? -1) + 1;
 
-      await (supabase.from("collection_placements") as any).insert({
+      await (supabase.from("page_sections") as any).insert({
         collection_id: params.id,
         context: p.context,
         category: cat,
@@ -104,7 +104,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const { data: full, error: fetchErr } = await supabase
     .from("collections")
-    .select("*, collection_placements(*)")
+    .select("*, page_sections(*)")
     .eq("id", params.id)
     .single();
 

@@ -19,6 +19,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchNearbyActivities, type NearbyActivity } from "@/lib/activities";
 import { safeImageUrl } from "@/lib/image-url";
 import { fetchRelatedSections, type RelatedSection } from "@/lib/related-sections";
+import { buildItemStructuredData } from "@/lib/seo/structured-data";
+import { JsonLd } from "@/components/seo/JsonLd";
 import type { CategorySlug } from "@/types";
 
 interface Props {
@@ -320,7 +322,51 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const data = await fetchItemData(params.id, params.category);
   if (!data) return { title: "Proteino" };
-  return { title: `${data.item.title} — Proteino` };
+
+  const siteOrigin = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://proteino.gr").replace(/\/$/, "");
+  const pageUrl    = `${siteOrigin}/${data.item.slug}`;
+  const title      = `${data.item.title} — Proteino`;
+  const description =
+    (data.extension?.plot as string | undefined) ??
+    (data.extension?.description as string | undefined) ??
+    (data.item.description_seo as string | undefined) ??
+    `${data.item.title} · ${data.item.rating_count ?? 0} αξιολογήσεις στο Proteino`;
+  const truncated = description.length > 200 ? description.slice(0, 197) + "…" : description;
+
+  const heroImage = safeImageUrl(data.item.backdrop_url) ??
+                    safeImageUrl(data.item.poster_url) ??
+                    safeImageUrl(data.item.cover_url) ??
+                    null;
+  const ogImages  = heroImage ? [{ url: heroImage, width: 1200, height: 630, alt: data.item.title }] : undefined;
+
+  // og:type per category — most map to "article" since Schema.org @type
+  // doesn't have a direct OG counterpart. Books + recipes are the two
+  // categories with first-class OG types.
+  const ogType: "article" | "book" =
+    params.category === "books" ? "book" : "article";
+
+  return {
+    title,
+    description: truncated,
+    alternates: {
+      canonical: pageUrl,
+    },
+    openGraph: {
+      type:        ogType,
+      url:         pageUrl,
+      title,
+      description: truncated,
+      siteName:    "Proteino",
+      images:      ogImages,
+      locale:      "el_GR",
+    },
+    twitter: {
+      card:        heroImage ? "summary_large_image" : "summary",
+      title,
+      description: truncated,
+      images:      heroImage ? [heroImage] : undefined,
+    },
+  };
 }
 
 export default async function ItemDetailPage({ params }: Props) {
@@ -330,16 +376,53 @@ export default async function ItemDetailPage({ params }: Props) {
   const data = await fetchItemData(params.id, params.category);
   if (!data) notFound();
 
-  switch (params.category) {
-    case "movies":  return <MovieDetail data={data} />;
-    case "series":  return <SeriesDetail data={data} />;
-    case "books":   return <BookDetail data={data} />;
-    case "food":    return <FoodDetail data={data} />;
-    case "bars":    return <BarsDetail data={data} />;
-    case "hotels":  return <HotelDetail data={data} />;
-    case "theater": return <TheaterDetail data={data} />;
-    case "events":  return <EventDetail data={data} />;
-    case "recipes": return <RecipeDetail data={data} />;
-    default:        notFound();
-  }
+  // Schema.org JSON-LD — emit once per page so Google can build rich
+  // results. Site origin pulled from env so the @id is absolute (which
+  // Schema.org validators require) without hardcoding the prod URL.
+  const siteOrigin = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://proteino.gr").replace(/\/$/, "");
+  const pageUrl    = `${siteOrigin}/${data.item.slug}`;
+  // Original suggester — used as Recipe.author (and dateCreated). For
+  // other categories Schema.org expects domain-specific actors (director
+  // for movies, writer for books, etc.); the suggester is purely for
+  // recipes.
+  const firstSugg = data.suggestions?.[0] ?? null;
+  const suggesterForSeo = firstSugg
+    ? {
+        display_name: firstSugg.user.display_name,
+        handle:       firstSugg.user.handle,
+        created_at:   firstSugg.created_at,
+      }
+    : null;
+
+  const structured = buildItemStructuredData(
+    params.category,
+    data.item,
+    data.extension,
+    data.reviews,
+    { pageUrl, siteOrigin },
+    suggesterForSeo,
+  );
+
+  const detail = (() => {
+    switch (params.category) {
+      case "movies":  return <MovieDetail data={data} />;
+      case "series":  return <SeriesDetail data={data} />;
+      case "books":   return <BookDetail data={data} />;
+      case "food":    return <FoodDetail data={data} />;
+      case "bars":    return <BarsDetail data={data} />;
+      case "hotels":  return <HotelDetail data={data} />;
+      case "theater": return <TheaterDetail data={data} />;
+      case "events":  return <EventDetail data={data} />;
+      case "recipes": return <RecipeDetail data={data} />;
+      default:        return null;
+    }
+  })();
+  if (!detail) notFound();
+
+  return (
+    <>
+      <JsonLd data={structured} />
+      {detail}
+    </>
+  );
 }

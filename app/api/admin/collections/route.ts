@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   if (context) {
     // Fetch placements (in this bucket) embedding the collection.
     let q = supabase
-      .from("collection_placements")
+      .from("page_sections")
       .select("id, display_order, context, category, collections!inner(*)")
       .eq("context", context)
       .order("display_order");
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
   // List view: all collections + their placements.
   const { data, error } = await supabase
     .from("collections")
-    .select("*, collection_placements(*)")
+    .select("*, page_sections(*)")
     .order("modified_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
     if (p.context !== "home" && !cat) continue;
 
     const { data: maxRow } = await supabase
-      .from("collection_placements")
+      .from("page_sections")
       .select("display_order")
       .eq("context", p.context)
       .is("category", cat as any)
@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (rows.length > 0) {
-    const { error: pErr } = await (supabase.from("collection_placements") as any).insert(rows);
+    const { error: pErr } = await (supabase.from("page_sections") as any).insert(rows);
     if (pErr) {
       // Roll back the collection so we don't leave orphans
       await supabase.from("collections").delete().eq("id", created.id);
@@ -179,7 +179,7 @@ export async function POST(req: NextRequest) {
 
   const { data: full } = await supabase
     .from("collections")
-    .select("*, collection_placements(*)")
+    .select("*, page_sections(*)")
     .eq("id", created.id)
     .single();
 

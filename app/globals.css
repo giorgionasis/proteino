@@ -184,6 +184,23 @@
   transform-origin: bottom center;
 }
 
+/* ── Layout-preview highlight ──────────────────────────────────
+ * Used by /admin/layout's iframe preview when admin clicks a section
+ * row — the matching [data-section-id] element gets a 1.6s coral ring
+ * fade-out so admin can locate the section they just clicked on.
+ * No-op outside the preview iframe (nothing in production toggles
+ * this class).
+ */
+@keyframes section-highlight {
+  0%   { box-shadow: 0 0 0 0   rgba(254, 111, 94, 0.55); }
+  40%  { box-shadow: 0 0 0 12px rgba(254, 111, 94, 0.32); }
+  100% { box-shadow: 0 0 0 0   rgba(254, 111, 94, 0);    }
+}
+.section-highlight {
+  animation: section-highlight 1.6s ease-out;
+  border-radius: 4px;
+}
+
 /* ── Reduced-motion override ────────────────────────────────────
  * Honor the OS-level "Reduce motion" preference. Anything we
  * animate gets near-instant resolution so users with vestibular

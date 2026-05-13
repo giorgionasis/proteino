@@ -16,6 +16,7 @@ Set on Vercel (or whatever runtime hosts Next.js):
 | `TMDB_API_KEY` | optional | Movie/series cover enrichment ([themoviedb.org](https://www.themoviedb.org/settings/api)) |
 | `GOOGLE_BOOKS_API_KEY` | optional | Books cover enrichment (works without for low volume) |
 | `GOOGLE_PLACES_API_KEY` | optional | Venue photos (food/bars/hotels) |
+| `NEXT_PUBLIC_SITE_URL` | recommended | Canonical site origin (e.g. `https://proteino.gr`). Used by JSON-LD `@id`, sitemap loc, canonical URLs, OG `og:url`. Defaults to `https://proteino.gr` if unset. |
 | `ADMIN_DEV_BYPASS` | **must NOT be set** | If `=1` and `NODE_ENV !== production`, skips /admin auth. Refused in prod. |
 
 If image enrichment env vars are absent, the "✨ Auto-fetch cover" UI surfaces a friendly "API not configured" notice. No errors, no crashes.
@@ -61,6 +62,7 @@ scripts/sql/031-funnel-retention.sql
 scripts/sql/032-page-sections.sql
 scripts/sql/033-home-layout-seed-completion.sql
 scripts/sql/034-related-sections-config.sql
+scripts/sql/035-content-reports-add-review-type.sql
 ```
 
 **Note:** Migration 016 wipes the legacy `ratings` table and resets `items.rating_count` / `avg_rating` to 0 across all items. The legacy `comments` and `ratings` tables stay in the DB as archive but are NOT read by the new UI — all reviews from now on flow through the new `reviews` table (rating mandatory + reflection optional, one row per (user, item)).
