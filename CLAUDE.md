@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-12 (session 20 — onboarding flow / achievement celebration / badge system overhaul)
+**Last meaningful update:** 2026-05-13 (session 22 — admin-controlled page layouts + related sections)
 
 ---
 
@@ -1483,3 +1483,203 @@ Accepts: `kind` (explicit) → `suggestionCount` (preferred) → `level` (legacy
 - `/[category]/[id]/reviews` subpage uses the central helper.
 - Admin `UsersTable` uses suggestion-count thresholds.
 - The detail-page TypeScript types for `suggestions[].user` and `reviews[].user` were extended with `suggestion_count`. The reviews SELECT was missing the column — added.
+
+---
+
+## 37. Admin-controlled page layouts (session 22)
+> ✅ Shipped — both category pages and home page consume `page_sections` via `resolvePageLayout`; admin reorders/adds/removes via `/admin/layout`.
+
+The composition of every category page and the home page is now DB-driven. The admin can reorder sections, add new ones, delete non-fixed ones, swap audience visibility, and preview the result in a phone-bezel iframe — without touching code.
+
+### Architecture (three layers)
+
+| Layer | File | Role |
+|---|---|---|
+| DB | `page_sections` (migration 032 renamed `collection_placements` + extended; migration 033 completed home seed) | Source of truth — one row per visible section per audience |
+| lib | `lib/layout/{types,widgets,resolver,home-bridge}.ts` | Types, widget registry, server resolver, render bridges |
+| UI | `CategoryPageShell`, `app/(main)/page.tsx`, `/admin/layout`, `/preview/...` | Map resolved sections to JSX |
+
+### `page_sections` schema (migration 032)
+
+```sql
+-- Renamed from collection_placements
+page_sections (
+  id              uuid PK,
+  section_type    text CHECK (collection | widget | divider),
+  collection_id   uuid REFERENCES collections — nullable (NULL for widget/divider rows)
+  widget_key      text — required when section_type='widget'; matches lib/layout/widgets.ts
+  context         text CHECK (home | category | suggestions),
+  category        text — NULL for home, required for category
+  display_order   int,
+  audience        text CHECK (all | registered | guest),
+  config          jsonb — per-widget params (title, source, offset, limit, ...)
+  is_active       bool,
+  valid_from / valid_until  timestamptz — optional per-section lifecycle
+  -- + type-ref consistency CHECK so widget/divider rows can't have collection_id
+)
+```
+
+The old UNIQUE constraint on `(collection_id, context, category)` was DROPPED — widgets share `(NULL, context, category)` so multiple widgets per bucket would collide. Singleton enforcement (e.g. only one `filter_row` per bucket) moved to the application layer.
+
+RLS rewritten: widgets/dividers visible if `is_active`; collections visible if their referenced collection is `is_published`.
+
+### Widget registry (`lib/layout/widgets.ts`)
+
+22 widgets, declared as **pure metadata** (no render functions — those live per-page so they can close over shell state). Each `WidgetSpec` carries: `key`, Greek `label`, allowed `contexts` + `categories` + `audiences`, `fixed: true` (admin can reorder but never delete — e.g. `filter_row`, `items_list`, `footer_mobile`), `singleton: true` (only one per bucket), and optional `configSchema` (the field schema the admin form auto-renders).
+
+Widgets registered today:
+
+| Bucket | Widget keys |
+|---|---|
+| Category chrome (fixed) | `welcome_header`, `sub_category_tabs`, `filter_row`, `items_list` |
+| Category content | `movies_tonight` (movies only), `open_map_button` (venues only), `static_carousel`, `category_top_users`, `suggest_box` |
+| Home guest | `hero_discover`, `hero_suggest`, `hero_personalise`, `category_tiles`, `suggestion_feed`, `how_it_works`, `register_promo` |
+| Home registered | `greeting`, `ai_chips`, `suggested_users`, `contribution_cta` |
+| Shared (any audience) | `support_section`, `footer_mobile` (fixed) |
+| Repeatable | `static_carousel` (non-singleton — admin can place many; config carries title + source + category override + offset + limit) |
+
+`static_carousel` is the workhorse: replaces the legacy "primary + secondary fallback carousels" with admin-editable rows. `source` presets: `top_rated`, `newest`, `most_bookmarked`, `most_reviewed`.
+
+### Resolver (`lib/layout/resolver.ts`)
+
+```ts
+resolvePageLayout(sb, {
+  context: 'home' | 'category' | 'suggestions',
+  category: string | null,        // null for home
+  viewerAudience: 'registered' | 'guest' | null,  // null = admin "show all"
+  includeInactive?: boolean,      // admin: true; production: false
+}) → Promise<RenderedSection[]>
+```
+
+Single query + parallel collection hydration. Returns a discriminated union `{ kind: 'collection' | 'widget' | 'divider', ... }`. Empty collections (after hydration) are dropped so the consumer never renders a zero-item carousel.
+
+### Render bridges
+
+- **Category** — `renderSection()` closure inside `CategoryPageShell.tsx` that has access to all the shell state (activeTab, filterValues, showMap, …). Bridges each widget key to its component.
+- **Home** — `lib/layout/home-bridge.tsx:renderHomeSection(section, ctx)` because Next.js disallows extra exports from `page.tsx`. `ctx` carries the fetched data buckets (food / movies / series / books / recipes + topUsers / chips / feedItems / tonight).
+- **Static carousel resolution** — for category pages: slices from the main `items` array using `config.offset` + `config.limit`. For home: picks the right bucket based on `config.category`, renders as `CarouselPortrait` if category ∈ {movies, series, books} else `CarouselLandscape`.
+
+### Legacy fallback
+
+Both pages render the previous hardcoded JSX (preserved verbatim) when `layoutSections.length === 0` — safety net for un-applied migrations or empty seeds. After production stabilises this can be deleted.
+
+### `/admin/layout` — the admin surface
+
+Three columns:
+
+```
+┌─────────┬──────────────────────────┬─────────────────────────┐
+│ Page    │ Section stack            │ Mobile preview          │
+│ picker  │ (drag to reorder)        │ (iPhone bezel + iframe) │
+└─────────┴──────────────────────────┴─────────────────────────┘
+```
+
+- **Page picker** (left): Αρχική + 9 categories
+- **Section stack** (middle): dnd-kit Sortable. Each row → drag handle / icon / label / type-chip / per-row audience inline-select / active toggle / edit pencil / delete (disabled for `fixed` widgets). `+ Πρόσθεσε section` opens the picker modal.
+- **Preview pane** (right): audience selector (Όλοι / Εγγεγραμμένοι / Επισκέπτες) + 360×740 phone bezel iframing `/preview/...`. Reloads on every save.
+
+### `SectionPickerModal` + `SectionConfigDrawer`
+
+Picker: two tabs (Widget / Collection). Widget tab filters via `compatibleWidgets(context, category, audience)` and grays out singletons already placed. Collection tab fetches existing collections + offers a "Δημιουργία νέου" link.
+
+Config drawer: auto-renders fields from `WidgetSpec.configSchema` (text / textarea / number / toggle / select / category / item-source). Plus audience + lifecycle (valid_from / valid_until) controls. Collection-type rows show a deep link to the existing CollectionEditor (collection internals live there).
+
+### `/preview/...` routes
+
+`/preview/category/[slug]` and `/preview/home` — outside `app/(main)/` so they don't inherit the global header / bottom-nav / FAB. `force-dynamic`. Audience override via `?audience=guest|registered|all`. Lightweight per-category fetches (15 items, no extension tables — enough for layout review). Same render bridges as production = byte-identical output.
+
+### API
+
+- `GET /api/admin/page-sections?context=...&category=...` — list bucket
+- `POST /api/admin/page-sections` — create section (validates widget compatibility + enforces singleton)
+- `PATCH /api/admin/page-sections/[id]` — update `is_active` / `audience` / `config` / lifecycle (section_type / widget_key / collection_id / context / category are immutable post-create)
+- `DELETE /api/admin/page-sections/[id]` — refuses if widget is `fixed`
+- `POST /api/admin/page-sections/reorder` — batch renumber display_order to `(i+1)*10`
+
+All writes call `revalidatePath` for the affected page.
+
+### Day-1 seed parity
+
+Migrations 032 + 033 together seed every (context, category, audience) bucket with widget rows that reproduce the previous hardcoded JSX **exactly**. The first render after applying them is visually identical to before. Admin then edits from there.
+
+---
+
+## 38. Admin-configurable "More from {axis}" detail-page sections (session 22)
+> ✅ Shipped — `related_sections_config` table + 8 seeded rules + auto-hide on empty/insufficient.
+
+Every detail page now renders a `<RelatedSections>` block below the reviews carousel, populated from admin rules in `related_sections_config`. Carousels auto-hide when the current item has no value for the configured axis OR fewer than `min_items` siblings share it.
+
+### Schema (migration 034)
+
+```sql
+related_sections_config (
+  id              uuid PK,
+  category        text CHECK (one of 9 slugs),
+  field           text,             -- 'writer', 'director', 'actors[0].name', 'performers[0]', ...
+  title_template  text,              -- 'Άλλες ταινίες από {value}'
+  min_items       int DEFAULT 2,
+  item_limit      int DEFAULT 6,
+  display_order   int,
+  is_active       bool,
+  UNIQUE (category, field)
+)
+```
+
+### Field path syntax
+
+Parsed by `lib/related-sections.ts:parseFieldPath`:
+
+| Pattern | Example | SQL target |
+|---|---|---|
+| Scalar column | `writer` | `item_books.writer = ?` |
+| Array element | `performers[0]` | `item_events.performers->>0 = ?` |
+| Object key in array | `actors[0].name` | `item_movies.actors->0->>'name' = ?` |
+
+### Default rules (seeded by migration 034)
+
+| Category | Field | Title |
+|---|---|---|
+| books | writer | "Περισσότερα από {value}" |
+| movies | director | "Άλλες ταινίες από {value}" |
+| movies | actors[0].name | "Παίζει επίσης ο {value}" |
+| series | director | "Άλλες σειρές από {value}" |
+| series | actors[0].name | "Παίζει επίσης ο {value}" |
+| theater | director | "Άλλες παραστάσεις από {value}" |
+| theater | writer | "Άλλα έργα του {value}" |
+| events | performers[0] | "Άλλες εμφανίσεις του {value}" |
+
+food / bars / hotels / recipes start with no rules — admin can add via the preset picker (cuisine, level, origin, etc.).
+
+### Fetcher contract (`lib/related-sections.ts`)
+
+```ts
+fetchRelatedSections(sb, { itemId, category, extension })
+  → Promise<RelatedSection[]>
+
+interface RelatedSection {
+  ruleId: string;
+  title: string;          // interpolated with {value}
+  items: RelatedItem[];   // hydrated, ready for carousel render
+}
+```
+
+Empty sections (no value, no siblings, threshold not met) are silently dropped — admin sees in the management UI; user never sees a hollow section.
+
+### Render (`components/detail/RelatedSections.tsx`)
+
+Takes `sections + category`. Renders `CarouselPortrait` (movies/series/books) or `CarouselLandscape` (rest). Returns `null` when sections is empty — no heading, no placeholder.
+
+Wired into all 9 detail components at a consistent slot — right before `GuestPromptModal`. `MovieDetail`'s hardcoded "Από {director}" block was deleted; the new system covers it via the `director` rule.
+
+### `/admin/related-sections`
+
+Single-page grouped by category. Each rule row has inline title-template editor, min/max number inputs, active toggle, delete. `+ Πρόσθεσε rule` opens an inline form below the list with a field preset dropdown (per-category options + suggested title template). The `field` value is immutable post-create — switch axis by deleting + recreating.
+
+API: `GET/POST /api/admin/related-sections` + `PATCH/DELETE /[id]`. All writes call `revalidateCategory` for the affected category.
+
+### When to use this vs. layout system (§37)
+
+- **Use `page_sections` + `/admin/layout`** when the section is the same for every item on a page (chrome, carousels of curated content, hero blocks).
+- **Use `related_sections_config` + `/admin/related-sections`** when the section content depends on the specific item being viewed (other books by *this* author, other movies by *this* director).
+
+The two systems are intentionally separate — `page_sections` is layout (static composition per page); related sections are rules (dynamic content per item).

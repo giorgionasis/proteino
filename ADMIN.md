@@ -1,7 +1,7 @@
 # Proteino — Admin Panel
 
 > Route: `/admin` — protected via `public.users.role === 'admin'` (`ADMIN_DEV_BYPASS=1` for local skip)
-> Last updated: 2026-05-05
+> Last updated: 2026-05-13 (session 22 — admin-controlled layouts + related sections)
 
 The admin panel is the back-office for managing all platform content, structure, metadata, and what users see on the frontend.
 
@@ -55,6 +55,9 @@ Admins never touch code. Everything is managed through the admin UI.
 | Lean Edge middleware | ✅ | — | Dropped `@supabase/ssr` from middleware (Edge cold-start crash on Vercel); cookie-presence check only; whole body in try/catch; `/api/*` excluded from matcher |
 | Categories — New | 🚫 | — | Deleted; subcategories managed via `/admin/categories/[id]`. Top-level categories are a fixed enum |
 | Extra Fields — New | 🚫 | — | Deleted; superseded by wizard in `/admin/extra-fields` main page |
+| Layout (page composition) | ✅ | ✅ | `/admin/layout` — DB-driven page composition via `page_sections` (migrations 032 + 033). Category + home pages support reorder, add, delete, audience toggle, mobile-frame iframe preview. See CLAUDE.md §37 |
+| Related Sections (detail pages) | ✅ | ✅ | `/admin/related-sections` — admin-defined "More from {director|writer|actor}" carousels per category via `related_sections_config` (migration 034). Auto-hide when `min_items` threshold isn't met. See CLAUDE.md §38 |
+| Moments | ✅ | ✅ | `/admin/moments` — DB-driven copy + timing + conditions for in-app moments (bookmark celebration, achievement modal, …). See PROGRESS.md session 21 |
 
 Legend: ✅ done · ⏳ mock UI exists, needs data wiring · 🚫 deprecated
 
@@ -66,19 +69,26 @@ Fixed sidebar (`AdminSidebar`):
 
 ```
 Proteino•
-├── Overview          → /admin
-├── Categories        → /admin/categories
-├── Suggestions       → /admin/suggestions
-├── Extra Fields      → /admin/extra-fields
-├── Data Quality      → /admin/data-quality        [NEW]
+├── Overview              → /admin
+├── Categories            → /admin/categories
+├── Suggestions           → /admin/suggestions
+├── Extra Fields          → /admin/extra-fields
+├── Data Quality          → /admin/data-quality
 ├── Content
-│   ├── Collections   → /admin/content/collections
-│   ├── Activities    → /admin/content/activities
-│   ├── Filters       → /admin/content/filters
-│   └── Movies Tonight → /admin/content/movies-tonight
-├── Reviews           → /admin/reviews
-├── Users             → /admin/users
-└── Settings          → /admin/settings
+│   ├── Collections       → /admin/content/collections
+│   ├── Activities        → /admin/content/activities
+│   ├── Regions           → /admin/content/regions
+│   ├── Filters           → /admin/content/filters
+│   └── Movies Tonight    → /admin/content/movies-tonight
+├── Reviews               → /admin/reviews
+├── Reports               → /admin/reports
+├── Users                 → /admin/users
+├── Layout                → /admin/layout                 [session 22]
+├── Related Sections      → /admin/related-sections       [session 22]
+├── Moments               → /admin/moments
+├── AI Usage              → /admin/ai-usage
+├── Showcase              → /admin/showcase
+└── Settings              → /admin/settings
 ```
 
 ---

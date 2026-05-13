@@ -44,9 +44,28 @@ scripts/sql/014-items-title-normalized.sql
 scripts/sql/015-content-reports.sql
 scripts/sql/016-reviews-table.sql
 scripts/sql/017-review-votes.sql
+scripts/sql/018-filters-new-widget-types.sql
+scripts/sql/019-ai-cache-and-usage.sql
+scripts/sql/020-original-title.sql
+scripts/sql/021-food-tabs-flip-type.sql
+scripts/sql/022-user-preferences.sql
+scripts/sql/023-bookmarks-status.sql
+scripts/sql/024-leaderboard-rpc.sql
+scripts/sql/025-bookmarks-update-policy.sql
+scripts/sql/026-moments-tables.sql
+scripts/sql/027-seed-moments.sql
+scripts/sql/028-users-region-id.sql
+scripts/sql/029-notifications-fanout.sql
+scripts/sql/030-submission-funnel.sql
+scripts/sql/031-funnel-retention.sql
+scripts/sql/032-page-sections.sql
+scripts/sql/033-home-layout-seed-completion.sql
+scripts/sql/034-related-sections-config.sql
 ```
 
 **Note:** Migration 016 wipes the legacy `ratings` table and resets `items.rating_count` / `avg_rating` to 0 across all items. The legacy `comments` and `ratings` tables stay in the DB as archive but are NOT read by the new UI — all reviews from now on flow through the new `reviews` table (rating mandatory + reflection optional, one row per (user, item)).
+
+**Note:** Migration 032 renames `collection_placements` → `page_sections` and seeds widget rows for every (context, category, audience) bucket. Day-1 rendering is identical to the previous hardcoded JSX. Migration 033 completes the home seed (audience-split `movies_tonight` + 5 fallback carousels per audience). Migration 034 adds `related_sections_config` (admin-defined "More from {axis}" rules per category) with 8 seeded rules. See CLAUDE.md §37 + §38.
 
 Each is idempotent (uses `IF NOT EXISTS` / `ON CONFLICT DO NOTHING`); rerunning is safe.
 
