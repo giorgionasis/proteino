@@ -25,6 +25,8 @@ import { fetchHomeCollections, type HydratedCollection } from "@/lib/collections
 import { safeImageUrl } from "@/lib/image-url";
 import { fetchTonightAirings, type TonightAiring } from "@/lib/movies-tonight";
 import { getRegionMatchSet } from "@/lib/regions";
+import { resolvePageLayout } from "@/lib/layout/resolver";
+import { renderHomeSection } from "@/lib/layout/home-bridge";
 
 export const metadata: Metadata = { title: "Proteino" };
 
@@ -48,9 +50,6 @@ async function fetchFoodLandscape(
   limit = 5,
   regionMatchSet: Set<string> = new Set(),
 ): Promise<LandscapeItem[]> {
-  // When the viewer has a region set, pull a larger candidate pool
-  // so the region-aware sort has material to bubble local items up.
-  // 5× limit caps wasted bandwidth while leaving room for re-ranking.
   const fetchLimit = regionMatchSet.size > 0 ? Math.max(limit * 5, 25) : limit;
 
   const { data } = await sb
@@ -89,8 +88,6 @@ async function fetchFoodLandscape(
     };
   });
 
-  // Soft sort: items in the viewer's region (or any descendant) first,
-  // preserving avg_rating order within each group.
   if (regionMatchSet.size > 0) {
     rows.sort((a, b) => {
       const aIn = a.__regionId && regionMatchSet.has(a.__regionId) ? 1 : 0;
@@ -305,9 +302,6 @@ export default async function HomePage() {
           u.user_metadata?.full_name ??
           u.email?.split("@")[0] ??
           "";
-        // Pull the saved region_id for soft-sorting venue carousels.
-        // One extra small read — adds no dynamism since the page
-        // already reads cookies above.
         const { data: viewerRow } = await sb
           .from("users")
           .select("region_id")
@@ -318,23 +312,46 @@ export default async function HomePage() {
     } catch { /* network error — render guest view */ }
   }
 
-  // Build the region descendant set once and pass through to every
-  // venue fetcher that takes it. Empty set when viewer has no region.
   const regionMatchSet = await getRegionMatchSet(sb, viewerRegionId);
 
-  const [food, movies, series, books, recipes, topUsers, chips, feedItems, collections, tonight] =
+  const [food, movies, series, books, recipes, topUsers, chips, feedItems, collections, tonight, layoutSections] =
     await Promise.all([
-      fetchFoodLandscape(sb, 5, regionMatchSet),
-      fetchMovies(sb),
-      fetchSeries(sb),
-      fetchBooks(sb),
-      fetchRecipes(sb),
+      // Bigger fetch limits so static_carousel widgets with custom limits
+      // still have material to slice. Each fetcher returns at most the
+      // requested count; over-fetch is cheap (avg_rating-ordered top N).
+      fetchFoodLandscape(sb, 15, regionMatchSet),
+      fetchMovies(sb, 15),
+      fetchSeries(sb, 15),
+      fetchBooks(sb, 15),
+      fetchRecipes(sb, 15),
       fetchTopUsers(sb),
       fetchCategoryChips(sb),
       fetchSuggestionFeedItems(sb),
       fetchHomeCollections(sb, isRegistered),
       fetchTonightAirings(sb),
+      resolvePageLayout(sb, {
+        context: "home",
+        category: null,
+        viewerAudience: isRegistered ? "registered" : "guest",
+      }),
     ]);
+
+  // Layout-driven path. Legacy hardcoded path falls back when the
+  // resolver returns nothing (un-applied migration or empty seed).
+  if (layoutSections.length > 0) {
+    return (
+      <div className="space-y-10">
+        {layoutSections.map((section) =>
+          renderHomeSection(section, {
+            isRegistered,
+            displayName,
+            food, movies, series, books, recipes,
+            topUsers, chips, feedItems, tonight,
+          })
+        )}
+      </div>
+    );
+  }
 
   if (isRegistered) {
     return (
@@ -367,7 +384,7 @@ export default async function HomePage() {
   );
 }
 
-// ── Guest home ───────────────────────────────────────────────────
+// ── Guest home (legacy fallback) ───────────────────────────────────
 
 interface GuestProps {
   movies: PortraitItem[];
@@ -381,8 +398,6 @@ interface GuestProps {
 }
 
 function GuestHome({ movies, series, books, recipes, food, feedItems, collections, tonight }: GuestProps) {
-  // When admin curates collections, those replace the default carousel block.
-  // Heroes / static elements stay regardless.
   const hasCurated = collections.length > 0;
 
   return (
@@ -444,7 +459,7 @@ function GuestHome({ movies, series, books, recipes, food, feedItems, collection
   );
 }
 
-// ── Registered home ──────────────────────────────────────────────
+// ── Registered home (legacy fallback) ──────────────────────────────
 
 interface RegisteredProps {
   displayName: string;
@@ -489,7 +504,6 @@ function RegisteredHome({
 
       {hasCurated ? (
         <>
-          {/* Personalised hero stays — admin curation appears below it */}
           <CarouselLandscape
             title="Ξεχωρίσαμε για σένα"
             items={food}

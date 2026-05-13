@@ -346,12 +346,15 @@ interface CategoryCardProps {
 }
 
 export function CategoryCard({ item, category, className }: CategoryCardProps) {
-  // Portrait categories use the row layout (1-col list); landscape
-  // categories keep the existing full-width landscape card.
-  const Card = isPortraitCategory(category) ? RowCard : LandscapeCard;
+  // The category-page LIST uses LandscapeCard for every category — even
+  // movies/series/books. Carousels (CategoryPageShell static_carousel
+  // bridge + home page) keep the portrait/landscape branch via
+  // isPortraitCategory; only the under-the-filter list standardises on
+  // landscape. RowCard kept around for callers that still want it.
+  void RowCard;
   return (
     <div className={className}>
-      <Card item={item} category={category} />
+      <LandscapeCard item={item} category={category} />
     </div>
   );
 }
