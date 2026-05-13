@@ -18,6 +18,7 @@ import { RecipeDetail }  from "@/components/detail/RecipeDetail";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchNearbyActivities, type NearbyActivity } from "@/lib/activities";
 import { safeImageUrl } from "@/lib/image-url";
+import { fetchRelatedSections, type RelatedSection } from "@/lib/related-sections";
 import type { CategorySlug } from "@/types";
 
 interface Props {
@@ -71,6 +72,13 @@ export type ItemDetailData = {
    *  explicit "show me where it airs today" hook. Null on any other
    *  day, on non-movie pages, and for movies without a tonight booking. */
   airingToday?: { channel: string; air_time: string } | null;
+  /**
+   * Admin-configured "More from {axis}" carousels — empty when no rule
+   * matched min_items siblings for this item, or when the category has
+   * no active rules. Each section already includes interpolated title +
+   * hydrated items. See lib/related-sections.ts.
+   */
+  relatedSections: RelatedSection[];
 };
 
 const EXT_TABLE: Record<string, string> = {
@@ -278,6 +286,15 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     }
   }
 
+  // Admin-configured related sections (migration 034). Auto-hides
+  // sections below their min_items threshold; returns [] when category
+  // has no active rules.
+  const relatedSections = await fetchRelatedSections(sb, {
+    itemId: item.id,
+    category: category as CategorySlug,
+    extension: ext,
+  });
+
   return {
     item: normalizedItem,
     extension: ext,
@@ -296,6 +313,7 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     isTopRated,
     reviews,
     airingToday,
+    relatedSections,
   };
 }
 

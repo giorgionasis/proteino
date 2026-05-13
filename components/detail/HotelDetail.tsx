@@ -12,6 +12,7 @@ import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
 import { useReview } from "@/hooks/useReview";
 import { useGuestGuard } from "@/hooks/useGuestGuard";
 import { GuestPromptModal } from "@/components/guest/GuestPromptModal";
+import { RelatedSections } from "@/components/detail/RelatedSections";
 import { useBookmark } from "@/hooks/useBookmark";
 import { BookmarkStatusChips } from "@/components/detail/BookmarkStatusChips";
 import { BookmarkSavedModal, type BookmarkSaveResult } from "@/components/detail/BookmarkSavedModal";
@@ -327,6 +328,9 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
 
       {/* Community */}
       <CommunitySection ratings={ratingDistribution} ratingCount={ratingCount} isTopRated={isTopRated} topRatedNoun="Το ξενοδοχείο" communityRating={avgRating} reviews={reviews} userRating={userRating} setUserRating={setUserRating} saveReview={gatedSaveReview} userText={userText} setUserText={setUserText} reviewBusy={reviewBusy} savedRating={savedRating} question="Με πόσα αστέρια θα βαθμολογούσες το ξενοδοχείο;" mySuggestion={mySuggestion} itemTitle={title} itemSlug={item.slug} />
+
+      <RelatedSections sections={data.relatedSections} category="hotels" />
+
       <GuestPromptModal {...ratingGuardProps} />
       <BookmarkSavedModal
         open={savedModal !== null}

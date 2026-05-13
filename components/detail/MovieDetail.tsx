@@ -13,6 +13,7 @@ import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
 import { useReview } from "@/hooks/useReview";
 import { useGuestGuard } from "@/hooks/useGuestGuard";
 import { GuestPromptModal } from "@/components/guest/GuestPromptModal";
+import { RelatedSections } from "@/components/detail/RelatedSections";
 import { useBookmark } from "@/hooks/useBookmark";
 import { BookmarkStatusChips } from "@/components/detail/BookmarkStatusChips";
 import { BookmarkSavedModal, type BookmarkSaveResult } from "@/components/detail/BookmarkSavedModal";
@@ -610,12 +611,10 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
         <AllReviewsButton itemSlug={item.slug} count={ratingCount} />
       </div>
 
-      {/* ── Related movies ────────────────────────────────── */}
-      {relatedItems.length > 0 && (
-        <div className="mt-4">
-          <CarouselPortrait title={directorName !== "-" ? `Από ${directorName}` : "Παρόμοιες ταινίες"} items={relatedItems} seeAllHref={`/movies`} />
-        </div>
-      )}
+      {/* Admin-configured "More from {director|actor}" carousels.
+          Auto-hides per rule when fewer than min_items siblings.
+          See lib/related-sections.ts + migration 034. */}
+      <RelatedSections sections={data.relatedSections} category="movies" />
 
       <GuestPromptModal {...ratingGuardProps} />
       <BookmarkSavedModal

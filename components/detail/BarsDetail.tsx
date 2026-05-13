@@ -10,6 +10,7 @@ import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
 import { useReview } from "@/hooks/useReview";
 import { useGuestGuard } from "@/hooks/useGuestGuard";
 import { GuestPromptModal } from "@/components/guest/GuestPromptModal";
+import { RelatedSections } from "@/components/detail/RelatedSections";
 import { useBookmark } from "@/hooks/useBookmark";
 import { BookmarkStatusChips } from "@/components/detail/BookmarkStatusChips";
 import { BookmarkSavedModal, type BookmarkSaveResult } from "@/components/detail/BookmarkSavedModal";
@@ -276,6 +277,8 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
           <AllReviewsButton itemSlug={item.slug} count={ratingCount} />
         </div>
       </div>
+
+      <RelatedSections sections={data.relatedSections} category="bars" />
 
       <GuestPromptModal {...ratingGuardProps} />
       <BookmarkSavedModal

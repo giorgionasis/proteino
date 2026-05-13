@@ -47,8 +47,9 @@ const NAV: NavEntry[] = [
   { label: "Reviews",  href: "/admin/reviews",  icon: <IconStar />, counterKey: "reportedReviews", counterTone: "red" },
   { label: "Reports",  href: "/admin/reports",  icon: <IconFlag />, counterKey: "pendingReports",  counterTone: "red" },
   { label: "Users",    href: "/admin/users",    icon: <IconUsers /> },
-  { label: "Layout",   href: "/admin/layout",   icon: <IconLayout /> },
-  { label: "Moments",  href: "/admin/moments",  icon: <IconConfetti /> },
+  { label: "Layout",          href: "/admin/layout",            icon: <IconLayout /> },
+  { label: "Related Sections", href: "/admin/related-sections", icon: <IconLink /> },
+  { label: "Moments",         href: "/admin/moments",           icon: <IconConfetti /> },
   { label: "AI Usage", href: "/admin/ai-usage", icon: <IconSparkles /> },
   { label: "Showcase", href: "/admin/showcase", icon: <IconPalette /> },
   { label: "Settings", href: "/admin/settings", icon: <IconSettings /> },
@@ -264,4 +265,7 @@ function IconSettings() {
 }
 function IconLayout() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>;
+}
+function IconLink() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>;
 }

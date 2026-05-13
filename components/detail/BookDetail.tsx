@@ -10,6 +10,7 @@ import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
 import { useReview } from "@/hooks/useReview";
 import { useGuestGuard } from "@/hooks/useGuestGuard";
 import { GuestPromptModal } from "@/components/guest/GuestPromptModal";
+import { RelatedSections } from "@/components/detail/RelatedSections";
 import { useBookmark } from "@/hooks/useBookmark";
 import { BookmarkStatusChips } from "@/components/detail/BookmarkStatusChips";
 import { BookmarkSavedModal, type BookmarkSaveResult } from "@/components/detail/BookmarkSavedModal";
@@ -330,6 +331,8 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
           />
         </div>
       )}
+
+      <RelatedSections sections={data.relatedSections} category="books" />
 
       <GuestPromptModal {...ratingGuardProps} />
       <BookmarkSavedModal

@@ -13,6 +13,7 @@ import { useBookmark } from "@/hooks/useBookmark";
 import { useReview } from "@/hooks/useReview";
 import { useGuestGuard } from "@/hooks/useGuestGuard";
 import { GuestPromptModal } from "@/components/guest/GuestPromptModal";
+import { RelatedSections } from "@/components/detail/RelatedSections";
 import { useToast } from "@/components/ui/Toast";
 import { OwnSuggestionActions } from "@/components/detail/OwnSuggestionActions";
 import { ReviewCard } from "@/components/detail/ReviewCard";
@@ -321,6 +322,8 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
           <AllReviewsButton itemSlug={item.slug} count={ratingCount} />
         </div>
       </div>
+
+      <RelatedSections sections={data.relatedSections} category="series" />
 
       <GuestPromptModal {...ratingGuardProps} />
       <BookmarkSavedModal
