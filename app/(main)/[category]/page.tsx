@@ -18,6 +18,7 @@ import { fetchRegionTreeForCategory, getRegionMatchSet } from "@/lib/regions";
 import { createClient } from "@/lib/supabase/server";
 import { fetchTonightAirings } from "@/lib/movies-tonight";
 import { getAwardsTaxonomy } from "@/lib/awards";
+import { resolvePageLayout } from "@/lib/layout/resolver";
 
 interface Props {
   params: { category: string };
@@ -283,29 +284,33 @@ export default async function CategoryPage({ params }: Props) {
 
   const items = (rawItems ?? []).map((item: any) => mapItem(item, category));
 
+  // Single user-scoped client used for both auth (viewerAudience) and
+  // the venue region-soft-sort below. Reading the cookie here also
+  // makes the page dynamic for authed users — fine since the layout
+  // resolver and the venue sort both vary per user anyway.
+  const userClient = createClient();
+  const { data: { user: viewer } } = await userClient.auth.getUser();
+  const isRegistered = !!viewer;
+
   // Region-aware soft sort — for venue categories, items whose region
   // matches (or is a descendant of) the viewer's saved region_id
   // float to the top. Pure ordering; nothing is filtered out so a
   // Thessaloniki user who scrolls still finds Athens venues.
   const VENUE = new Set(["food", "bars", "hotels", "theater", "events"]);
-  if (VENUE.has(category)) {
-    const userClient = createClient();
-    const { data: { user: viewer } } = await userClient.auth.getUser();
-    if (viewer) {
-      const { data: viewerRow } = await userClient
-        .from("users")
-        .select("region_id")
-        .eq("id", viewer.id)
-        .maybeSingle();
-      const viewerRegion = (viewerRow as { region_id?: string | null } | null)?.region_id ?? null;
-      const matchSet = await getRegionMatchSet(sb, viewerRegion);
-      if (matchSet.size > 0) {
-        items.sort((a, b) => {
-          const aIn = a.regionId && matchSet.has(a.regionId) ? 1 : 0;
-          const bIn = b.regionId && matchSet.has(b.regionId) ? 1 : 0;
-          return bIn - aIn; // in-region first; stable within each group
-        });
-      }
+  if (VENUE.has(category) && viewer) {
+    const { data: viewerRow } = await userClient
+      .from("users")
+      .select("region_id")
+      .eq("id", viewer.id)
+      .maybeSingle();
+    const viewerRegion = (viewerRow as { region_id?: string | null } | null)?.region_id ?? null;
+    const matchSet = await getRegionMatchSet(sb, viewerRegion);
+    if (matchSet.size > 0) {
+      items.sort((a, b) => {
+        const aIn = a.regionId && matchSet.has(a.regionId) ? 1 : 0;
+        const bIn = b.regionId && matchSet.has(b.regionId) ? 1 : 0;
+        return bIn - aIn; // in-region first; stable within each group
+      });
     }
   }
 
@@ -326,6 +331,16 @@ export default async function CategoryPage({ params }: Props) {
   // Tonight's TV airings — movies only. Returns empty array on other
   // categories so the shell branches off naturally.
   const tonightAirings = category === "movies" ? await fetchTonightAirings(sb) : [];
+
+  // Resolved layout from page_sections (migration 032). When empty —
+  // because the migration hasn't been applied or the seed is missing —
+  // CategoryPageShell falls back to its legacy hardcoded JSX so the
+  // page never blanks out.
+  const layoutSections = await resolvePageLayout(sb, {
+    context: "category",
+    category,
+    viewerAudience: isRegistered ? "registered" : "guest",
+  });
 
   let topUser: TopUser | null = null;
   let contributors: ContributorUser[] = [];
@@ -383,6 +398,7 @@ export default async function CategoryPage({ params }: Props) {
       regionDescendants={regionTreeData.descendantsById}
       awardsGroups={awardsGroups}
       tonightAirings={tonightAirings}
+      layoutSections={layoutSections}
     />
   );
 }
