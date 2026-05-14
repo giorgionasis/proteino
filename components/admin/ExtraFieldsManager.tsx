@@ -255,8 +255,8 @@ export function ExtraFieldsManager({ initialOptions }: Props) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-zinc-800">Extra Fields</h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            Διαχείριση επιλογών (dropdown options, attributes, amenities) ανά κατηγορία
+          <p className="text-sm text-zinc-500 mt-1 max-w-2xl">
+            Επιλογές που εμφανίζονται στον <strong className="font-semibold text-zinc-700">Suggestion editor</strong> (movie genres, food cuisines, hotel amenities, …). Admin-facing — δεν εμφανίζονται απευθείας στους τελικούς χρήστες· για user-facing filters δες Filters.
           </p>
         </div>
         <button

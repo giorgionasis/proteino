@@ -189,9 +189,14 @@ export function RelatedSectionsManager() {
 
                 <div className="divide-y divide-zinc-100">
                   {list.length === 0 && addingFor !== cat.slug && (
-                    <p className="px-4 py-6 text-sm text-zinc-500 text-center">
-                      Καμία rule. {presets.length > 0 && `Πάτησε "Πρόσθεσε rule" για να δείξεις σχετικά items.`}
-                    </p>
+                    <div className="px-4 py-6 text-center">
+                      <p className="text-sm text-zinc-500">Καμία rule σε αυτή την κατηγορία.</p>
+                      {presets.length > 0 && (
+                        <p className="text-xs text-zinc-400 mt-1">
+                          Συνηθισμένα: {presets.slice(0, 3).map((p) => p.label).join(", ")}.
+                        </p>
+                      )}
+                    </div>
                   )}
 
                   {list.map((rule) => (

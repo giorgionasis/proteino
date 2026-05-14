@@ -15,44 +15,70 @@ interface NavItem {
   counterTone?: "red" | "amber";
 }
 
-interface NavGroup {
-  label: string;
-  icon: React.ReactNode;
-  children: NavItem[];
+interface NavSection {
+  /** Uppercase header above the section. Omit on the first (Overview) section. */
+  label?: string;
+  /** Optional one-line hint shown faded next to the label. */
+  hint?: string;
+  items: NavItem[];
 }
 
-type NavEntry = NavItem | NavGroup;
-
-function isGroup(entry: NavEntry): entry is NavGroup {
-  return "children" in entry;
-}
-
-const NAV: NavEntry[] = [
-  { label: "Overview",     href: "/admin",              icon: <IconGrid /> },
-  { label: "Categories",   href: "/admin/categories",   icon: <IconFolder /> },
-  { label: "Suggestions",  href: "/admin/suggestions",  icon: <IconPencil />, counterKey: "unpublishedSuggestions", counterTone: "red" },
-  { label: "Extra Fields", href: "/admin/extra-fields",  icon: <IconDiamond /> },
-  { label: "Data Quality", href: "/admin/data-quality", icon: <IconAlert />, counterKey: "dataQualityIssues", counterTone: "amber" },
+const NAV: NavSection[] = [
   {
-    label: "Content",
-    icon: <IconLayers />,
-    children: [
-      { label: "Collections",    href: "/admin/content/collections",    icon: <IconCollection /> },
-      { label: "Activities",     href: "/admin/content/activities",     icon: <IconMap /> },
-      { label: "Regions",        href: "/admin/content/regions",        icon: <IconMap /> },
-      { label: "Filters",        href: "/admin/content/filters",        icon: <IconSliders /> },
-      { label: "Movies Tonight", href: "/admin/content/movies-tonight", icon: <IconFilm /> },
+    items: [
+      { label: "Overview", href: "/admin", icon: <IconGrid /> },
     ],
   },
-  { label: "Comments (Legacy)", href: "/admin/reviews", icon: <IconStar />, counterKey: "reportedComments", counterTone: "red" },
-  { label: "Reports",  href: "/admin/reports",  icon: <IconFlag />, counterKey: "pendingReports",  counterTone: "red" },
-  { label: "Users",    href: "/admin/users",    icon: <IconUsers /> },
-  { label: "Layout",          href: "/admin/layout",            icon: <IconLayout /> },
-  { label: "Related Sections", href: "/admin/related-sections", icon: <IconLink /> },
-  { label: "Moments",         href: "/admin/moments",           icon: <IconConfetti /> },
-  { label: "AI Usage", href: "/admin/ai-usage", icon: <IconSparkles /> },
-  { label: "Showcase", href: "/admin/showcase", icon: <IconPalette /> },
-  { label: "Settings", href: "/admin/settings", icon: <IconSettings /> },
+  {
+    label: "Moderation",
+    items: [
+      { label: "Reports",      href: "/admin/reports",      icon: <IconFlag />,    counterKey: "pendingReports",          counterTone: "red"   },
+      { label: "Suggestions",  href: "/admin/suggestions",  icon: <IconPencil />,  counterKey: "unpublishedSuggestions",  counterTone: "red"   },
+      { label: "Data Quality", href: "/admin/data-quality", icon: <IconAlert />,   counterKey: "dataQualityIssues",       counterTone: "amber" },
+    ],
+  },
+  {
+    label: "Content",
+    hint: "what users see",
+    items: [
+      { label: "Layout",           href: "/admin/layout",                 icon: <IconLayout /> },
+      { label: "Related Sections", href: "/admin/related-sections",       icon: <IconLink /> },
+      { label: "Collections",      href: "/admin/content/collections",    icon: <IconCollection /> },
+      { label: "Movies Tonight",   href: "/admin/content/movies-tonight", icon: <IconFilm /> },
+      { label: "Activities",       href: "/admin/content/activities",     icon: <IconMap /> },
+    ],
+  },
+  {
+    label: "Taxonomy",
+    hint: "platform vocabulary",
+    items: [
+      { label: "Categories",   href: "/admin/categories",      icon: <IconFolder /> },
+      { label: "Regions",      href: "/admin/content/regions", icon: <IconMap /> },
+      { label: "Filters",      href: "/admin/content/filters", icon: <IconSliders /> },
+      { label: "Extra Fields", href: "/admin/extra-fields",    icon: <IconDiamond /> },
+    ],
+  },
+  {
+    label: "Engagement",
+    items: [
+      { label: "Moments",  href: "/admin/moments",  icon: <IconConfetti /> },
+      { label: "AI Usage", href: "/admin/ai-usage", icon: <IconSparkles /> },
+    ],
+  },
+  {
+    label: "People",
+    items: [
+      { label: "Users", href: "/admin/users", icon: <IconUsers /> },
+    ],
+  },
+  {
+    label: "Platform",
+    items: [
+      { label: "Settings",          href: "/admin/settings", icon: <IconSettings /> },
+      { label: "Comments (Legacy)", href: "/admin/reviews",  icon: <IconStar />,    counterKey: "reportedComments", counterTone: "red" },
+      { label: "Showcase",          href: "/admin/showcase", icon: <IconPalette /> },
+    ],
+  },
 ];
 
 interface Counters {
@@ -72,7 +98,6 @@ interface Props {
 
 export function AdminSidebar({ user }: Props) {
   const pathname = usePathname();
-  const [contentOpen, setContentOpen] = useState(true);
   const [counters, setCounters] = useState<Counters>({
     unpublishedSuggestions: 0,
     reportedComments: 0,
@@ -132,40 +157,27 @@ export function AdminSidebar({ user }: Props) {
         </kbd>
       </button>
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 space-y-1">
-        {NAV.map((entry) => {
-          if (isGroup(entry)) {
-            const groupActive = entry.children.some((c) => isActive(c.href));
-            return (
-              <div key={entry.label}>
-                <button
-                  onClick={() => setContentOpen((v) => !v)}
-                  className={`w-full flex items-center gap-3 px-3 h-10 rounded-md text-sm transition-colors ${
-                    groupActive ? "text-zinc-900 font-semibold" : "text-zinc-600 hover:bg-zinc-50"
-                  }`}
-                >
-                  <span className="w-5 h-5 flex items-center justify-center shrink-0">{entry.icon}</span>
-                  <span className="flex-1 text-left">{entry.label}</span>
-                  <svg
-                    width="16" height="16" viewBox="0 0 24 24" fill="none"
-                    className={`text-zinc-400 transition-transform ${contentOpen ? "rotate-180" : ""}`}
-                  >
-                    <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-                {contentOpen && (
-                  <div className="ml-4 mt-1 space-y-1">
-                    {entry.children.map((child) => (
-                      <SidebarLink key={child.href} item={child} active={isActive(child.href)} counters={counters} />
-                    ))}
-                  </div>
+      {/* Nav — sections with optional uppercase headers + hairline dividers */}
+      <nav className="flex-1 overflow-y-auto px-3 pb-3 space-y-1">
+        {NAV.map((section, sectionIdx) => (
+          <div key={section.label ?? `section-${sectionIdx}`} className={sectionIdx > 0 ? "pt-3 mt-2 border-t border-zinc-100" : ""}>
+            {section.label && (
+              <div className="px-3 pb-1.5 flex items-baseline gap-1.5">
+                <span className="text-[10px] font-bold tracking-[0.08em] uppercase text-zinc-400">
+                  {section.label}
+                </span>
+                {section.hint && (
+                  <span className="text-[10px] text-zinc-300 truncate">— {section.hint}</span>
                 )}
               </div>
-            );
-          }
-          return <SidebarLink key={entry.href} item={entry} active={isActive(entry.href)} counters={counters} />;
-        })}
+            )}
+            <div className="space-y-0.5">
+              {section.items.map((item) => (
+                <SidebarLink key={item.href} item={item} active={isActive(item.href)} counters={counters} />
+              ))}
+            </div>
+          </div>
+        ))}
       </nav>
 
       {/* User */}
@@ -188,7 +200,7 @@ function SidebarLink({ item, active, counters }: { item: NavItem; active: boolea
   return (
     <Link
       href={item.href}
-      className={`flex items-center gap-3 px-3 h-10 rounded-md text-sm transition-colors ${
+      className={`flex items-center gap-3 px-3 h-9 rounded-md text-sm transition-colors ${
         active
           ? "bg-zinc-50 text-zinc-900 font-semibold border-l-[3px] border-emerald-600 -ml-[3px] pl-[15px]"
           : "text-zinc-600 hover:bg-zinc-50"
@@ -223,9 +235,6 @@ function IconPencil() {
 }
 function IconDiamond() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l10 10-10 10L2 12z"/></svg>;
-}
-function IconLayers() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>;
 }
 function IconCollection() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>;

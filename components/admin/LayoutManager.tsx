@@ -237,7 +237,7 @@ export function LayoutManager() {
             Layout — {currentPage.label}
           </h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Σύρε τις ενότητες για να αλλάξεις τη σειρά. Toggle για ενεργοποίηση/απενεργοποίηση.
+            Συνθέτει την Αρχική και κάθε σελίδα κατηγορίας. Σύρε για αναδιάταξη, πάτα ένα section για επεξεργασία. Live preview στα δεξιά.
           </p>
         </div>
 

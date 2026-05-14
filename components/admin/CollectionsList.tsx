@@ -103,8 +103,8 @@ export function CollectionsList() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-zinc-800">Collections</h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            Curated sections που εμφανίζονται στην αρχική και στις σελίδες κατηγοριών.
+          <p className="text-sm text-zinc-500 mt-1 max-w-2xl">
+            Λίστες από items επιλεγμένα χειροκίνητα. Για να εμφανιστούν στο frontend, πρέπει να τοποθετηθούν σε Home ή Category page μέσω <Link href="/admin/layout" className="text-coral-700 hover:underline font-medium">Layout</Link>.
           </p>
         </div>
         <Link

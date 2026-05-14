@@ -173,7 +173,7 @@ export function MomentsManager({ initialMoments, initialStats, predicateSchemas 
     <>
       <AdminPageHeader
         title="Moments"
-        subtitle="Χτίσε και επεξεργάσου τα μηνύματα γιορτής + ειδοποίησης χωρίς code change. Τα copy + timings έρχονται από εδώ· οι συνθήκες (predicates) είναι registered σε code και διαλέγονται από τη λίστα."
+        subtitle="In-app celebrations + nudges (bookmark celebration, achievement modal, …). Επεξεργάσου copy και timing χωρίς deploy. Οι συνθήκες ενεργοποίησης (predicates) προέρχονται από registry στον κώδικα — διαλέγεις από λίστα."
         meta={`${rows.length} moments · ${rows.filter((r) => r.is_active).length} ενεργά`}
         primary={
           <button
