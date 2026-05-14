@@ -16,6 +16,7 @@ import { TheaterDetail } from "@/components/detail/TheaterDetail";
 import { EventDetail }   from "@/components/detail/EventDetail";
 import { RecipeDetail }  from "@/components/detail/RecipeDetail";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { fetchNearbyActivities, type NearbyActivity } from "@/lib/activities";
 import { safeImageUrl } from "@/lib/image-url";
 import { fetchRelatedSections, type RelatedSection } from "@/lib/related-sections";
@@ -48,6 +49,16 @@ export type ItemDetailData = {
   myReview: { rating: number; reflection: string | null } | null;
   /** Auth uid of the viewer, or null for guests. Used to detect own-suggestion. */
   currentUserId: string | null;
+  /** Viewer's profile handle, or null for guests. Used by review composer success link. */
+  currentUserHandle: string | null;
+  /** Viewer's full profile snapshot for building a live-inserted review card after publish. */
+  currentUser: {
+    id: string;
+    handle: string;
+    display_name: string;
+    avatar_url: string | null;
+    suggestion_count: number;
+  } | null;
   /** Star distribution computed at fetch time from `reviews` table (5★ → 1★). */
   ratingDistribution: { stars: number; pct: number }[];
   /** True when avg ≥ 4.5 AND review count ≥ 5 — drives "Top Rated" badge. */
@@ -155,7 +166,8 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
   // thumbs render in the active state on first paint (no client-side flash).
   let myVoteByReview = new Map<string, 1 | -1>();
   try {
-    const { data: { user } } = await sb.auth.getUser();
+    const sbAuth = createClient();
+    const { data: { user } } = await sbAuth.auth.getUser();
     if (user && reviewsRaw.length > 0) {
       const reviewIds = reviewsRaw.map((r: any) => r.id);
       const { data: voteRows } = await sb
@@ -214,10 +226,38 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
   let bookmarkStatus: ItemDetailData["bookmarkStatus"] = null;
   let myReview: ItemDetailData["myReview"] = null;
   let currentUserId: string | null = null;
+  let currentUserHandle: string | null = null;
+  let currentUser: ItemDetailData["currentUser"] = null;
   try {
-    const { data: { user } } = await sb.auth.getUser();
+    // IMPORTANT: use the auth client (cookie-aware) to identify the user.
+    // The admin client (`sb`) has no session attached so its `auth.getUser()`
+    // returns null and breaks every user-context branch on this page.
+    const sbAuth = createClient();
+    const { data: { user } } = await sbAuth.auth.getUser();
     if (user) {
       currentUserId = user.id;
+      // Profile lookup via admin client — bypasses RLS, always returns.
+      const { data: profile } = await sb
+        .from("users")
+        .select("handle, display_name, avatar_url, suggestion_count")
+        .eq("id", user.id)
+        .maybeSingle();
+      const p = profile as {
+        handle?: string;
+        display_name?: string;
+        avatar_url?: string | null;
+        suggestion_count?: number;
+      } | null;
+      currentUserHandle = p?.handle ?? null;
+      if (p?.handle) {
+        currentUser = {
+          id: user.id,
+          handle: p.handle,
+          display_name: p.display_name ?? p.handle,
+          avatar_url: p.avatar_url ?? null,
+          suggestion_count: p.suggestion_count ?? 0,
+        };
+      }
       // Try with `status` column (migration 023). Falls back to a
       // status-less select if the column isn't present yet — bookmark
       // is then treated as "wishlist" by default.
@@ -311,6 +351,8 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     bookmarkStatus,
     myReview,
     currentUserId,
+    currentUserHandle,
+    currentUser,
     ratingDistribution,
     isTopRated,
     reviews,

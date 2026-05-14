@@ -201,6 +201,42 @@
   border-radius: 4px;
 }
 
+/* Brief coral ring on the user's own review card right after the
+ * success-modal morph lands. Reuses the section-highlight palette. */
+@keyframes review-flash {
+  0%   { box-shadow: 0 0 0 0   rgba(254, 111, 94, 0.65); }
+  35%  { box-shadow: 0 0 0 8px rgba(254, 111, 94, 0.35); }
+  100% { box-shadow: 0 0 0 0   rgba(254, 111, 94, 0);    }
+}
+.review-flash-highlight {
+  animation: review-flash 1.6s ease-out;
+  border-radius: 16px;
+}
+
+/* Scale-pop on the user's new review card right as the success modal
+ * lands — completes the "modal became this card" handoff. */
+@keyframes review-pop-in {
+  0%   { transform: scale(0.86); opacity: 0.7; }
+  60%  { transform: scale(1.04); opacity: 1;   }
+  100% { transform: scale(1);    opacity: 1;   }
+}
+.review-pop-in {
+  animation: review-pop-in 360ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: left center;
+}
+
+/* Entrance animation for the user's just-published review card. Mounts at
+ * carousel position 0, fades + zooms + slides up. Triggered by the
+ * ReviewCard's appearAnimation prop. */
+@keyframes review-card-appear {
+  0%   { opacity: 0; transform: scale(0.92) translateY(8px); }
+  100% { opacity: 1; transform: scale(1) translateY(0);     }
+}
+.review-card-appear {
+  animation: review-card-appear 420ms cubic-bezier(0.32, 0.72, 0, 1);
+  transform-origin: left center;
+}
+
 /* ── Reduced-motion override ────────────────────────────────────
  * Honor the OS-level "Reduce motion" preference. Anything we
  * animate gets near-instant resolution so users with vestibular

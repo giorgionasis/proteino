@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-14 (session 24 — detail-page Figma alignment sweep)
+**Last meaningful update:** 2026-05-15 (session 25 — admin IA + visual refresh + Reviews admin + review writing flow redesign)
 
 ---
 
@@ -1785,3 +1785,214 @@ Adding any of these is one-line code work + an admin form field:
 3. **`noindex` on thin pages**: empty category lists, profile pages with 0 suggestions, `/onboarding`. Robots blocks crawling but Google can still index URLs it learned about elsewhere; a `noindex` meta tag is stronger.
 4. **Canonical URLs** on category + profile pages (only detail pages have them today).
 5. **301 redirect map from legacy K2 URLs** — preserves incoming Google traffic + backlinks. Need a sample of the old URL format to design. Options: static `next.config.mjs` redirects (≤100 entries), middleware lookup against a Postgres `legacy_redirects` table loaded into an in-memory map at build time (necessary at scale, careful with the session-11 edge-middleware leanness constraint).
+
+---
+
+## 40. Review writing flow — inline composer + success modal + fade-in carousel insert (session 25)
+> ✅ Shipped — `RateThisItem.tsx`, `lib/reviews/composer-copy.ts`, `lib/reviews/quality.ts`, `lib/reviews/merge-live.ts`, `review-card-appear` keyframe. All 9 detail pages migrated.
+
+The original Figma prototype showed a smart-animated morph from the success modal into the new review card (Figma's Smart Animate handles container shape + content cross-fade for free). After several iterations attempting a true FLIP morph in code, settled on the cleaner pragmatic UX: fade out the modal, fade in the new review at carousel position 0, let the other reviews shift right via React reconciliation. No morph attempt — just a clean cross-fade with the right state-management to make the new card "arrive" as the modal vanishes.
+
+### State machine
+
+`<RateThisItem>` is the trigger card on every detail page (replaces the old inline rate-this-item form + the deleted `useReview` hook). Three internal phases:
+
+| Phase | Visible content | Trigger to enter |
+|---|---|---|
+| **idle** | Question + 5 empty stars | First render with no `initialRating` |
+| **composing** | Stars (current rating filled) + calibration label + textarea + Άκυρο/Δημοσίευση buttons | User taps any star OR clicks edit pencil from "saved" |
+| **saved** | Stars (filled) + "Η αξιολόγησή σου" + edit pencil link | After publish, or initial render with `initialRating` |
+
+### Server interactions
+
+- **First star tap** (idle → composing): instant POST to `/api/reviews` with `(rating, reflection: null)`. Server upserts the row. **Parent is NOT notified** — `onPublished` callback is reserved for explicit Publish.
+- **Re-tap a different star** (composing → composing): another instant POST with the new rating.
+- **Click Άκυρο**: collapses to saved if rating > 0, idle otherwise. Text resets to `initialReflection`. No server hit.
+- **Click Δημοσίευση**: POST with `(rating, reflection)`. On success: store result in `pendingPublish` state, transition to `saved` phase, open the success modal. **Parent is still not notified** at this point.
+- **Modal close** (X button / backdrop / CTA): `onClose` callback fires the parent's `onPublished` with the stored `pendingPublish` result. The parent's onPublished:
+  - Updates local `savedRating` + `savedReflection`
+  - Calls `setLiveReview({ id, rating, reflection })`
+  - Triggers React re-render with the new review at carousel position 0 (via `mergeLiveReview`)
+  - Auto-flips bookmark wishlist → done with category-specific toast
+
+### `mergeLiveReview` — optimistic insertion
+
+`lib/reviews/merge-live.ts` constructs the optimistic review row from the publish result + `data.currentUser`:
+
+```ts
+mergeLiveReview(serverReviews, live, currentUser)
+  → filter out any server row by currentUser.id
+  → prepend a new row built from live + currentUser
+  → returns reviews[]
+```
+
+Used by every parent's `mergedReviews` derivation. The carousel maps this. Each `ReviewCard` gets `appearAnimation={!!liveReview && r.id === liveReview.id}` — only the just-published card animates on mount.
+
+### Why `currentUser` is in `ItemDetailData`
+
+To construct the optimistic review row, the merge needs the viewer's `{ id, handle, display_name, avatar_url, suggestion_count }`. These come from the page fetch in `app/(main)/[category]/[id]/page.tsx`. The session 25 fix split the auth check from the profile fetch — see "long-standing bug" below.
+
+### Long-standing bug fixed in session 25
+
+`page.tsx` was calling `sb.auth.getUser()` where `sb` was the service-role admin client. Service-role clients have no session attached, so `getUser()` silently returned `{ user: null }`. This meant for every logged-in viewer:
+
+- `currentUserId` always null → `mySuggestion` detection never worked
+- `bookmarkStatus` / `isBookmarked` never populated → bookmark icon always showed unsaved state
+- `myReview` never prefilled → user's existing rating/text never showed up
+- `myVoteByReview` always empty → vote thumbs flashed from neutral on every paint
+
+Fix: introduce a cookie-aware auth client (`createClient` from `@/lib/supabase/server`) just for the `auth.getUser()` identity check. Keep the admin client for the actual data fetches (bookmark, review, votes) so RLS doesn't block. Two-line refactor in page.tsx. All four broken behaviors are now actually functional.
+
+### Animation primitive
+
+`@keyframes review-card-appear` (in `app/globals.css`):
+
+```css
+0%   { opacity: 0; transform: scale(0.92) translateY(8px); }
+100% { opacity: 1; transform: scale(1) translateY(0);     }
+```
+
+Applied via `.review-card-appear` class with `420ms cubic-bezier(0.32, 0.72, 0, 1)` (iOS-spring easing) and `transform-origin: left center` so the card grows from where the existing reviews already were.
+
+### Files
+
+```
+components/detail/RateThisItem.tsx     ← inline composer + internal ReviewSuccessModal
+lib/reviews/composer-copy.ts            ← per-category placeholders + STAR_LABELS
+lib/reviews/quality.ts                  ← char-count tiered praise + progress bar tones
+lib/reviews/merge-live.ts               ← optimistic review row builder
+components/detail/ReviewCard.tsx        ← added `appearAnimation` prop
+app/globals.css                         ← review-card-appear keyframe
+app/(main)/[category]/[id]/page.tsx     ← currentUser fetch + auth-client fix
+```
+
+### What was tried + abandoned
+
+The first 5 attempts at this flow used a Web Animations API "FLIP container morph" — animate the modal's box from viewport center to the target card's rect, scale + border-radius interpolation, content cross-fade. It looked janky for two reasons:
+
+1. The modal's content (80px green check + h1 + body + button) and the review card's content (compact stars + text + author row) have nothing in common. Scaling the modal down to card size distorts; cross-fading creates a flicker mid-morph.
+2. CSS can't smoothly interpolate `box-shadow`, `padding`, or complex children. The eye catches that "this isn't right."
+
+The user's original Figma prototype achieved the smooth feel via **Figma's Smart Animate** — which does cross-state shape morphing + content cross-fade automatically in the prototype runtime. Real code doesn't get that for free; the closest equivalents are **Framer Motion `layoutId` (shared element transitions)** or the **View Transitions API**. We decided the morph was aspirational — clean fade with carousel insert delivers the same intent without the polish gap.
+
+### Open polish items
+
+- **Animated "push right"** for the other reviews when the new card inserts. Currently they shift via React reconciliation (instant layout change). For an animated shift, would need FLIP on each sibling (capture-before-render-after-animate-delta) or Framer Motion's `layout` prop. Not critical.
+- **Achievement modal for review milestones** (1st / 5th / 10th / 25th / 50th). Server-side trigger in `/api/reviews` returning an `achievement` payload, reuse of the existing `AchievementUnlockedModal`. ~1 hour.
+- **Gemini coaching overlay** on top of the char-count tiered praise. Content-aware suggestions ("Πες ένα συγκεκριμένο σημείο που σε εντυπωσίασε") via `lib/ai/cache-and-log`. ~1 hour.
+
+---
+
+## 41. Admin IA + visual refresh (session 25)
+> ✅ Shipped — sidebar regrouped, Overview rewritten, page subtitles added, new `/admin/reviews` surface, legacy comments split.
+
+The admin panel before session 25 was a flat 18-entry sidebar with mixed-language labels ("Extra Fields", "Data Quality", "Moments", "Showcase") and an Overview that was 3 quick-create chips + 4 stat squares. A new admin landing on it had no map of "what do I do here?" and the most-used surface — moderating new reviews — wasn't accessible at all.
+
+### Sidebar — 6 jobs-based sections
+
+```
+Overview
+
+MODERATION                     ← red dot
+  Reviews                      (NEW — new reviews table moderation)
+  Reports
+  Suggestions
+  Data Quality
+
+CONTENT — what users see       ← blue dot
+  Layout
+  Related Sections
+  Collections
+  Movies Tonight
+  Activities
+
+TAXONOMY — platform vocabulary ← amber dot
+  Categories
+  Regions
+  Filters
+  Extra Fields
+
+ENGAGEMENT                     ← violet dot
+  Moments
+  AI Usage
+
+PEOPLE                         ← emerald dot
+  Users
+
+PLATFORM                       ← zinc dot
+  Settings
+  Legacy Comments              (renamed from "Comments (Legacy)")
+  Showcase
+```
+
+Active link state: soft `bg-coral-50 text-coral-700` pill (replaces the earlier 3px emerald left border). All hrefs unchanged.
+
+### Overview — control room
+
+Three rows, server-rendered. Time-aware greeting ("Good morning, George") + soft radial coral gradient backdrop top-right.
+
+- **Needs your attention** — 4 cards, each click-through to its action page:
+  - Reports pending + oldest-age context
+  - Unpublished suggestions + weekly delta
+  - Data quality (NULL subcategory + missing cover breakdown)
+  - Maintenance mode binary (red gradient panel when ON, pulsing red dot)
+  - All-clear state: small green ✓ + "All clear" caption (muted, not shouty)
+  - Each card carries a **14-day sparkline** of new activity (inline SVG, no dep)
+- **Last 7 days** — 4 metric cards (New items / New reviews / New users / AI spend). Each with its own sparkline + tabular numerals. AI spend → `/admin/ai-usage`.
+- **Quick actions** — 4 pill buttons: New suggestion / New collection / New activity / Preview homepage (opens `/preview/home` in new tab).
+- **Stagger entrance** — cards fade-in + slide-up with 60ms stagger on first paint.
+
+Fail-soft when `ai_usage_log` migration (019) isn't applied — AI spend defaults to $0.00.
+
+### Page subtitles on the 4 trickiest surfaces
+
+Uses the existing `AdminPageHeader.subtitle` slot (already supported, was unused):
+
+- **Layout** — "Composes Home + each category page. Drag to reorder, click section to edit. Live preview on right."
+- **Moments** — "In-app celebrations + nudges (bookmark celebration, achievement modal, …). Edit copy + timing without deploy."
+- **Extra Fields** — Now explicitly says "**Admin-facing**, not user-facing. For user-facing filters see Filters."
+- **Collections** — "Lists of manually selected items. To appear in the frontend, they must be placed via Layout." with inline link to `/admin/layout`.
+- **Related Sections empty state** per category suggests example axes ("Συνηθισμένα: director, lead actor, writer.").
+
+### `/admin/reviews` — first-class moderation for the new reviews table
+
+Previously: zero admin UI for the new `reviews` table. The route at `/admin/reviews` was misleadingly reading the legacy K2 `comments` table.
+
+Now:
+- `/admin/reviews` reads from `reviews` directly. Stats strip (Total / Last 24h / Reported / Hidden — clickable as filters), text search on reflection, mode chips (all / with-text / rating-only / reported / hidden), 1–5★ filter, per-category filter, 7 sort options.
+- Inline hide/unhide via `POST /api/admin/reviews/[id]/hide` (admin-gated, service-role write, ≥5-char reason required, audit-trailed in `hidden_by` + `hidden_at` + `hidden_reason`).
+- Row links: author → profile, item → live detail page.
+- Hidden state: row gets strikethrough + amber "Κρυμμένη: {reason}" annotation.
+
+### Legacy comments split
+
+- `app/admin/reviews/` → `app/admin/legacy-comments/`
+- `components/admin/ReviewsTable.tsx` → `components/admin/LegacyCommentsTable.tsx` (export renamed to `LegacyCommentsTable`)
+- All internal links repointed: `CommandPalette.tsx` (now opens "Reviews" → /admin/reviews instead of "Reviews → Reported"), `ReviewEditor.tsx`, `/api/admin/search/route.ts`.
+- Sidebar entry renamed "Legacy Comments" + moved under Platform with archive icon. Old `reportedComments` counter still attached to it.
+
+The legacy `comments` table (343 K2 archive rows) is now properly labelled and segregated — it's read-only for admin moderation of historical content, while new review moderation flows through `/admin/reviews`.
+
+### Files
+
+```
+components/admin/AdminSidebar.tsx           ← 6-section regroup + tone dots
+app/admin/page.tsx                          ← Overview rewrite (control room)
+components/admin/ReviewsAdminTable.tsx      ← NEW: reviews moderation table
+app/admin/reviews/page.tsx                  ← NEW: reads reviews table
+app/admin/legacy-comments/                  ← MOVED from app/admin/reviews/
+components/admin/LegacyCommentsTable.tsx    ← MOVED + renamed
+app/api/admin/reviews/[id]/hide/route.ts    ← NEW: hide/unhide endpoint
+components/admin/LayoutManager.tsx          ← subtitle tightened
+components/admin/MomentsManager.tsx         ← subtitle tightened
+components/admin/ExtraFieldsManager.tsx     ← admin-facing clarification added
+components/admin/CollectionsList.tsx        ← Layout dependency mentioned
+components/admin/RelatedSectionsManager.tsx ← empty-state hints per category
+```
+
+### Open polish items (admin)
+
+- **Audit log** "recent admin changes" stream on Overview. Skipped because most tables don't track `modified_by`. Would need schema additions.
+- **`Last edited by X on Y`** stamps on Moments / Layout / Filters / Collections — requires `modified_by` columns + admin lookup.
+- **Confirm-before-save** on Settings / Layout / Maintenance — risky surfaces shouldn't be one-click commits.
+- **Merge Reports + Data Quality into a single Inbox**. Considered for layer A but deferred since it needs new UI scaffolding (today they're separate sidebar entries within Moderation).

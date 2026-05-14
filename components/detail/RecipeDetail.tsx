@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { InnerHeader } from "@/components/layout/Header";
 import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
-import { useReview } from "@/hooks/useReview";
+import { RateThisItem } from "@/components/detail/RateThisItem";
+import { mergeLiveReview } from "@/lib/reviews/merge-live";
 import { useGuestGuard } from "@/hooks/useGuestGuard";
 import { GuestPromptModal } from "@/components/guest/GuestPromptModal";
 import { RelatedSections } from "@/components/detail/RelatedSections";
@@ -53,29 +54,13 @@ function formatDate(iso: string): string {
 
 export function RecipeDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
-  const [userRating, setUserRating] = useState(data.myReview?.rating ?? 0);
   const bookmark = useBookmark(data.item.id, "recipes", data.bookmarkStatus);
   const { show: showToast, toast } = useToast();
   const [savedModal, setSavedModal] = useState<BookmarkSaveResult | null>(null);
-  const { save: saveReview, busy: reviewBusy, savedRating } = useReview(
-    data.item.id,
-    { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null },
-    {
-      onSaved: () => {
-        if (bookmark.status === "wishlist") {
-          bookmark.setStatus("done");
-          showToast("Μετακινήθηκε στα Έφτιαξα ✓");
-        }
-      },
-    },
-  );
   const { requireAuth: requireAuthRating, modalProps: ratingGuardProps } = useGuestGuard("να βαθμολογήσεις");
-  const gatedSaveReview = async (r: number, t: string | null) => {
-    let p: Promise<unknown> = Promise.resolve();
-    requireAuthRating(() => { p = saveReview(r, t); });
-    return p;
-  };
-  const [userText, setUserText] = useState(data.myReview?.reflection ?? "");
+  const [savedRating, setSavedRating] = useState<number | null>(data.myReview?.rating ?? null);
+  const [savedReflection, setSavedReflection] = useState<string | null>(data.myReview?.reflection ?? null);
+  const [liveReview, setLiveReview] = useState<{ id: string; rating: number; reflection: string | null } | null>(null);
   const [checkedIngredients, setCheckedIngredients] = useState<Set<number>>(new Set());
 
   const { item, extension: ext, suggestions } = data;
@@ -142,7 +127,9 @@ export function RecipeDetail({ data }: { data: ItemDetailData }) {
 
   const featured = suggestions[0];
 
-  const reviews: ReviewItem[] = data.reviews.map(r => ({
+  const mergedReviews = mergeLiveReview(data.reviews, liveReview, data.currentUser);
+  const reviews: ReviewItem[] = mergedReviews.map(r => ({
+    appearAnimation: !!liveReview && r.id === liveReview.id,
     id: r.id,
     name: r.user.display_name,
     badge: getBadge(r.user.suggestion_count ?? 0),
@@ -326,7 +313,32 @@ export function RecipeDetail({ data }: { data: ItemDetailData }) {
       </div>
 
       {/* Community */}
-      <CommunitySection ratings={ratingDistribution} ratingCount={ratingCount} isTopRated={isTopRated} topRatedNoun="Η συνταγή" communityRating={avgRating} reviews={reviews} userRating={userRating} setUserRating={setUserRating} saveReview={gatedSaveReview} userText={userText} setUserText={setUserText} reviewBusy={reviewBusy} savedRating={savedRating} question="Με πόσα αστέρια θα βαθμολογούσες τη συνταγή;" mySuggestion={mySuggestion} itemTitle={title} itemSlug={item.slug} />
+      <CommunitySection
+        ratings={ratingDistribution}
+        ratingCount={ratingCount}
+        isTopRated={isTopRated}
+        topRatedNoun="Η συνταγή"
+        communityRating={avgRating}
+        reviews={reviews}
+        savedRating={savedRating}
+        savedReflection={savedReflection}
+        itemId={data.item.id}
+        userHandle={data.currentUserHandle ?? null}
+        authGate={requireAuthRating}
+        onPublished={(result) => {
+          setSavedRating(result.rating);
+          setSavedReflection(result.reflection);
+          setLiveReview({ id: result.review_id, rating: result.rating, reflection: result.reflection });
+          if (bookmark.status === "wishlist") {
+            bookmark.setStatus("done");
+            showToast("Μετακινήθηκε στα Έφτιαξα ✓");
+          }
+        }}
+        question="Με πόσα αστέρια θα βαθμολογούσες τη συνταγή;"
+        mySuggestion={mySuggestion}
+        itemTitle={title}
+        itemSlug={item.slug}
+      />
 
       <RelatedSections sections={data.relatedSections} category="recipes" />
 
@@ -375,22 +387,21 @@ function InfoCell({ label, value }: { label: string; value: string }) {
   );
 }
 
-interface ReviewItem { id: string; name: string; badge: "Verified"|"Expert"|"Platinum"|"Gold"; color: string; rating: number; date: string; text: string; likes: number; dislikes: number; myVote: 1 | -1 | null; userData?: any; }
+interface ReviewItem { id: string; name: string; badge: "Verified"|"Expert"|"Platinum"|"Gold"; color: string; rating: number; date: string; text: string; likes: number; dislikes: number; myVote: 1 | -1 | null; userData?: any; appearAnimation?: boolean; }
 
-function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, communityRating, reviews, userRating, setUserRating, userText, setUserText, saveReview, reviewBusy, savedRating, question, mySuggestion, itemTitle, itemSlug }: {
+function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, communityRating, reviews, savedRating, savedReflection, itemId, userHandle, authGate, onPublished, question, mySuggestion, itemTitle, itemSlug }: {
   ratings: { stars: number; pct: number }[];
   ratingCount: number;
   isTopRated: boolean;
   topRatedNoun: string;
   communityRating: number;
   reviews: ReviewItem[];
-  userRating: number;
-  setUserRating: (n: number) => void;
-  saveReview: (rating: number, reflection: string | null) => Promise<unknown>;
-  userText: string;
-  setUserText: (s: string) => void;
-  reviewBusy: boolean;
   savedRating: number | null;
+  savedReflection: string | null;
+  itemId: string;
+  userHandle: string | null;
+  authGate: (fn: () => void) => boolean;
+  onPublished: (result: { review_id: string; rating: number; reflection: string | null; avg_rating: number; rating_count: number }) => void;
   question: string;
   mySuggestion: { id: string; reflection: string | null; rating: number | null } | null;
   itemTitle: string; itemSlug: string;
@@ -430,35 +441,16 @@ function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, comm
         {mySuggestion ? (
           <OwnSuggestionActions suggestion={mySuggestion} itemTitle={itemTitle} />
         ) : (
-          <div className="rounded-[12px] bg-white flex flex-col items-center gap-6 py-12 px-6" style={{ boxShadow: "2px 4px 11px -2px rgba(0,0,0,0.1)" }}>
-            <p className="text-[18px] font-semibold text-zinc-800 text-center leading-[140%]">{question}</p>
-            <div className="flex items-center gap-3">
-              {[1,2,3,4,5].map(s => (
-                <button key={s} onClick={() => setUserRating(s)} aria-label={`${s} αστέρια`}>
-                  <StarIcon size={34} filled={s <= userRating} />
-                </button>
-              ))}
-            </div>
-            {userRating > 0 && (
-                <>
-                  <textarea
-                  value={userText}
-                  onChange={e => setUserText(e.target.value)}
-                  placeholder="Γράψε γιατί (προαιρετικό)"
-                  maxLength={4000}
-                  rows={3}
-                  className="w-full rounded-[12px] border border-zinc-300 px-4 py-3 text-[14px] text-zinc-800 placeholder:text-zinc-400 focus:border-coral-600 focus:outline-none resize-none"
-                />
-                  <button
-                onClick={() => saveReview(userRating, userText.trim() || null)}
-                disabled={reviewBusy || userRating === savedRating}
-                className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
-              >
-                {reviewBusy ? "Αποθήκευση..." : savedRating === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
-              </button>
-                </>
-            )}
-          </div>
+          <RateThisItem
+            question={question}
+            category="recipes"
+            itemId={itemId}
+            initialRating={savedRating}
+            initialReflection={savedReflection}
+            userHandle={userHandle}
+            authGate={authGate}
+            onPublished={onPublished}
+          />
         )}
       </div>
 
@@ -478,6 +470,7 @@ function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, comm
                   badge={r.badge}
                   likes={r.likes}
                   dislikes={r.dislikes}
+                  appearAnimation={r.appearAnimation}
                 />
             ))}
             <div className="flex-none w-6 shrink-0" />

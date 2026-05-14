@@ -7,9 +7,10 @@ import { ExpandableText } from "@/components/ui/ExpandableText";
 import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
-import { useReview } from "@/hooks/useReview";
 import { useGuestGuard } from "@/hooks/useGuestGuard";
 import { GuestPromptModal } from "@/components/guest/GuestPromptModal";
+import { RateThisItem } from "@/components/detail/RateThisItem";
+import { mergeLiveReview } from "@/lib/reviews/merge-live";
 import { RelatedSections } from "@/components/detail/RelatedSections";
 import { useBookmark } from "@/hooks/useBookmark";
 import { BookmarkStatusChips } from "@/components/detail/BookmarkStatusChips";
@@ -47,25 +48,18 @@ function formatDate(iso: string): string {
 
 export function BookDetail({ data }: { data: ItemDetailData }) {
   const router = useRouter();
-  const [userRating, setUserRating] = useState(data.myReview?.rating ?? 0);
   const bookmark = useBookmark(data.item.id, "books", data.bookmarkStatus);
   const { show: showToast, toast } = useToast();
   const [savedModal, setSavedModal] = useState<BookmarkSaveResult | null>(null);
-  const { save: saveReview, busy: reviewBusy, savedRating } = useReview(
-    data.item.id,
-    { rating: data.myReview?.rating ?? null, reflection: data.myReview?.reflection ?? null },
-    {
-      onSaved: () => {
-        if (bookmark.status === "wishlist") {
-          bookmark.setStatus("done");
-          showToast("Μετακινήθηκε στα Διάβασα ✓");
-        }
-      },
-    },
-  );
   const { requireAuth: requireAuthRating, modalProps: ratingGuardProps } = useGuestGuard("να βαθμολογήσεις");
-  const [userText, setUserText] = useState(data.myReview?.reflection ?? "");
   const [authorBioExpanded, setAuthorBioExpanded] = useState(false);
+  // Local review state — refreshed by RateThisItem's onPublished callback.
+  const [savedRating, setSavedRating] = useState<number | null>(data.myReview?.rating ?? null);
+  const [savedReflection, setSavedReflection] = useState<string | null>(data.myReview?.reflection ?? null);
+  // Live review carousel insert — the user's just-published review with the
+  // ID returned from the server. Drives both the carousel + the success-modal
+  // FLIP morph target lookup.
+  const [liveReview, setLiveReview] = useState<{ id: string; rating: number; reflection: string | null } | null>(null);
 
   const { item, extension: ext, suggestions } = data;
   const mySuggestion = data.currentUserId ? suggestions.find(s => s.user.id === data.currentUserId) ?? null : null;
@@ -97,7 +91,8 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
   const authorBookCount = (meta.author_book_count as number | undefined) ?? null;
   const authorBio = (meta.author_bio as string | undefined) ?? null;
 
-  const reviews = data.reviews.map(r => ({
+  const mergedReviews = mergeLiveReview(data.reviews, liveReview, data.currentUser);
+  const reviews = mergedReviews.map(r => ({
     id: r.id,
     name: r.user.display_name,
     badge: getBadge(r.user.suggestion_count ?? 0),
@@ -263,35 +258,28 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
           {mySuggestion ? (
             <OwnSuggestionActions suggestion={mySuggestion} itemTitle={title} />
           ) : (
-            <div className="rounded-[12px] bg-white flex flex-col items-center gap-6 py-12 px-6" style={{ boxShadow: "2px 4px 11px -2px rgba(0,0,0,0.1)" }}>
-              <p className="text-[18px] font-semibold text-zinc-800 text-center leading-[140%]">Με πόσα αστέρια θα βαθμολογούσες το βιβλίο;</p>
-              <div className="flex items-center gap-3">
-                {[1,2,3,4,5].map(s => (
-                  <button key={s} onClick={() => setUserRating(s)} aria-label={`${s} αστέρια`}>
-                    <StarIcon size={34} filled={s <= userRating} />
-                  </button>
-                ))}
-              </div>
-              {userRating > 0 && (
-                <>
-                  <textarea
-                  value={userText}
-                  onChange={e => setUserText(e.target.value)}
-                  placeholder="Γράψε γιατί (προαιρετικό)"
-                  maxLength={4000}
-                  rows={3}
-                  className="w-full rounded-[12px] border border-zinc-300 px-4 py-3 text-[14px] text-zinc-800 placeholder:text-zinc-400 focus:border-coral-600 focus:outline-none resize-none"
-                />
-                  <button
-                  onClick={() => requireAuthRating(() => saveReview(userRating, userText.trim() || null))}
-                  disabled={reviewBusy || userRating === savedRating}
-                  className="w-full h-12 rounded-[12px] bg-zinc-800 text-zinc-50 text-[16px] font-semibold active:opacity-80 transition-opacity disabled:opacity-50"
-                >
-                  {reviewBusy ? "Αποθήκευση..." : savedRating === userRating ? "✓ Αποθηκεύτηκε" : "Αποθήκευσε βαθμολογία"}
-                </button>
-                </>
-              )}
-            </div>
+            <RateThisItem
+              question="Με πόσα αστέρια θα βαθμολογούσες το βιβλίο;"
+              category="books"
+              itemId={data.item.id}
+              initialRating={savedRating}
+              initialReflection={savedReflection}
+              userHandle={data.currentUserHandle ?? null}
+              authGate={requireAuthRating}
+              onPublished={(result) => {
+                setSavedRating(result.rating);
+                setSavedReflection(result.reflection);
+                setLiveReview({
+                  id: result.review_id,
+                  rating: result.rating,
+                  reflection: result.reflection,
+                });
+                if (bookmark.status === "wishlist") {
+                  bookmark.setStatus("done");
+                  showToast("Μετακινήθηκε στα Διάβασα ✓");
+                }
+              }}
+            />
           )}
 
           {reviews.length > 0 && (
@@ -310,6 +298,7 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
                   likes={review.likes}
                   dislikes={review.dislikes}
                   myVote={review.myVote}
+                  appearAnimation={!!liveReview && review.id === liveReview.id}
                 />
               ))}
               <div className="flex-none w-6 shrink-0" />
@@ -346,6 +335,7 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
     </div>
   );
 }
+
 
 function InfoDivider() { return <div className="h-px bg-zinc-200 ml-5" />; }
 function InfoCell({ label, value, href }: { label: string; value: string; href?: string | null }) {

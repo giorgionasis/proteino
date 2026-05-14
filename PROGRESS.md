@@ -1,12 +1,77 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-14 (session 24 — detail-page Figma alignment sweep)
+Last updated: 2026-05-15 (session 25 — admin IA + visual refresh + Reviews admin + review writing flow)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 24 (current) finished:**
+**Current state — session 25 (current) finished:**
+
+Three big arcs in one session: (1) admin IA + visual refresh, (2) new `/admin/reviews` surface and legacy comments split, (3) full review-writing flow redesign with success modal + carousel fade-in. Plus a long-standing bug fixed (admin client `auth.getUser()` was silently returning null on every detail page, breaking bookmark prefill and my-review prefill).
+
+**Shipped — admin IA + visual refresh:**
+- ✅ **Sidebar regrouped into 6 jobs-based sections** (`AdminSidebar.tsx`). Replaced flat 18-item list with: Moderation / Content / Taxonomy / Engagement / People / Platform. Each section has a tone-coloured dot next to its label (red / blue / amber / violet / emerald / zinc). Active link state is now a soft coral pill instead of the harsh emerald left border. All hrefs preserved. Old collapsible "Content" group dropped in favour of always-visible section headers.
+- ✅ **Overview rewritten as a control room** (`app/admin/page.tsx`). Three rows:
+  - **Needs your attention** — 4 click-through cards (Reports pending with oldest-age, Unpublished with weekly delta, Data quality with breakdown, Maintenance mode binary). Each carries a **14-day sparkline** (inline SVG, no dep) of new activity per surface. All-clear state shows a small green ✓ in mute instead of a giant green checkmark.
+  - **Last 7 days** — 4 inline metrics (New items / reviews / users / AI spend) each with its own sparkline. AI spend links to `/admin/ai-usage`.
+  - **Quick actions** — existing 3 + new "Preview homepage" → opens `/preview/home` in a new tab.
+  - **Time-aware greeting** ("Good morning, George" / afternoon / evening / "Working late") with coral first name, soft radial coral gradient backdrop top-right.
+  - **Stagger entrance** — cards fade-in + slide-up with 60ms stagger.
+- ✅ **Page subtitles** wired on the 4 trickiest admin surfaces using the existing `AdminPageHeader.subtitle` slot:
+  - Layout — "composes Home + each category page"
+  - Moments — "in-app celebrations + nudges (bookmark celebration, achievement modal, …)"
+  - Extra Fields — "admin-facing, not user-facing; for user filters see Filters"
+  - Collections — mentions Layout dependency with inline link
+  - Related Sections + Filters already had decent subtitles, left alone.
+  - Related Sections empty state per category suggests example axes (e.g. "Συνηθισμένα: director, lead actor, writer.").
+- ✅ **Tabular numerals** on every metric (`fontFeatureSettings: '"tnum"'`) so numbers stop dancing across paint.
+
+**Shipped — `/admin/reviews` (new) + legacy comments split:**
+- ✅ **`/admin/reviews` — first-class moderation surface** for the new `reviews` table. Previously had zero admin UI (only the legacy K2 `comments` table was reachable from sidebar). Now reads `reviews` directly with:
+  - Stats strip: Total / Last 24h / With reports / Hidden — clickable as filters
+  - Filters: text search on reflection, mode chips (all / with-text / rating-only / reported / hidden), 1–5★ filter, per-category filter, 7 sort options (newest / oldest / most-up / most-down / most-reported / highest-rated / lowest-rated)
+  - Inline hide/unhide with required reason (≥5 chars, audit-trailed in `hidden_by`)
+  - Row links: author → `/profile/{handle}`, item → live detail page
+- ✅ **Legacy comments moved** — `app/admin/reviews/` → `app/admin/legacy-comments/`, `ReviewsTable.tsx` → `LegacyCommentsTable.tsx`. CommandPalette + `/api/admin/search` + `ReviewEditor.tsx` repointed.
+- ✅ **Sidebar promotion** — "Reviews" sits at top of Moderation. "Legacy Comments" demoted to Platform with archive icon.
+- ✅ **New API** — `POST /api/admin/reviews/[id]/hide` (admin-gated, service-role write).
+
+**Shipped — review-writing flow redesign:**
+- ✅ **`<RateThisItem>` inline composer** (`components/detail/RateThisItem.tsx`). 3-phase state machine: `idle` (stars + question) → `composing` (stars + thanks line + calibration label + textarea + Άκυρο/Δημοσίευση) → `saved` (stars + edit pencil). All in-place — no modal during compose.
+- ✅ **Star tap = instant save** server-side. Parent is NOT notified; the new card is held back from the carousel until the user explicitly Publishes. Re-tap on a different star saves the new rating.
+- ✅ **Per-category copy** (`lib/reviews/composer-copy.ts`). Each of the 9 categories has a unique textarea placeholder ("Ποια σκηνή σε άγγιξε" for movies, "Πώς ήταν φαγητό, service, ατμόσφαιρα" for food, etc.). Plus 5 calibration labels (1★ "Δεν μου άρεσε" → 5★ "Αγαπημένο μου!").
+- ✅ **Char-count quality tiers** (`lib/reviews/quality.ts`). Soft target = 180 chars. Tiered praise: < 20 "Πες μας λίγα ακόμα ✍️" / < 80 "Καλή αρχή! Πες λίγα περισσότερα" / < 180 "Τέλεια αρχή!" / ≥ 180 "Οι αναγνώστες σου ευχαριστούν 🙏". Progress bar fills coral → emerald as quality climbs.
+- ✅ **Soft warn at 600 chars** (red counter shows "+N over"), hard cap server-side at 4000.
+- ✅ **`<ReviewSuccessModal>`** (internal to RateThisItem, portaled). Green check + thanks copy + "Δες τις αξιολογήσεις σου" CTA + X button. No auto-dismiss — explicit close only.
+- ✅ **Fade-in carousel insertion**. After many iterations of trying a FLIP morph (which never landed cleanly because the source and destination shapes were too different), settled on the cleaner UX: success modal fades out + the new review fades into carousel position 0 via `review-card-appear` CSS keyframe (fade + slight zoom + slide-up over 420ms, ease-spring). Other reviews shift right via React reconciliation. The new review is held back from the carousel until the modal's `onClose` fires — so the user sees: modal → carousel-with-new-card-appearing, not "card visible behind modal then modal fades."
+- ✅ **`mergeLiveReview`** (`lib/reviews/merge-live.ts`). Helper that constructs the optimistic review row from the publish result + current user profile, filters out any stale server row by the same user, prepends. Used by all 9 detail pages.
+- ✅ **`ItemDetailData.currentUser`** extended to include `{ id, handle, display_name, avatar_url, suggestion_count }` so the merge can construct a complete review row immediately on publish.
+- ✅ **`appearAnimation` prop** on `ReviewCard` — only the live review uses it. Existing reviews don't re-animate.
+- ✅ **9 detail components migrated** — same per-category copy + per-category bookmark auto-flip toast ("Είδα ✓" / "Διάβασα ✓" / "Έχω πάει ✓" / "Έφτιαξα ✓" / "Πήγα ✓"). `useReview` hook is no longer used; the modal owns its own state.
+- ✅ **Edit affordance** — after publish, the rate-this-item card collapses to "Η αξιολόγησή σου" + filled stars + "Επεξεργασία αξιολόγησης" (or "Πρόσθεσε σχόλιο" if no text yet) pencil link. Reopens composer pre-filled.
+
+**Bug fixed (long-standing, affected all 9 detail pages):**
+- 🐛 `app/(main)/[category]/[id]/page.tsx` was calling `sb.auth.getUser()` where `sb` was the service-role admin client. Admin clients have no session attached, so `getUser()` silently returned null. This meant `currentUserId` / `currentUserHandle` / `currentUser` / `myReview` / `bookmarkStatus` / `isBookmarked` / `myVoteByReview` were ALL always null for logged-in users — bookmark prefill, "my review" prefill, vote prefill on review carousel — silently broken for who knows how long. **Fixed** by introducing a cookie-aware auth client (`createClient` from `@/lib/supabase/server`) for the identity check, keeping the admin client for the actual profile / bookmark / review / vote queries (so RLS doesn't block).
+
+**Files deleted:** `components/detail/ReviewComposerModal.tsx` (replaced by inline composer + internal ReviewSuccessModal). `hooks/useReview.ts` is no longer imported anywhere (kept on disk in case it's referenced from elsewhere — safe to delete in a future sweep).
+
+**Stats:** ~+700 / -550 across admin + detail + lib + API, 0 typecheck errors.
+
+**Open follow-ups (next session):**
+- **Phase B — pgvector recommendations.** Biggest user-visible leap left. ~5 days. Architecture documented in AI.md §4 + PROGRESS §3 Phase B. The 1953-item corpus is finally rich enough; this unblocks the "Tailored for You" rail with real "because you liked X" reasoning.
+- **SEO redirects + indexing follow-ups.** 301-redirect map from legacy K2 URLs (still need sample of old URL format from the user to plan), `noindex` meta for thin pages, canonical URLs on category + profile pages.
+- **Per-category visual identity (deeper redesign).** UI_AUDIT.md option B — per-category palette + cinematic hero for movies, warm photographic for hotels, paper-typographic for books, etc. Bigger visual leap, ~1.5 weeks.
+- **Remaining A.5 punch list.** Admin moderation polish (queue filter, reports priority sort, bulk ops), drop legacy `ratings`/`comments` tables (data already wiped), geographic distance ranking via region centroids, browser geolocation opt-in, map↔list drop-down reveal (Phase D — 3-4 hours).
+- **AI-coached review writing** (deferred from session 25 plan). Gemini overlay on the char-count tiered praise — content-aware suggestions ("Πες ένα συγκεκριμένο σημείο που σε εντυπωσίασε"). ~1 hour of work + Gemini cost.
+- **Achievement modal for review milestones** (1st / 5th / 10th / 25th / 50th review). Deferred from session 25. Server-side trigger + reuse of `AchievementUnlockedModal`. ~1 hour.
+- **Animated "push right"** for the other reviews when the new one fades in at position 0. Currently they shift instantly via React. For an animated shift, we'd need FLIP on each sibling or Framer Motion's `layout` prop. Not critical but a polish item.
+
+---
+
+## Previous sessions
+
+**Session 24 — detail-page Figma alignment sweep ✅ (2026-05-14):**
 
 The "detail-page Figma alignment sweep" punched out of CLAUDE.md §25's open punch list. CLAUDE.md claimed 7 pages were on legacy InfoCell layout; the honest audit (read each component vs. BookDetail/MovieDetail target) showed only 2 needed real surgery — **Bars + Series**. The other 5 (Hotels, Food, Recipes, Theater, Events) had been quietly upgraded in prior sessions but kept three consistent gaps: empty cells rendering `"—"`, gray-circle person placeholders, dead-end map/order buttons. All 7 are now consistent.
 
@@ -33,10 +98,6 @@ The "detail-page Figma alignment sweep" punched out of CLAUDE.md §25's open pun
 - **SEO redirects + indexing follow-ups.** 301-redirect map from legacy K2 URLs (still need sample of old URL format from the user to plan), `noindex` meta for thin pages (empty categories, 0-suggestion profiles, onboarding), canonical URLs on category + profile pages.
 - **Per-category visual identity (deeper redesign).** Today's sweep was UI_AUDIT.md option A — clear the noise (hide empties, kill fake CTAs, replace gray placeholders). UI_AUDIT.md option B is compound: per-category palette + cinematic hero for movies, warm photographic for hotels, paper-typographic for books, etc. Bigger visual leap, ~1.5 weeks.
 - **Remaining A.5 punch list.** Admin moderation polish (queue filter, reports priority sort, bulk ops), drop legacy `ratings`/`comments` tables (data already wiped), geographic distance ranking via region centroids, browser geolocation opt-in, map↔list drop-down reveal (Phase D — 3-4 hours, requires structural refactor of `CategoryMapView`).
-
----
-
-## Previous sessions
 
 **Session 23 — Phase A.6 close + audit cleanup + Google rich-results SEO ✅ (2026-05-14):**
 

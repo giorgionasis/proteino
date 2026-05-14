@@ -25,6 +25,12 @@ export interface ReviewCardProps {
    * Optional — when omitted, the footer always renders the controls.
    */
   authorId?: string;
+  /**
+   * When true, the card animates in on mount (fade + scale + slide). Used
+   * by the detail page to highlight the user's just-published review
+   * after the success modal fades — without animating every other card.
+   */
+  appearAnimation?: boolean;
 }
 
 /**
@@ -53,6 +59,7 @@ export function ReviewCard({
   myVote = null,
   variant = "carousel",
   authorId,
+  appearAnimation = false,
 }: ReviewCardProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -67,7 +74,10 @@ export function ReviewCard({
 
   return (
     <article
-      className={`${sizeClass} bg-white rounded-[12px] flex flex-col justify-between overflow-hidden`}
+      data-review-id={id}
+      className={`${sizeClass} bg-white rounded-[12px] flex flex-col justify-between overflow-hidden${
+        appearAnimation ? " review-card-appear" : ""
+      }`}
       style={{ boxShadow: "2px 2px 9px -2px rgba(0,0,0,0.1)" }}
     >
       <div className="p-6 flex flex-col gap-6">

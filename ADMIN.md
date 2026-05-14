@@ -1,7 +1,7 @@
 # Proteino — Admin Panel
 
 > Route: `/admin` — protected via `public.users.role === 'admin'` (`ADMIN_DEV_BYPASS=1` for local skip)
-> Last updated: 2026-05-14 (session 24 — detail-page Figma alignment sweep)
+> Last updated: 2026-05-15 (session 25 — admin IA + visual refresh + Reviews admin)
 
 The admin panel is the back-office for managing all platform content, structure, metadata, and what users see on the frontend.
 
@@ -27,7 +27,8 @@ Admins never touch code. Everything is managed through the admin UI.
 | Suggestions list | ✅ | ✅ | Filters: category/subcategory/author/published/search/sort |
 | Suggestion editor | ✅ | ✅ | Saves items + suggestions + extension tables; DB-backed extra options; Portrait/Landscape image uploads + Trailer URL wired |
 | Users | ✅ | ✅ | Search, sort, pagination, badges by level |
-| Comments (Legacy) | ✅ | ✅ | Frozen K2-archive comments table — moderation surface for historic content. New reviews live in the `reviews` table; their moderation flows via `/admin/reports`. Old name was "Reviews list" — kept the route under `/admin/reviews` so existing bookmarks still work. |
+| Reviews | ✅ | ✅ | NEW (session 25). `/admin/reviews` — first-class moderation surface for the `reviews` table. Stats / filters / 7 sort options / inline hide-unhide with required reason. See CLAUDE.md §41. |
+| Legacy Comments | ✅ | ✅ | Frozen K2-archive `comments` table (343 rows) — moderation surface for historic content. Moved from `/admin/reviews` → `/admin/legacy-comments` in session 25 (was confusingly labelled "Comments (Legacy)" sharing the canonical reviews route). |
 | Review detail | ✅ | ✅ | Reports section, hide w/ reason, author flagged history |
 | Extra Fields | ✅ | ✅ | Collapsed cards + wizard (paste options bulk) |
 | Data Quality | ✅ | ✅ | NULL subcategory triage + inline subcategory creation |
@@ -65,31 +66,45 @@ Legend: ✅ done · ⏳ mock UI exists, needs data wiring · 🚫 deprecated
 
 ## 1. Navigation Structure
 
-Fixed sidebar (`AdminSidebar`):
+Fixed sidebar (`AdminSidebar`) — regrouped in session 25 into 6 jobs-based sections with tone dots:
 
 ```
 Proteino•
-├── Overview              → /admin
-├── Categories            → /admin/categories
-├── Suggestions           → /admin/suggestions
-├── Extra Fields          → /admin/extra-fields
-├── Data Quality          → /admin/data-quality
-├── Content
-│   ├── Collections       → /admin/content/collections
-│   ├── Activities        → /admin/content/activities
-│   ├── Regions           → /admin/content/regions
-│   ├── Filters           → /admin/content/filters
-│   └── Movies Tonight    → /admin/content/movies-tonight
-├── Comments (Legacy)     → /admin/reviews   [route preserved — frozen K2 comments archive]
-├── Reports               → /admin/reports   [unified moderation queue — suggestion / comment / review reports]
-├── Users                 → /admin/users
-├── Layout                → /admin/layout                 [session 22]
-├── Related Sections      → /admin/related-sections       [session 22]
-├── Moments               → /admin/moments
-├── AI Usage              → /admin/ai-usage
-├── Showcase              → /admin/showcase
-└── Settings              → /admin/settings
+├── Overview                        → /admin
+
+MODERATION  ● red
+├── Reviews                         → /admin/reviews             [session 25 — NEW reviews table]
+├── Reports                         → /admin/reports             [content_reports across all target_types]
+├── Suggestions                     → /admin/suggestions
+└── Data Quality                    → /admin/data-quality
+
+CONTENT — what users see  ● blue
+├── Layout                          → /admin/layout              [session 22]
+├── Related Sections                → /admin/related-sections    [session 22]
+├── Collections                     → /admin/content/collections
+├── Movies Tonight                  → /admin/content/movies-tonight
+└── Activities                      → /admin/content/activities
+
+TAXONOMY — platform vocabulary  ● amber
+├── Categories                      → /admin/categories
+├── Regions                         → /admin/content/regions
+├── Filters                         → /admin/content/filters
+└── Extra Fields                    → /admin/extra-fields
+
+ENGAGEMENT  ● violet
+├── Moments                         → /admin/moments
+└── AI Usage                        → /admin/ai-usage
+
+PEOPLE  ● emerald
+└── Users                           → /admin/users
+
+PLATFORM  ● zinc
+├── Settings                        → /admin/settings
+├── Legacy Comments                 → /admin/legacy-comments     [session 25 — moved + renamed]
+└── Showcase                        → /admin/showcase
 ```
+
+Active link state: soft `bg-coral-50 text-coral-700` pill. All hrefs preserved (only `/admin/reviews` semantic changed — now the new reviews table; old comments archive moved to `/admin/legacy-comments`). See CLAUDE.md §41 for the full rationale.
 
 ---
 
