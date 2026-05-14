@@ -128,7 +128,7 @@ export function ReviewEditor({ comment, author, suggestion, reports, siblings, a
       setBusy(null);
       return;
     }
-    router.push("/admin/reviews");
+    router.push("/admin/legacy-comments");
   }
 
   async function applyHide(reason: string) {
@@ -196,7 +196,7 @@ export function ReviewEditor({ comment, author, suggestion, reports, siblings, a
       {/* Breadcrumb + actions */}
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div className="flex items-center gap-2 text-sm">
-          <Link href="/admin/reviews" className="text-emerald-600 hover:underline font-medium">Reviews</Link>
+          <Link href="/admin/legacy-comments" className="text-emerald-600 hover:underline font-medium">Reviews</Link>
           <span className="text-zinc-400">/</span>
           <span className="text-zinc-600">Comment Detail</span>
           {isHidden && <span className="ml-3 px-2 py-1 bg-zinc-200 text-zinc-700 text-xs font-bold rounded">HIDDEN</span>}
@@ -560,7 +560,7 @@ export function ReviewEditor({ comment, author, suggestion, reports, siblings, a
               <ul className="divide-y divide-zinc-100">
                 {authorOtherComments.map((c) => (
                   <li key={c.id} className={`px-5 py-3 ${c.isHidden ? "bg-zinc-50/60" : ""}`}>
-                    <Link href={`/admin/reviews/${c.id}`} className="block hover:bg-zinc-50/50 -mx-5 px-5 -my-3 py-3">
+                    <Link href={`/admin/legacy-comments/${c.id}`} className="block hover:bg-zinc-50/50 -mx-5 px-5 -my-3 py-3">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <p className="text-xs text-zinc-500">σε "{c.itemTitle}"</p>
                         <span className="text-xs text-zinc-400">·</span>

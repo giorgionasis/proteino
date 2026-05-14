@@ -1,36 +1,34 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ReviewsTable } from "@/components/admin/ReviewsTable";
+import { ReviewsAdminTable } from "@/components/admin/ReviewsAdminTable";
 
-export default async function ReviewsPage() {
-  const supabase = createAdminClient();
+export const dynamic = "force-dynamic";
 
-  const { count: totalCount } = await supabase
-    .from("comments")
-    .select("id", { count: "exact", head: true });
-
+/**
+ * /admin/reviews — list + moderation surface for the NEW `reviews` table
+ * (migration 016). Every user-on-item interaction (rating + optional text)
+ * lives here. The legacy K2 `comments` archive lives at /admin/legacy-comments.
+ *
+ * Server fetches the stat counters; the client table handles filters / sort /
+ * pagination / inline hide-unhide via the admin browser client + API route.
+ */
+export default async function ReviewsAdminPage() {
+  const sb = createAdminClient();
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { count: last24h } = await supabase
-    .from("comments")
-    .select("id", { count: "exact", head: true })
-    .gte("created_at", oneDayAgo);
 
-  const { count: reportedCount } = await supabase
-    .from("comments")
-    .select("id", { count: "exact", head: true })
-    .gt("report_count", 0);
-
-  const { count: hiddenCount } = await supabase
-    .from("comments")
-    .select("id", { count: "exact", head: true })
-    .eq("is_hidden", true);
+  const [totalRes, last24Res, reportedRes, hiddenRes] = await Promise.all([
+    sb.from("reviews").select("id", { count: "exact", head: true }),
+    sb.from("reviews").select("id", { count: "exact", head: true }).gte("created_at", oneDayAgo),
+    sb.from("reviews").select("id", { count: "exact", head: true }).gt("report_count", 0),
+    sb.from("reviews").select("id", { count: "exact", head: true }).eq("is_hidden", true),
+  ]);
 
   return (
-    <ReviewsTable
+    <ReviewsAdminTable
       stats={{
-        total: totalCount ?? 0,
-        last24h: last24h ?? 0,
-        reported: reportedCount ?? 0,
-        hidden: hiddenCount ?? 0,
+        total: totalRes.count ?? 0,
+        last24h: last24Res.count ?? 0,
+        reported: reportedRes.count ?? 0,
+        hidden: hiddenRes.count ?? 0,
       }}
     />
   );

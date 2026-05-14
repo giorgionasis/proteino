@@ -61,7 +61,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   food: "🍽️", bars: "☕", hotels: "🏨", theater: "🎭", events: "🎉",
 };
 
-export function ReviewsTable({ stats }: Props) {
+export function LegacyCommentsTable({ stats }: Props) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -165,7 +165,7 @@ export function ReviewsTable({ stats }: Props) {
     count: rows.length,
     onOpen: (i) => {
       const row = rows[i];
-      if (row) router.push(`/admin/reviews/${row.id}`);
+      if (row) router.push(`/admin/legacy-comments/${row.id}`);
     },
     onHide: async (i) => {
       const row = rows[i];
@@ -392,7 +392,7 @@ export function ReviewsTable({ stats }: Props) {
                 >
                   <td className="px-4 py-3 max-w-[380px]">
                     <Link
-                      href={`/admin/reviews/${row.id}`}
+                      href={`/admin/legacy-comments/${row.id}`}
                       className={`text-sm hover:text-emerald-600 line-clamp-2 ${row.is_hidden ? "text-zinc-400 line-through italic" : "text-zinc-700"}`}
                     >
                       {row.body}

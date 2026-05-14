@@ -120,7 +120,7 @@ export async function GET(req: NextRequest) {
       type: "review",
       title: c.body.slice(0, 80) + (c.body.length > 80 ? "…" : ""),
       subtitle: `${u?.display_name ?? "—"}${c.report_count > 0 ? ` · ${c.report_count} reports` : ""}`,
-      href: `/admin/reviews/${c.id}`,
+      href: `/admin/legacy-comments/${c.id}`,
       thumb: null,
       badge: c.is_hidden ? "HIDDEN" : c.report_count > 0 ? "REPORTED" : null,
     };

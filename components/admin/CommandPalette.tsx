@@ -64,8 +64,8 @@ const QUICK_ACTIONS: ResultItem[] = [
   {
     id: "qa-reviews",
     type: "action",
-    title: "Reviews → Reported",
-    subtitle: "Jump to flagged comments",
+    title: "Reviews",
+    subtitle: "All user reviews + ratings + moderation",
     href: "/admin/reviews",
     thumb: null,
   },

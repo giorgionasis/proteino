@@ -20,8 +20,19 @@ interface NavSection {
   label?: string;
   /** Optional one-line hint shown faded next to the label. */
   hint?: string;
+  /** Tone dot rendered next to the label — visual hue cue per section. */
+  tone?: "red" | "blue" | "amber" | "violet" | "emerald" | "zinc";
   items: NavItem[];
 }
+
+const TONE_DOT: Record<NonNullable<NavSection["tone"]>, string> = {
+  red:     "bg-red-400",
+  blue:    "bg-blue-400",
+  amber:   "bg-amber-400",
+  violet:  "bg-violet-400",
+  emerald: "bg-emerald-400",
+  zinc:    "bg-zinc-400",
+};
 
 const NAV: NavSection[] = [
   {
@@ -31,7 +42,9 @@ const NAV: NavSection[] = [
   },
   {
     label: "Moderation",
+    tone: "red",
     items: [
+      { label: "Reviews",      href: "/admin/reviews",      icon: <IconStar />                                                                  },
       { label: "Reports",      href: "/admin/reports",      icon: <IconFlag />,    counterKey: "pendingReports",          counterTone: "red"   },
       { label: "Suggestions",  href: "/admin/suggestions",  icon: <IconPencil />,  counterKey: "unpublishedSuggestions",  counterTone: "red"   },
       { label: "Data Quality", href: "/admin/data-quality", icon: <IconAlert />,   counterKey: "dataQualityIssues",       counterTone: "amber" },
@@ -40,6 +53,7 @@ const NAV: NavSection[] = [
   {
     label: "Content",
     hint: "what users see",
+    tone: "blue",
     items: [
       { label: "Layout",           href: "/admin/layout",                 icon: <IconLayout /> },
       { label: "Related Sections", href: "/admin/related-sections",       icon: <IconLink /> },
@@ -51,6 +65,7 @@ const NAV: NavSection[] = [
   {
     label: "Taxonomy",
     hint: "platform vocabulary",
+    tone: "amber",
     items: [
       { label: "Categories",   href: "/admin/categories",      icon: <IconFolder /> },
       { label: "Regions",      href: "/admin/content/regions", icon: <IconMap /> },
@@ -60,6 +75,7 @@ const NAV: NavSection[] = [
   },
   {
     label: "Engagement",
+    tone: "violet",
     items: [
       { label: "Moments",  href: "/admin/moments",  icon: <IconConfetti /> },
       { label: "AI Usage", href: "/admin/ai-usage", icon: <IconSparkles /> },
@@ -67,16 +83,18 @@ const NAV: NavSection[] = [
   },
   {
     label: "People",
+    tone: "emerald",
     items: [
       { label: "Users", href: "/admin/users", icon: <IconUsers /> },
     ],
   },
   {
     label: "Platform",
+    tone: "zinc",
     items: [
-      { label: "Settings",          href: "/admin/settings", icon: <IconSettings /> },
-      { label: "Comments (Legacy)", href: "/admin/reviews",  icon: <IconStar />,    counterKey: "reportedComments", counterTone: "red" },
-      { label: "Showcase",          href: "/admin/showcase", icon: <IconPalette /> },
+      { label: "Settings",         href: "/admin/settings",         icon: <IconSettings /> },
+      { label: "Legacy Comments",  href: "/admin/legacy-comments",  icon: <IconArchive />, counterKey: "reportedComments", counterTone: "red" },
+      { label: "Showcase",         href: "/admin/showcase",         icon: <IconPalette /> },
     ],
   },
 ];
@@ -162,7 +180,13 @@ export function AdminSidebar({ user }: Props) {
         {NAV.map((section, sectionIdx) => (
           <div key={section.label ?? `section-${sectionIdx}`} className={sectionIdx > 0 ? "pt-3 mt-2 border-t border-zinc-100" : ""}>
             {section.label && (
-              <div className="px-3 pb-1.5 flex items-baseline gap-1.5">
+              <div className="px-3 pb-1.5 flex items-center gap-1.5">
+                {section.tone && (
+                  <span
+                    className={`w-1 h-1 rounded-full ${TONE_DOT[section.tone]} shrink-0`}
+                    aria-hidden
+                  />
+                )}
                 <span className="text-[10px] font-bold tracking-[0.08em] uppercase text-zinc-400">
                   {section.label}
                 </span>
@@ -200,10 +224,10 @@ function SidebarLink({ item, active, counters }: { item: NavItem; active: boolea
   return (
     <Link
       href={item.href}
-      className={`flex items-center gap-3 px-3 h-9 rounded-md text-sm transition-colors ${
+      className={`flex items-center gap-3 px-3 h-9 rounded-lg text-sm transition-all duration-150 ${
         active
-          ? "bg-zinc-50 text-zinc-900 font-semibold border-l-[3px] border-emerald-600 -ml-[3px] pl-[15px]"
-          : "text-zinc-600 hover:bg-zinc-50"
+          ? "bg-coral-50 text-coral-700 font-semibold"
+          : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
       }`}
     >
       <span className="w-5 h-5 flex items-center justify-center shrink-0">{item.icon}</span>
@@ -277,4 +301,7 @@ function IconLayout() {
 }
 function IconLink() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>;
+}
+function IconArchive() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>;
 }
