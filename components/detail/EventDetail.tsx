@@ -22,6 +22,7 @@ import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
+import { PersonBubble } from "@/components/detail/PersonBubble";
 import { badgeLabelForSuggestions } from "@/lib/icons";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
@@ -31,10 +32,20 @@ function getBadge(suggestionCount: number): "Verified" | "Expert" | "Platinum" |
   return badgeLabelForSuggestions(suggestionCount) ?? "Verified";
 }
 
-function getPerformerName(p: unknown): string {
-  if (typeof p === "string") return p;
-  if (p && typeof p === "object" && "name" in p) return String((p as any).name);
-  return "-";
+function getPerformerData(p: unknown): { name: string; avatarUrl: string | null } {
+  if (typeof p === "string") return { name: p, avatarUrl: null };
+  if (p && typeof p === "object") {
+    const o = p as any;
+    const name = typeof o.name === "string" ? o.name : "-";
+    const avatarUrl =
+      (typeof o.avatar === "string" && o.avatar) ||
+      (typeof o.photo === "string" && o.photo) ||
+      (typeof o.avatar_url === "string" && o.avatar_url) ||
+      (typeof o.image === "string" && o.image) ||
+      null;
+    return { name, avatarUrl };
+  }
+  return { name: "-", avatarUrl: null };
 }
 
 function formatDate(iso: string): string {
@@ -95,6 +106,8 @@ export function EventDetail({ data }: { data: ItemDetailData }) {
   const eventType = ext.event_type ?? "-";
   const address = ext.address ?? "-";
   const venue = ext.name_place ?? "";
+  const lat = typeof ext.lat === "number" ? ext.lat : null;
+  const lng = typeof ext.lng === "number" ? ext.lng : null;
   const availability = ext.availability ?? ext.status ?? "-";
   const ticketUrl = ext.ticket_url ?? "";
   const price = ext.price ?? "";
@@ -103,12 +116,16 @@ export function EventDetail({ data }: { data: ItemDetailData }) {
   const ratingCount = item.rating_count ?? 0;
   const coverUrl = item.cover_url;
   const dates = formatDates(ext.dates);
+  const venueLine = venue || (address !== "-" ? address : "");
+  const mapUrl =
+    lat != null && lng != null
+      ? `https://www.google.com/maps?q=${lat},${lng}`
+      : venueLine
+        ? `https://www.google.com/maps/search/${encodeURIComponent(venueLine)}`
+        : null;
 
-  const performers: { name: string; color: string }[] = Array.isArray(ext.performers)
-    ? ext.performers.map((p: unknown, i: number) => ({
-        name: getPerformerName(p),
-        color: ["#5a4a3a","#3a4a5a","#4a3a3a","#5a3a4a"][i % 4],
-      }))
+  const performers: { name: string; avatarUrl: string | null }[] = Array.isArray(ext.performers)
+    ? ext.performers.map((p: unknown) => getPerformerData(p)).filter((p) => p.name !== "-")
     : [];
 
   const ratingDistribution = data.ratingDistribution;
@@ -172,28 +189,47 @@ export function EventDetail({ data }: { data: ItemDetailData }) {
         />
       )}
 
-      {/* Event info block */}
-      <div className="mx-6 mt-6 rounded-[12px] p-6 space-y-4" style={{ backgroundColor: "#F2F2F7" }}>
-        <p className="text-[22px] font-bold text-[#27272A] leading-[140%]">{eventType}</p>
-        <div className="flex items-start gap-3">
-          <MapPinIcon />
-          <p className="text-[16px] font-semibold text-[#3F3F46] leading-[140%] flex-1">{venue || address}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <CalendarIcon />
-          <p className="text-[16px] font-semibold text-[#3F3F46] leading-[140%]">{dates}</p>
-        </div>
-
-        {/* Availability banner */}
-        {availability !== "-" && (
-          <div className="pl-4 py-3 flex items-center gap-3 mt-2" style={{ borderLeft: "5px solid #FABB05" }}>
-            <div>
-              <span className="text-[20px] font-bold text-zinc-900">Διαθεσιμότητα: </span>
-              <span className="text-[16px] font-semibold text-zinc-800">{availability}</span>
+      {/* Event info block — only when there's something to show. */}
+      {(eventType !== "-" || venueLine || dates !== "-" || availability !== "-") && (
+        <div className="mx-6 mt-6 rounded-[12px] p-6 space-y-4" style={{ backgroundColor: "#F2F2F7" }}>
+          {eventType !== "-" && (
+            <p className="text-[22px] font-bold text-[#27272A] leading-[140%]">{eventType}</p>
+          )}
+          {venueLine && (
+            mapUrl ? (
+              <a
+                href={mapUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-start gap-3 active:opacity-70 transition-opacity"
+              >
+                <MapPinIcon />
+                <p className="text-[16px] font-semibold text-[#3F3F46] leading-[140%] flex-1 underline">{venueLine}</p>
+              </a>
+            ) : (
+              <div className="flex items-start gap-3">
+                <MapPinIcon />
+                <p className="text-[16px] font-semibold text-[#3F3F46] leading-[140%] flex-1">{venueLine}</p>
+              </div>
+            )
+          )}
+          {dates !== "-" && (
+            <div className="flex items-center gap-3">
+              <CalendarIcon />
+              <p className="text-[16px] font-semibold text-[#3F3F46] leading-[140%]">{dates}</p>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+
+          {availability !== "-" && (
+            <div className="pl-4 py-3 flex items-center gap-3 mt-2" style={{ borderLeft: "5px solid #FABB05" }}>
+              <div>
+                <span className="text-[20px] font-bold text-zinc-900">Διαθεσιμότητα: </span>
+                <span className="text-[16px] font-semibold text-zinc-800">{availability}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Ticket price + performers */}
       <div className="mt-8">
@@ -212,11 +248,14 @@ export function EventDetail({ data }: { data: ItemDetailData }) {
             <div className="py-5 space-y-5">
               <p className="pl-6 text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΚΑΛΛΙΤΕΧΝΕΣ</p>
               <div className="flex gap-4 overflow-x-auto no-scrollbar pl-6 pb-1">
-                {performers.map(p => (
-                  <div key={p.name} className="flex-none flex flex-col items-center gap-3 w-[80px]">
-                    <div className="w-[50px] h-[50px] rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                    <p className="text-[12px] font-semibold text-zinc-900 text-center leading-tight">{p.name}</p>
-                  </div>
+                {performers.map((p) => (
+                  <PersonBubble
+                    key={p.name}
+                    name={p.name}
+                    avatarUrl={p.avatarUrl}
+                    size={50}
+                    stackWidth={80}
+                  />
                 ))}
                 <div className="flex-none w-6 shrink-0" />
               </div>

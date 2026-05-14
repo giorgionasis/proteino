@@ -230,26 +230,34 @@ export function RecipeDetail({ data }: { data: ItemDetailData }) {
         </div>
       )}
 
-      {/* Metadata */}
+      {/* Metadata — hide rows where everything is empty. */}
       <div className="mt-6">
-        <InfoDivider />
-        <div className="flex pl-6 py-5">
-          <InfoCell label="ΚΑΤΗΓΟΡΙΑ" value={category} />
-          <InfoCell label="ΕΠΙΠΕΔΟ"   value={level}    />
-        </div>
-        <InfoDivider />
-        <div className="flex pl-6 py-5">
-          <InfoCell label="ΜΕΡΙΔΕΣ"   value={servings > 0 ? String(servings) : "-"} />
-          <InfoCell label="ΘΕΡΜΙΔΕΣ"  value={calories}         />
-        </div>
-        <InfoDivider />
-        <div className="pl-6 pr-6 py-5 space-y-3">
-          <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΠΡΟΕΛΕΥΣΗ</p>
-          <div className="flex items-center gap-3">
-            <div className="w-[46px] h-[46px] rounded-full bg-[#c4a5b5] shrink-0" />
-            <p className="text-[18px] font-bold text-zinc-800">{origin}</p>
-          </div>
-        </div>
+        {(category !== "-" || level !== "-") && (
+          <>
+            <InfoDivider />
+            <div className="flex pl-6 py-5">
+              {category !== "-" ? <InfoCell label="ΚΑΤΗΓΟΡΙΑ" value={category} /> : <div className="flex-1" />}
+              {level !== "-" ? <InfoCell label="ΕΠΙΠΕΔΟ" value={level} /> : <div className="flex-1" />}
+            </div>
+          </>
+        )}
+        {(servings > 0 || calories !== "-") && (
+          <>
+            <InfoDivider />
+            <div className="flex pl-6 py-5">
+              {servings > 0 ? <InfoCell label="ΜΕΡΙΔΕΣ" value={String(servings)} /> : <div className="flex-1" />}
+              {calories !== "-" ? <InfoCell label="ΘΕΡΜΙΔΕΣ" value={calories} /> : <div className="flex-1" />}
+            </div>
+          </>
+        )}
+        {origin !== "-" && (
+          <>
+            <InfoDivider />
+            <div className="pl-6 pr-6 py-5">
+              <InfoCell label="ΠΡΟΕΛΕΥΣΗ" value={origin} />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Ingredients */}
@@ -311,18 +319,6 @@ export function RecipeDetail({ data }: { data: ItemDetailData }) {
           </div>
         </div>
       )}
-
-      {/* Online order banner */}
-      <div className="mx-6 mt-6 rounded-[12px] px-6 py-5 flex items-center justify-between" style={{ backgroundColor: "#FFF5EC" }}>
-        <div className="space-y-1">
-          <p className="text-[14px] font-bold" style={{ color: "#4A0800" }}>Αγόρασε τα υλικά online</p>
-          <p className="text-[12px] font-medium text-zinc-500">Γρήγορη παράδοση στο σπίτι σου</p>
-        </div>
-        <button className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#FE6F5E] text-[13px] font-semibold text-white active:opacity-80 transition-opacity">
-          Παραγγελία
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </button>
-      </div>
 
       {/* Bookmark status chips — always visible, save affordance + state setter. */}
       <div className="px-6 mt-8">

@@ -1,12 +1,44 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-14 (session 23 — Phase A.6 + audit cleanup + Google rich-results SEO)
+Last updated: 2026-05-14 (session 24 — detail-page Figma alignment sweep)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 23 (current) finished:**
+**Current state — session 24 (current) finished:**
+
+The "detail-page Figma alignment sweep" punched out of CLAUDE.md §25's open punch list. CLAUDE.md claimed 7 pages were on legacy InfoCell layout; the honest audit (read each component vs. BookDetail/MovieDetail target) showed only 2 needed real surgery — **Bars + Series**. The other 5 (Hotels, Food, Recipes, Theater, Events) had been quietly upgraded in prior sessions but kept three consistent gaps: empty cells rendering `"—"`, gray-circle person placeholders, dead-end map/order buttons. All 7 are now consistent.
+
+**Shipped:**
+- ✅ **New shared component `<PersonBubble>`** (`components/detail/PersonBubble.tsx`, 50 lines). Wraps `AvatarImage` with a circular crop + optional caption label. Two layouts: `stack` (vertical, for actor/performer carousels) and `inline` (horizontal, for director/writer rows). Deterministic colored-initial fallback when no `avatarUrl`. Replaces every gray-circle `#3a4a5a` / `#5a4a3a` placeholder across Series, Theater, Event detail pages. Extracts `avatar` / `photo` / `avatar_url` / `image` from the jsonb `actors[]` / `performers[]` arrays when admin has stored a real photo.
+- ✅ **SeriesDetail aligned.** Added the missing featured suggester block (was absent entirely — biggest gap of any page). Replaced gray-circle director + actor placeholders with `PersonBubble`. Wired the trailer play-button overlay to `ext.trailer_url` (the UI_AUDIT.md "fake play button" complaint — now hides when no trailer). Empty InfoCells hidden across all 4 metadata rows.
+- ✅ **BarsDetail aligned (biggest surgery).** Removed the 3-col boxed stat bar that violated CLAUDE.md §25's "3-col bar is conditional, not default" rule. Title row now uses inline `RatingLine` like every other category. Added the missing featured suggester block. Added Google `RatingCard` when admin has stored a Google score. The `Πληροφορίες` panel now hides any row whose value is `"-"` and every visible row is a real link (`tel:` for phone, `https://` for website, Google Maps for address — derived from lat/lng if present, else from `{title} {address}` search).
+- ✅ **TheaterDetail polished.** Replaced gray-circle actor placeholders with `PersonBubble`. Venue block hides when both `name_place` and `address` are empty; map button now wires to Google Maps with lat/lng (or address fallback). Empty InfoCell rows hidden.
+- ✅ **EventDetail polished.** Replaced gray-circle performer placeholders with `PersonBubble`. Venue line is now clickable when a map URL can be derived; each row inside the event info block hides independently; the whole info block hides when nothing to show.
+- ✅ **FoodDetail polished.** Empty InfoCells hidden (no more `"—"` for ΚΑΤΗΓΟΡΙΑ / ΚΟΥΖΙΝΑ / ΤΗΛΕΦΩΝΟ / ΠΛΗΡΟΦΟΡΙΕΣ). `"Άνοιγμα στους χάρτες"` button (was a non-clickable `<button>`) wired to Google Maps with lat/lng (or `{title} {address}` fallback).
+- ✅ **HotelDetail polished.** Empty InfoCells hidden — rooms/breakfast/parking no longer show `"—"` for migrated venues with missing data. Map button wired to Google Maps.
+- ✅ **RecipeDetail polished.** Empty InfoCells hidden across all 3 metadata rows. Removed the dead gray-circle placeholder next to origin (it stood for nothing — origin isn't a person). **Removed the fake "Αγόρασε τα υλικά online · Παραγγελία" CTA** — the button wasn't wired to any affiliate URL. Classic UI_AUDIT.md "this app is not real" tell; admin can re-add via the `page_sections` widget system if/when an ingredients-delivery partnership ships.
+
+**Principles enforced platform-wide on detail pages (added to CLAUDE.md §25):**
+1. **Empty-state = hide, not "—".** Every InfoCell / row / banner conditionally renders.
+2. **No gray-circle placeholders.** Person bubbles are either real avatars (when `ext.actors[].avatar` is set) or deterministic colored initials via `<PersonBubble>`.
+3. **No dead CTAs.** Map buttons → Google Maps. Phone → `tel:`. Website → real URL. Trailer → `trailer_url`. The fake recipe order banner is gone.
+4. **Featured suggester block on all 9.** Was missing on Bars + Series — now present everywhere.
+
+**Stats:** +483 / -232 lines across 7 detail components + 1 new shared component. `npx tsc --noEmit` → 0 errors.
+
+**Open follow-ups (next session):**
+- **Phase B — pgvector recommendations.** Biggest user-visible leap left. ~5 days. Architecture documented in AI.md §4 + PROGRESS §3 Phase B. The 1953-item corpus is finally rich enough; this unblocks the "Tailored for You" rail with real "because you liked X" reasoning.
+- **SEO redirects + indexing follow-ups.** 301-redirect map from legacy K2 URLs (still need sample of old URL format from the user to plan), `noindex` meta for thin pages (empty categories, 0-suggestion profiles, onboarding), canonical URLs on category + profile pages.
+- **Per-category visual identity (deeper redesign).** Today's sweep was UI_AUDIT.md option A — clear the noise (hide empties, kill fake CTAs, replace gray placeholders). UI_AUDIT.md option B is compound: per-category palette + cinematic hero for movies, warm photographic for hotels, paper-typographic for books, etc. Bigger visual leap, ~1.5 weeks.
+- **Remaining A.5 punch list.** Admin moderation polish (queue filter, reports priority sort, bulk ops), drop legacy `ratings`/`comments` tables (data already wiped), geographic distance ranking via region centroids, browser geolocation opt-in, map↔list drop-down reveal (Phase D — 3-4 hours, requires structural refactor of `CategoryMapView`).
+
+---
+
+## Previous sessions
+
+**Session 23 — Phase A.6 close + audit cleanup + Google rich-results SEO ✅ (2026-05-14):**
 
 This was a 4-arc consolidation session: closed the Phase A.6 deferred items, audited the codebase for logic/bug inconsistencies and fixed them in 3 batches, fixed redundant UI surfaces shown in inappropriate contexts (own-suggestion bookmark, self-follow), then shipped a full Google rich-results SEO layer.
 
@@ -60,10 +92,6 @@ This was a 4-arc consolidation session: closed the Phase A.6 deferred items, aud
 - **Sitemap/indexing/old-URL redirects.** When ready: (a) decide sitemap index strategy if corpus grows past 5K, (b) add `noindex` meta to thin pages (empty category lists, profile pages with 0 suggestions, onboarding), (c) wire canonical URLs on category + profile pages, (d) build a 301-redirect map from the legacy K2 URLs (need sample of old URL format + ideally the K2 URL list to plan this). Middleware constraint from session 11 still applies — must stay lean and not import `@supabase/ssr`.
 - **Add the few remaining structured-data fields** that need new admin form work: contentRating for movies/series, ISBN for books, numberOfEpisodes for series, hotel starRating, restaurant openingHours, event organizer. Infrastructure is fully there — one-line addition per field in `lib/seo/structured-data.ts` once admin can enter the data.
 - **Phase B (pgvector recommendations)** — biggest user-visible leap left. 5 days. The corpus (1953 items) is finally rich enough.
-
----
-
-## Previous sessions
 
 **Session 22 — Admin-controlled page layouts + related sections + landscape list ✅ (2026-05-13):**
 
@@ -1119,10 +1147,10 @@ Still on legacy layout (Priority 1 remaining): Series, Food, Bars, Hotels, Recip
 
 ## 2. IN PROGRESS
 
-### Detail Page Figma Alignment
-- BookDetail rebuilt to match Figma ✅
-- MovieDetail rebuilt against Figma 8095-24269 ✅ (session 11) — full awards accordion, real actor/director avatars, Greek category translations
-- Remaining 7 (Series, Food, Bars, Hotels, Recipes, Theater, Events) still on legacy `<InfoCell>` layout
+### Detail Page Figma Alignment ✅ (session 24)
+- BookDetail rebuilt to match Figma ✅ (session 11)
+- MovieDetail rebuilt against Figma 8095-24269 ✅ (session 11)
+- All 7 remaining (Series, Food, Bars, Hotels, Recipes, Theater, Events) aligned ✅ (session 24) — see §0 for the per-page shipment. Empty-state, gray-circle placeholders, dead CTAs cleared platform-wide.
 
 ### Collections — follow-ups
 - ~~Image upload (currently URL-only) → wire Supabase Storage~~ ✅ done — `<ImageUploader>` wired in `CollectionEditor`
@@ -1266,18 +1294,14 @@ C last because:
 - Extract Skeleton primitives — `components/ui/Skeleton.tsx` exists but is barely used. Roll out to category pages, profile, /reviews on initial load.
 - Replace 9+ inline `"✓ Αντιγράφηκε"` toast patterns with the new `<Toast>` + `useToast()` hook (session 15). Mostly mechanical sweep.
 
-**Detail Pages Figma Alignment (2 of 9 done)** — Series, Food, Bars, Hotels, Recipes, Theater, Events still on legacy InfoCell layout (the original archetype). Note: session 15 already extracted most of the modules used here (RatingCard, AmenitiesRow, etc.) so the remaining work is layout/composition, not new components.
+~~**Detail Pages Figma Alignment**~~ ✅ DONE (session 24). All 9 detail components now share the same Figma rhythm. New shared `<PersonBubble>` extracted to replace gray-circle person placeholders. CLAUDE.md §25 amended with three new rules (empty-state hide, no gray placeholders, no dead CTAs) that codify the sweep.
 
 **Region backfill via reverse geocoding** — bigger fix for the venue-location problem. Use existing 411 lat/lng + Nominatim reverse → admin levels → match against regions table → backfill `region_id`. Can be done independently or as part of Phase B prep.
 
 **Submission-flow auth state cleanup, onboarding flow, achievement celebration animation, etc.** — same priority as before, just queued behind A/B/C.
 
-### Priority 2 — Detail Pages Figma Alignment (2 of 9 done)
-Done: BookDetail, MovieDetail. Fix remaining 7 (Series, Food, Bars, Hotels, Recipes, Theater, Events) to:
-- Match Figma layout (read full spec via `get_figma_data` before writing code)
-- Show suggester prominently above item info (not buried in reviews)
-- Read from extension tables (data now clean and queryable)
-- Use `safeImageUrl()` already wired at the data-layer boundary
+### Priority 2 — Detail Pages Figma Alignment ✅ DONE (session 24)
+All 9 detail components now share the Figma-aligned template. Featured suggester block, inline RatingLine by default, empty-state hide, no gray-circle placeholders, no dead CTAs. New `<PersonBubble>` extracted. CLAUDE.md §25 codifies the rules. See §0 + §1 (session 24).
 
 ### Priority 3 — Guest vs Registered Auth State
 - Replace hardcoded `IS_REGISTERED` with real Supabase session check

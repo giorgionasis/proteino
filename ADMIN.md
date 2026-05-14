@@ -1,7 +1,7 @@
 # Proteino — Admin Panel
 
 > Route: `/admin` — protected via `public.users.role === 'admin'` (`ADMIN_DEV_BYPASS=1` for local skip)
-> Last updated: 2026-05-14 (session 23 — Phase A.6 close + audit cleanup + SEO infrastructure)
+> Last updated: 2026-05-14 (session 24 — detail-page Figma alignment sweep)
 
 The admin panel is the back-office for managing all platform content, structure, metadata, and what users see on the frontend.
 
@@ -628,7 +628,7 @@ The session-11 audit list below is preserved for posterity, but most items have 
 2. ~~Replace mock `/api/search` and `/api/recommendations`~~ — ✅ `/api/search` rewritten end-to-end in session 17 (Search v2 with structured Gemini filters). `/api/recommendations` is intentionally deferred until Phase B (pgvector recs).
 3. ~~Real leaderboard~~ — ✅ shipped session 19 (RPC `get_leaderboard` + real ranking).
 4. ~~Onboarding flow~~ — ✅ shipped session 20 (4 screens at `/onboarding`, gated server-side from the `(main)` layout).
-5. **Detail pages Figma alignment** — partial: Book + Movie are aligned; Series / Food / Bars / Hotels / Recipes / Theater / Events still on legacy InfoCell layout. Still real outstanding work.
+5. ~~**Detail pages Figma alignment**~~ ✅ DONE (session 24). All 9 detail components share the Figma-aligned template. New `<PersonBubble>` extracted. CLAUDE.md §25 codifies the rules (empty-state hide, no gray placeholders, no dead CTAs).
 6. **Migration consolidation** — `scripts/sql/*` is the source of truth; consolidation into `supabase/migrations/` hasn't happened. `items.poster_url` / `backdrop_url` are present in production (added by deployment scripts) but no `scripts/sql/` file owns the ADD COLUMN. Not blocking but worth tidying.
 7. **Hooks from HOOKS.md** — partial: migration 029 added rating / follow / suggestion / bookmark-milestone triggers + the moments table (sessions 21). Still TBD: TMDB new-season webhook, dormant-14d, event-passed, streak threshold, anniversary.
 

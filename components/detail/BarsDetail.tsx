@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
-import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { ItemGalleryViewer, type GalleryImage } from "@/components/detail/ItemGalleryViewer";
 import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
@@ -21,8 +20,18 @@ import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
+import { RatingCard } from "@/components/detail/RatingCard";
 import { badgeLabelForSuggestions } from "@/lib/icons";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
+
+/** Parse an external_ratings entry that can be plain string or {score, count}. */
+function parseRating(v: unknown): { score: string; count?: number } {
+  if (v && typeof v === "object" && "score" in v) {
+    const o = v as { score?: unknown; count?: unknown };
+    return { score: String(o.score ?? "-"), count: typeof o.count === "number" ? o.count : undefined };
+  }
+  return { score: typeof v === "string" || typeof v === "number" ? String(v) : "-" };
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -74,19 +83,29 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
   const category = ext.type ?? item.metadata?.tags?.[0] ?? "-";
   const address = ext.address ?? "-";
   const phone = ext.telephone ?? "-";
+  const lat = typeof ext.lat === "number" ? ext.lat : null;
+  const lng = typeof ext.lng === "number" ? ext.lng : null;
   const avgRating = item.avg_rating ?? 0;
   const ratingCount = item.rating_count ?? 0;
   const coverUrl = item.cover_url;
 
   const externalRatings = ext.external_ratings ?? {};
-  const google = externalRatings.google ?? "-";
-  const tripadvisor = externalRatings.tripadvisor ?? "-";
+  const googleR = parseRating(externalRatings.google);
 
   const information = ext.information ?? {};
   const infoLink = information.website ?? information.instagram ?? "-";
 
+  const mapUrl =
+    lat != null && lng != null
+      ? `https://www.google.com/maps?q=${lat},${lng}`
+      : address !== "-"
+        ? `https://www.google.com/maps/search/${encodeURIComponent(`${title} ${address}`)}`
+        : null;
+
   const ratingDistribution = data.ratingDistribution;
   const isTopRated = data.isTopRated;
+
+  const featured = suggestions[0];
 
   const reviews = data.reviews.map(r => ({
     id: r.id,
@@ -136,48 +155,90 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
         </div>
       )}
 
-      {/* Title */}
-      <div className="px-6 pt-5">
-        <h1 className="font-bold text-zinc-800" style={{ fontSize: 26, lineHeight: "130%" }}>{title}</h1>
+      {/* Title + rating */}
+      <div className="px-6 pt-5 space-y-2">
+        <h1 className="font-bold text-[#27272A]" style={{ fontSize: 26, lineHeight: "130%" }}>{title}</h1>
+        <div className="flex items-center gap-2">
+          <StarIcon size={14} filled />
+          <span className="text-[18px] font-bold text-[#3F3F46]">{avgRating.toFixed(2)}</span>
+          <span className="w-1 h-1 rounded-full bg-zinc-400 shrink-0" />
+          <span className="text-[14px] font-semibold text-[#3F3F46] underline">{ratingCount} αξιολογήσεις</span>
+        </div>
+        {category !== "-" && (
+          <p className="text-[14px] font-semibold text-zinc-500 uppercase tracking-[0.1px] pt-1">{category}</p>
+        )}
       </div>
 
-      {/* Rating bar */}
-      <div className="mx-6 mt-5 rounded-[12px] border border-zinc-200 px-4 py-6 flex items-center justify-between">
-        <div className="flex flex-col items-center gap-2">
-          <span className="text-[18px] font-bold text-zinc-800 leading-none">{avgRating.toFixed(2)}</span>
-          <div className="flex items-center gap-1">
-            {[1,2,3,4,5].map(s => <StarIcon key={s} size={11} filled={s <= Math.round(avgRating)} />)}
-          </div>
-        </div>
-        <div className="w-px h-[34px] bg-zinc-200" />
-        <div className="space-y-1 text-center">
-          <p className="text-[14px] font-bold text-zinc-800">Google</p>
-          <p className="text-[13px] font-medium text-zinc-600">{google}</p>
-        </div>
-        <div className="w-px h-[34px] bg-zinc-200" />
-        <div className="flex flex-col items-center gap-1">
-          <span className="text-[18px] font-bold text-zinc-800 leading-none">{ratingCount}</span>
-          <span className="text-[12px] font-semibold text-zinc-700 underline">αξιολογήσεις</span>
-        </div>
-      </div>
-
-      {/* Contact info */}
-      <div className="mx-6 mt-6 rounded-[12px] bg-[#F2F2F7] px-5 py-6 space-y-5">
-        <p className="text-[16px] font-bold text-zinc-800">Πληροφορίες</p>
-        {[
-          { label: "Διεύθυνση", value: address },
-          { label: "Τηλέφωνο",  value: phone   },
-          { label: "Περισσότερα", value: infoLink },
-        ].map(({ label, value }, i) => (
-          <div key={label}>
-            {i > 0 && <div className="h-px bg-zinc-200 mb-5" />}
-            <div className="flex items-center justify-between">
-              <p className="text-[15px] font-semibold text-zinc-500">{label}</p>
-              <p className="text-[15px] font-medium text-zinc-800">{value}</p>
+      {/* Featured suggestion */}
+      {featured && (
+        <div className="mx-6 mt-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <UserAvatarWithPopup user={featured.user} size={45} />
+              <div className="space-y-1">
+                <p className="text-[14px] font-bold text-zinc-800">{featured.user.display_name}</p>
+                <UserBadge suggestionCount={featured.user.suggestion_count ?? 0} variant="xs" />
+              </div>
             </div>
+            <span className="text-[14px] font-medium text-zinc-500">{formatDate(featured.created_at)}</span>
           </div>
-        ))}
-      </div>
+          {featured.reflection && <p className="text-[15px] font-normal text-zinc-900 leading-[150%]">{featured.reflection}</p>}
+        </div>
+      )}
+
+      {/* Google rating card — only when admin has stored a score. */}
+      {googleR.score !== "-" && (
+        <div className="mx-6 mt-6">
+          <RatingCard
+            brand="google"
+            score={googleR.score}
+            scale="/5"
+            count={googleR.count}
+            href={mapUrl ?? undefined}
+          />
+        </div>
+      )}
+
+      {/* Πληροφορίες — only renders rows that have real data. */}
+      {(address !== "-" || phone !== "-" || infoLink !== "-") && (
+        <div className="mx-6 mt-6 rounded-[12px] bg-[#F2F2F7] px-5 py-6 space-y-5">
+          <p className="text-[16px] font-bold text-zinc-800">Πληροφορίες</p>
+          {[
+            address !== "-" && {
+              label: "Διεύθυνση",
+              value: address,
+              href: mapUrl,
+            },
+            phone !== "-" && {
+              label: "Τηλέφωνο",
+              value: phone,
+              href: `tel:${phone}`,
+            },
+            infoLink !== "-" && {
+              label: "Περισσότερα",
+              value: infoLink,
+              href: /^https?:\/\//.test(infoLink) ? infoLink : `https://${infoLink}`,
+            },
+          ]
+            .filter((x): x is { label: string; value: string; href: string } => Boolean(x))
+            .map((row, i) => (
+              <div key={row.label}>
+                {i > 0 && <div className="h-px bg-zinc-200 mb-5" />}
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[15px] font-semibold text-zinc-500 shrink-0">{row.label}</p>
+                  <a
+                    href={row.href}
+                    target={row.label === "Τηλέφωνο" ? undefined : "_blank"}
+                    rel={row.label === "Τηλέφωνο" ? undefined : "noopener noreferrer"}
+                    className="text-[15px] font-medium text-zinc-800 text-right truncate active:opacity-70 transition-opacity"
+                  >
+                    {row.value}
+                  </a>
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
 
       {/* Bookmark status chips — always visible, save affordance + state setter. */}
       <div className="px-6 mt-8">

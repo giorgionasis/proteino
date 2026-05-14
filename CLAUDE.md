@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-14 (session 23 — Phase A.6 close + audit cleanup + Google rich-results SEO)
+**Last meaningful update:** 2026-05-14 (session 24 — detail-page Figma alignment sweep)
 
 ---
 
@@ -1037,17 +1037,21 @@ Posted via `POST /api/reports`. Idempotent on (reporter, target, reason).
 
 ---
 
-## 25. Detail Page Composition Rules (locked session 14)
+## 25. Detail Page Composition Rules (locked session 14, extended session 24)
 
 The 9 detail pages are visual variations of one archetype. Rules locked from user feedback:
 
 - **No chips under hero by default.** If a category truly needs 2-3 inline chips, surface them via the InfoCell table below the user reflection — NOT as a chip row. Movies/Series/Bars had chips in step 1; all stripped.
 - **3-col stat bar is conditional, not default.** Movies show it ONLY when Oscar present + `avgRating ≥ 4.5`. Default = inline `<RatingLine>` (`★ X.XX · N αξιολογήσεις`).
 - **Suggester block is unboxed.** Avatar + name + badge + reflection text + date, no border or fill. Books had a border; stripped.
+- **Featured suggester block is mandatory on all 9 categories.** Was missing on Bars + Series before session 24 — now present everywhere via the same `UserAvatarWithPopup` + `UserBadge` + reflection pattern.
 - **1-column list across all 9 categories.** New `<RowCard>` variant for portrait categories (movies/series/books) — small 88×132 poster left + title/meta/byline/rating right. Carousels stay portrait.
 - **Histogram + Top Rated** combine ratings from BOTH sources (`ratings` table + `suggestions.rating` field), deduped by user. Server-side computation, override `item.rating_count + item.avg_rating` so visible count + avg match what's shown.
 - **Extra ratings row** ("Άλλες βαθμολογίες") below review carousel — compact rows for users who rated but didn't write a suggestion. Common on migrated items.
 - **Own-suggestion behavior** — when viewing your own suggestion, the rate-this-item card is replaced with `<OwnSuggestionActions>` (Επεξεργασία + Διαγραφή). Comments stay open.
+- **Empty-state = hide, never render "—" (locked session 24).** Every InfoCell / row / banner / panel conditionally renders. If a metadata pair has both cells empty, hide the whole row including its divider. If one cell is empty, render an empty `<div className="flex-1" />` spacer so the visible cell keeps its layout. If a category-specific module (amenities, external ratings, venue block, performers carousel) has no backing data, hide the whole module. No `"—"` placeholder text anywhere.
+- **No gray-circle placeholders for people (locked session 24).** Every actor / performer / director / writer bubble is `<PersonBubble name avatarUrl?>` — renders the real image when `ext.actors[].avatar` / `.photo` / `.avatar_url` / `.image` exists, otherwise a deterministic colored-initial circle via `<AvatarImage>`'s palette hash. No more `#3a4a5a` / `#5a4a3a` hardcoded fill blocks. Two layouts: `stack` (vertical, used in actor/performer carousels) and `inline` (horizontal, used in director / writer rows).
+- **No dead CTAs (locked session 24).** Every button / link goes somewhere real. Map buttons → Google Maps (lat/lng if present, else `{title} {address}` search URL). Phone numbers → `tel:`. Website rows → `https://` URL (auto-prefixed when admin entered bare domain). Trailer overlays → `ext.trailer_url`, hidden when absent. The fake recipe "Αγόρασε τα υλικά online · Παραγγελία" CTA was deleted — admin can re-add via the `page_sections` widget system when an affiliate ships.
 
 ---
 

@@ -25,6 +25,7 @@ import { OutlinedPill } from "@/components/ui/OutlinedPill";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
+import { PersonBubble } from "@/components/detail/PersonBubble";
 import { badgeLabelForSuggestions } from "@/lib/icons";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
@@ -42,10 +43,19 @@ function getBadge(suggestionCount: number): "Verified" | "Expert" | "Platinum" |
   return badgeLabelForSuggestions(suggestionCount) ?? "Verified";
 }
 
-function getActorName(actor: unknown): string {
-  if (typeof actor === "string") return actor;
-  if (actor && typeof actor === "object" && "name" in actor) return String((actor as any).name);
-  return "-";
+function getActorData(actor: unknown): { name: string; avatarUrl: string | null } {
+  if (typeof actor === "string") return { name: actor, avatarUrl: null };
+  if (actor && typeof actor === "object") {
+    const o = actor as any;
+    const name = typeof o.name === "string" ? o.name : "-";
+    const avatarUrl =
+      (typeof o.avatar === "string" && o.avatar) ||
+      (typeof o.photo === "string" && o.photo) ||
+      (typeof o.avatar_url === "string" && o.avatar_url) ||
+      null;
+    return { name, avatarUrl };
+  }
+  return { name: "-", avatarUrl: null };
 }
 
 function formatDate(iso: string): string {
@@ -109,6 +119,8 @@ export function TheaterDetail({ data }: { data: ItemDetailData }) {
   const director = ext.director ?? "-";
   const venue = ext.name_place ?? "-";
   const address = ext.address ?? "-";
+  const lat = typeof ext.lat === "number" ? ext.lat : null;
+  const lng = typeof ext.lng === "number" ? ext.lng : null;
   const availability = ext.availability ?? "-";
   const ticketUrl = ext.ticket_url ?? "";
   const price = ext.price ?? "";
@@ -117,12 +129,15 @@ export function TheaterDetail({ data }: { data: ItemDetailData }) {
   const ratingCount = item.rating_count ?? 0;
   const coverUrl = item.cover_url;
   const dates = formatDates(ext.dates);
+  const mapUrl =
+    lat != null && lng != null
+      ? `https://www.google.com/maps?q=${lat},${lng}`
+      : address !== "-"
+        ? `https://www.google.com/maps/search/${encodeURIComponent(`${venue !== "-" ? venue : title} ${address}`)}`
+        : null;
 
-  const actors: { name: string; color: string }[] = Array.isArray(ext.actors)
-    ? ext.actors.map((a: unknown, i: number) => ({
-        name: getActorName(a),
-        color: ["#5a4a3a","#3a4a5a","#4a3a3a","#5a3a4a","#3a5a4a","#4a4a3a"][i % 6],
-      }))
+  const actors: { name: string; avatarUrl: string | null }[] = Array.isArray(ext.actors)
+    ? ext.actors.map((a: unknown) => getActorData(a)).filter((a) => a.name !== "-")
     : [];
 
   const ratingDistribution = data.ratingDistribution;
@@ -189,14 +204,27 @@ export function TheaterDetail({ data }: { data: ItemDetailData }) {
         />
       )}
 
-      {/* Venue block */}
-      <div className="mx-6 mt-6 rounded-[12px] p-6 space-y-3" style={{ backgroundColor: "#F2F2F7" }}>
-        <p className="text-[20px] font-bold text-[#27272A] leading-[140%]">{venue}</p>
-        <p className="text-[16px] font-semibold text-[#3F3F46] leading-[140%]">{address}</p>
-        <button className="flex items-center gap-2 text-[14px] font-semibold text-zinc-700 underline">
-          <MapPinIcon /> Άνοιγμα στους χάρτες
-        </button>
-      </div>
+      {/* Venue block — only when admin filled venue or address. */}
+      {(venue !== "-" || address !== "-") && (
+        <div className="mx-6 mt-6 rounded-[12px] p-6 space-y-3" style={{ backgroundColor: "#F2F2F7" }}>
+          {venue !== "-" && (
+            <p className="text-[20px] font-bold text-[#27272A] leading-[140%]">{venue}</p>
+          )}
+          {address !== "-" && (
+            <p className="text-[16px] font-semibold text-[#3F3F46] leading-[140%]">{address}</p>
+          )}
+          {mapUrl && (
+            <a
+              href={mapUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-[14px] font-semibold text-zinc-700 underline active:opacity-70 transition-opacity"
+            >
+              <MapPinIcon /> Άνοιγμα στους χάρτες
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Availability banner */}
       {availability !== "-" && (
@@ -208,22 +236,34 @@ export function TheaterDetail({ data }: { data: ItemDetailData }) {
         </div>
       )}
 
-      {/* Metadata */}
+      {/* Metadata — hide rows where both cells are empty. */}
       <div className="mt-8">
-        <InfoDivider />
-        <div className="flex pl-6 py-5">
-          <InfoCell label="ΚΑΤΗΓΟΡΙΑ" value={category} />
-          <InfoCell label="ΧΡΟΝΟΣ"    value={year} />
-        </div>
-        <InfoDivider />
-        <div className="flex pl-6 py-5">
-          <InfoCell label="ΣΥΓΓΡΑΦΕΑΣ" value={writer} />
-          <InfoCell label="ΣΚΗΝΟΘΕΣΙΑ" value={director} />
-        </div>
-        <InfoDivider />
-        <div className="pl-6 py-5">
-          <InfoCell label="ΠΑΡΑΣΤΑΣΕΙΣ" value={dates} />
-        </div>
+        {(category !== "-" || year !== "-") && (
+          <>
+            <InfoDivider />
+            <div className="flex pl-6 py-5">
+              {category !== "-" ? <InfoCell label="ΚΑΤΗΓΟΡΙΑ" value={category} /> : <div className="flex-1" />}
+              {year !== "-" ? <InfoCell label="ΧΡΟΝΟΣ" value={year} /> : <div className="flex-1" />}
+            </div>
+          </>
+        )}
+        {(writer !== "-" || director !== "-") && (
+          <>
+            <InfoDivider />
+            <div className="flex pl-6 py-5">
+              {writer !== "-" ? <InfoCell label="ΣΥΓΓΡΑΦΕΑΣ" value={writer} /> : <div className="flex-1" />}
+              {director !== "-" ? <InfoCell label="ΣΚΗΝΟΘΕΣΙΑ" value={director} /> : <div className="flex-1" />}
+            </div>
+          </>
+        )}
+        {dates !== "-" && (
+          <>
+            <InfoDivider />
+            <div className="pl-6 py-5">
+              <InfoCell label="ΠΑΡΑΣΤΑΣΕΙΣ" value={dates} />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Cast */}
@@ -231,11 +271,14 @@ export function TheaterDetail({ data }: { data: ItemDetailData }) {
         <div className="mt-2 py-5 space-y-5">
           <p className="pl-6 text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΕΡΜΗΝΕΥΤΕΣ</p>
           <div className="flex gap-4 overflow-x-auto no-scrollbar pl-6 pb-1">
-            {actors.map(actor => (
-              <div key={actor.name} className="flex-none flex flex-col items-center gap-3 w-[72px]">
-                <div className="w-[50px] h-[50px] rounded-full shrink-0" style={{ backgroundColor: actor.color }} />
-                <p className="text-[12px] font-semibold text-zinc-900 text-center leading-tight">{actor.name}</p>
-              </div>
+            {actors.map((actor) => (
+              <PersonBubble
+                key={actor.name}
+                name={actor.name}
+                avatarUrl={actor.avatarUrl}
+                size={50}
+                stackWidth={72}
+              />
             ))}
             <div className="flex-none w-6 shrink-0" />
           </div>

@@ -86,9 +86,17 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
   const cuisine = ext.cuisine ?? "-";
   const address = ext.address ?? "-";
   const phone = ext.telephone ?? "-";
+  const lat = typeof ext.lat === "number" ? ext.lat : null;
+  const lng = typeof ext.lng === "number" ? ext.lng : null;
   const avgRating = item.avg_rating ?? 0;
   const ratingCount = item.rating_count ?? 0;
   const coverUrl = item.cover_url;
+  const mapUrl =
+    lat != null && lng != null
+      ? `https://www.google.com/maps?q=${lat},${lng}`
+      : address !== "-"
+        ? `https://www.google.com/maps/search/${encodeURIComponent(`${title} ${address}`)}`
+        : null;
 
   const externalRatings = ext.external_ratings ?? {};
   const google = externalRatings.google ?? "-";
@@ -228,26 +236,45 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
         </div>
       )}
 
-      {/* Metadata */}
+      {/* Metadata — hide rows where everything is empty. */}
       <div className="mt-8">
-        <InfoDivider />
-        <div className="flex pl-6 py-5">
-          <InfoCell label="ΚΑΤΗΓΟΡΙΑ" value={category} />
-          <InfoCell label="ΚΟΥΖΙΝΑ"   value={cuisine} />
-        </div>
-        <InfoDivider />
-        <div className="pl-6 pr-6 py-5 space-y-5">
-          <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΤΟΠΟΘΕΣΙΑ</p>
-          <p className="text-[18px] font-bold text-zinc-800">{address}</p>
-          <button className="flex items-center gap-2 text-[14px] font-bold text-zinc-700 underline">
-            <MapPinIcon /> Άνοιγμα στους χάρτες
-          </button>
-        </div>
-        <InfoDivider />
-        <div className="flex pl-6 py-5">
-          <InfoCell label="ΤΗΛΕΦΩΝΟ"   value={phone} />
-          <InfoCell label="ΠΛΗΡΟΦΟΡΙΕΣ" value={infoLink} coral />
-        </div>
+        {(category !== "-" || cuisine !== "-") && (
+          <>
+            <InfoDivider />
+            <div className="flex pl-6 py-5">
+              {category !== "-" ? <InfoCell label="ΚΑΤΗΓΟΡΙΑ" value={category} /> : <div className="flex-1" />}
+              {cuisine !== "-" ? <InfoCell label="ΚΟΥΖΙΝΑ" value={cuisine} /> : <div className="flex-1" />}
+            </div>
+          </>
+        )}
+        {address !== "-" && (
+          <>
+            <InfoDivider />
+            <div className="pl-6 pr-6 py-5 space-y-5">
+              <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΤΟΠΟΘΕΣΙΑ</p>
+              <p className="text-[18px] font-bold text-zinc-800">{address}</p>
+              {mapUrl && (
+                <a
+                  href={mapUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-[14px] font-bold text-zinc-700 underline active:opacity-70 transition-opacity"
+                >
+                  <MapPinIcon /> Άνοιγμα στους χάρτες
+                </a>
+              )}
+            </div>
+          </>
+        )}
+        {(phone !== "-" || infoLink !== "-") && (
+          <>
+            <InfoDivider />
+            <div className="flex pl-6 py-5">
+              {phone !== "-" ? <InfoCell label="ΤΗΛΕΦΩΝΟ" value={phone} /> : <div className="flex-1" />}
+              {infoLink !== "-" ? <InfoCell label="ΠΛΗΡΟΦΟΡΙΕΣ" value={infoLink} coral /> : <div className="flex-1" />}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Delivery — only show rows for platforms that actually have a link */}

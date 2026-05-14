@@ -22,6 +22,7 @@ import { UserBadge } from "@/components/ui/UserBadge";
 import { Icon } from "@/components/ui/Icon";
 import { ReportLink } from "@/components/report/ReportLink";
 import { ReviewCardFooter } from "@/components/detail/ReviewCardFooter";
+import { PersonBubble } from "@/components/detail/PersonBubble";
 import { streamingIconForChannel, badgeLabelForSuggestions } from "@/lib/icons";
 import type { ItemDetailData } from "@/app/(main)/[category]/[id]/page";
 
@@ -31,10 +32,19 @@ function getBadge(suggestionCount: number): "Expert" | "Platinum" | "Gold" | "Ve
   return badgeLabelForSuggestions(suggestionCount) ?? "Verified";
 }
 
-function getActorName(actor: unknown): string {
-  if (typeof actor === "string") return actor;
-  if (actor && typeof actor === "object" && "name" in actor) return String((actor as any).name);
-  return "-";
+function getActorData(actor: unknown): { name: string; avatarUrl: string | null } {
+  if (typeof actor === "string") return { name: actor, avatarUrl: null };
+  if (actor && typeof actor === "object") {
+    const o = actor as any;
+    const name = typeof o.name === "string" ? o.name : "-";
+    const avatarUrl =
+      (typeof o.avatar === "string" && o.avatar) ||
+      (typeof o.photo === "string" && o.photo) ||
+      (typeof o.avatar_url === "string" && o.avatar_url) ||
+      null;
+    return { name, avatarUrl };
+  }
+  return { name: "-", avatarUrl: null };
 }
 
 function formatDate(iso: string): string {
@@ -92,13 +102,13 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
   const ratingCount = item.rating_count ?? 0;
   const plot = ext.plot ?? "";
   const coverUrl = item.cover_url;
+  const trailerUrl = typeof ext.trailer_url === "string" && ext.trailer_url ? ext.trailer_url : null;
 
-  const actors: { name: string; placeholder_color: string }[] = Array.isArray(ext.actors)
-    ? ext.actors.map((a: unknown, i: number) => ({
-        name: getActorName(a).toUpperCase().replace(" ", "\n"),
-        placeholder_color: ["#5a4a3a","#3a4a5a","#4a3a3a","#5a3a4a","#3a5a4a"][i % 5],
-      }))
+  const actors: { name: string; avatarUrl: string | null }[] = Array.isArray(ext.actors)
+    ? ext.actors.map((a: unknown) => getActorData(a)).filter((a) => a.name !== "-")
     : [];
+
+  const featured = suggestions[0];
 
   const ratingDistribution = data.ratingDistribution;
   const isTopRated = data.isTopRated;
@@ -135,18 +145,25 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
         }
       />
 
-      {/* Cover placeholder */}
+      {/* Cover */}
       <div className="px-6 pt-6">
         <div data-orbit-source className="relative w-full h-[228px] rounded-[12px] overflow-hidden bg-zinc-800 flex items-center justify-center">
           {coverUrl ? <img src={coverUrl} alt={title} className="w-full h-full object-cover" /> : <span className="text-zinc-500 text-4xl">📺</span>}
-          {/* Trailer play button */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-[60px] h-[60px] rounded-full bg-white/80 flex items-center justify-center shadow-lg">
-              <svg width="20" height="22" viewBox="0 0 20 22" fill="none" aria-hidden>
-                <path d="M2 1.5L18 11L2 20.5V1.5Z" fill="#27272A" />
-              </svg>
-            </div>
-          </div>
+          {trailerUrl && (
+            <a
+              href={trailerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Παρακολούθηση trailer"
+              className="absolute inset-0 flex items-center justify-center group"
+            >
+              <div className="w-[60px] h-[60px] rounded-full bg-white/85 flex items-center justify-center shadow-lg transition-transform group-active:scale-95">
+                <svg width="20" height="22" viewBox="0 0 20 22" fill="none" aria-hidden>
+                  <path d="M2 1.5L18 11L2 20.5V1.5Z" fill="#27272A" />
+                </svg>
+              </div>
+            </a>
+          )}
         </div>
       </div>
 
@@ -161,43 +178,79 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
         </div>
       </div>
 
-
-      {/* Information */}
-      <div className="mt-8">
-        <InfoDivider />
-        <div className="flex pl-6 py-5">
-          <InfoCell label="ΚΑΤΗΓΟΡΙΑ"  value={genre} />
-          <InfoCell label="ΣΕΖΟΝ"      value={seasons > 0 ? String(seasons) : "-"} />
-        </div>
-        <InfoDivider />
-        <div className="flex pl-6 py-5">
-          <InfoCell label="ΕΝΑΡΞΗ"     value={String(year)} />
-          <InfoCell label="ΧΩΡΑ"       value={country} />
-        </div>
-        <InfoDivider />
-        <div className="flex pl-6 py-5">
-          <InfoCell label="ΓΛΩΣΣΑ"     value={language} />
-          <InfoCellWithIcon label="ΔΙΚΤΥΟ" value={network} icon={streamingIconForChannel(network)} />
-        </div>
-        <InfoDivider />
-        <div className="pl-6 py-5 space-y-5">
-          <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΣΚΗΝΟΘΕΣΙΑ</p>
-          <div className="flex items-center gap-5">
-            <div className="w-[50px] h-[50px] rounded-full shrink-0" style={{ backgroundColor: "#3a3a4a" }} />
-            <p className="text-[18px] font-bold text-zinc-900">{directorName}</p>
+      {/* Featured suggestion */}
+      {featured && (
+        <div className="mx-6 mt-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <UserAvatarWithPopup user={featured.user} size={45} />
+              <div className="space-y-1">
+                <p className="text-[14px] font-bold text-zinc-800">{featured.user.display_name}</p>
+                <UserBadge suggestionCount={featured.user.suggestion_count ?? 0} variant="xs" />
+              </div>
+            </div>
+            <span className="text-[14px] font-medium text-zinc-500">{formatDate(featured.created_at)}</span>
           </div>
+          {featured.reflection && <p className="text-[15px] font-normal text-zinc-900 leading-[150%]">{featured.reflection}</p>}
         </div>
+      )}
+
+      {/* Information — only render rows where at least one cell has a real value. */}
+      <div className="mt-8">
+        {(genre !== "-" || seasons > 0) && (
+          <>
+            <InfoDivider />
+            <div className="flex pl-6 py-5">
+              {genre !== "-" ? <InfoCell label="ΚΑΤΗΓΟΡΙΑ" value={genre} /> : <div className="flex-1" />}
+              {seasons > 0 ? <InfoCell label="ΣΕΖΟΝ" value={String(seasons)} /> : <div className="flex-1" />}
+            </div>
+          </>
+        )}
+        {(String(year) !== "-" || country !== "-") && (
+          <>
+            <InfoDivider />
+            <div className="flex pl-6 py-5">
+              {String(year) !== "-" ? <InfoCell label="ΕΝΑΡΞΗ" value={String(year)} /> : <div className="flex-1" />}
+              {country !== "-" ? <InfoCell label="ΧΩΡΑ" value={country} /> : <div className="flex-1" />}
+            </div>
+          </>
+        )}
+        {(language !== "-" || network !== "-") && (
+          <>
+            <InfoDivider />
+            <div className="flex pl-6 py-5">
+              {language !== "-" ? <InfoCell label="ΓΛΩΣΣΑ" value={language} /> : <div className="flex-1" />}
+              {network !== "-" ? (
+                <InfoCellWithIcon label="ΔΙΚΤΥΟ" value={network} icon={streamingIconForChannel(network)} />
+              ) : (
+                <div className="flex-1" />
+              )}
+            </div>
+          </>
+        )}
+        {directorName !== "-" && (
+          <>
+            <InfoDivider />
+            <div className="pl-6 py-5 space-y-5">
+              <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΣΚΗΝΟΘΕΣΙΑ</p>
+              <PersonBubble name={directorName} layout="inline" size={50} />
+            </div>
+          </>
+        )}
         {actors.length > 0 && (
           <>
             <InfoDivider />
             <div className="py-5 space-y-5">
               <p className="pl-6 text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΠΡΩΤΑΓΩΝΙΣΤΕΣ</p>
               <div className="flex gap-4 overflow-x-auto no-scrollbar pl-6 pb-1">
-                {actors.map(actor => (
-                  <div key={actor.name} className="flex-none flex flex-col items-center gap-4 w-[68px]">
-                    <div className="w-[50px] h-[50px] rounded-full shrink-0" style={{ backgroundColor: actor.placeholder_color }} />
-                    <p className="text-[12px] font-bold text-zinc-900 text-center uppercase leading-tight whitespace-pre-line">{actor.name}</p>
-                  </div>
+                {actors.map((actor) => (
+                  <PersonBubble
+                    key={actor.name}
+                    name={actor.name}
+                    avatarUrl={actor.avatarUrl}
+                    size={50}
+                    stackWidth={72}
+                  />
                 ))}
                 <div className="flex-none w-6 shrink-0" />
               </div>
