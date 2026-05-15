@@ -47,6 +47,7 @@ export function SubmissionAITab() {
       <ProteinoIntelligenceShowcase />
       <AchievementProgressShowcase />
       <AchievementUnlockedModalShowcase />
+      <ReviewMilestoneModalShowcase />
     </>
   );
 }
@@ -137,6 +138,128 @@ function AchievementUnlockedModalShowcase() {
       <Variant label="All states (interactive)">
         <div className="flex flex-wrap gap-2 max-w-[640px]">
           {ACH_STATES.map((s) => (
+            <button
+              key={s.label}
+              onClick={() => setActive(s.data)}
+              className="h-9 px-3 rounded-full bg-zinc-100 hover:bg-zinc-200 text-[12px] font-semibold text-zinc-700 transition-colors"
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </Variant>
+      <AchievementUnlockedModal
+        open={active !== null}
+        achievement={active}
+        onClose={() => setActive(null)}
+      />
+    </ShowcaseSection>
+  );
+}
+
+// ── Review-milestone celebration ──────────────────────────────────────
+//
+// Same AchievementUnlockedModal, fired from /api/reviews on first-time
+// review counts 1/5/10/25/50. Distinct from suggestion milestones —
+// the label_line1 / label_line2 overrides on the moment's display
+// (admin-editable via /admin/moments) hide the suggestion-tier label
+// ("Επαληθευμένος χρήστης") and surface a review-specific label
+// instead ("Πρώτη / αξιολόγηση", "Trusted / Reviewer", etc.).
+//
+// Synthetic data here mirrors migration 036's seed so what you see in
+// the showcase matches what users see on the detail page out of the
+// box. Admins can edit the live copy via /admin/moments — for the
+// current production state, preview from there instead.
+
+function makeReviewMilestoneData(
+  count: number,
+  badge: "verified" | "gold" | "expert" | "platinum",
+  labelLine1: string,
+  labelLine2: string,
+  title: string,
+  subtitle: string,
+  body: string,
+): AchievementData {
+  return {
+    id:      `showcase-review-${count}`,
+    key:     `achievement.review.preview_${count}`,
+    surface: "achievement_modal",
+    copy:    { title, subtitle, body },
+    display: {
+      variant:     "tier_unlock",
+      badge,
+      target:      count,
+      count,
+      delay_ms:    0,
+      label_line1: labelLine1,
+      label_line2: labelLine2,
+    },
+  };
+}
+
+const REVIEW_STATES: { label: string; data: AchievementData }[] = [
+  {
+    label: "#1 — Πρώτη αξιολόγηση",
+    data: makeReviewMilestoneData(
+      1, "verified", "Πρώτη", "αξιολόγηση",
+      "Πρώτη σου αξιολόγηση!",
+      "Καλωσόρισες στους reviewers του proteino",
+      "Με τις αξιολογήσεις σου βοηθάς **άλλους χρήστες** να ανακαλύψουν αυτό που αξίζει",
+    ),
+  },
+  {
+    label: "#5 — Πέντε αξιολογήσεις",
+    data: makeReviewMilestoneData(
+      5, "verified", "5", "αξιολογήσεις",
+      "Πέντε αξιολογήσεις!",
+      "Παίρνεις φόρα — η φωνή σου μετράει",
+      "Ολοκλήρωσες **5** αξιολογήσεις και τα μέλη της κοινότητας ξέρουν τη γνώμη σου",
+    ),
+  },
+  {
+    label: "#10 — Trusted Reviewer",
+    data: makeReviewMilestoneData(
+      10, "gold", "Trusted", "Reviewer",
+      "Δέκα αξιολογήσεις!",
+      "Είσαι πλέον **Trusted Reviewer** στο proteino",
+      "Ολοκλήρωσες **10** αξιολογήσεις και οι υπόλοιποι αναγνωρίζουν την κρίση σου",
+    ),
+  },
+  {
+    label: "#25 — Expert Reviewer",
+    data: makeReviewMilestoneData(
+      25, "expert", "Expert", "Reviewer",
+      "25 αξιολογήσεις — εντυπωσιακό!",
+      "Είσαι από τις δυνατές φωνές της κοινότητας",
+      "Με **25** αξιολογήσεις διαμορφώνεις πραγματικά την εμπειρία των άλλων χρηστών",
+    ),
+  },
+  {
+    label: "#50 — Top Reviewer",
+    data: makeReviewMilestoneData(
+      50, "platinum", "Top", "Reviewer",
+      "50 αξιολογήσεις!",
+      "Είσαι **Top Reviewer** — από τους πιο ενεργούς στο proteino",
+      "Με **50** αξιολογήσεις είσαι σταθερή και αξιόπιστη παρουσία στην κοινότητα",
+    ),
+  },
+];
+
+function ReviewMilestoneModalShowcase() {
+  const [active, setActive] = useState<AchievementData | null>(null);
+  return (
+    <ShowcaseSection
+      name="AchievementUnlockedModal · Review milestones"
+      filePath="components/submission/AchievementUnlockedModal.tsx"
+      description="Same modal, fired from /api/reviews after the user's 1st / 5th / 10th / 25th / 50th first-time review. Re-rating an existing item does NOT trigger. Driven by 5 rows in `moments` with trigger_event='review_published' (migration 036) — admins can edit copy + timing in /admin/moments."
+      contextLinks={[
+        { label: "/admin/moments", href: "/admin/moments" },
+        { label: "/api/reviews POST", href: "/api/reviews" },
+      ]}
+    >
+      <Variant label="All review milestones (interactive)">
+        <div className="flex flex-wrap gap-2 max-w-[640px]">
+          {REVIEW_STATES.map((s) => (
             <button
               key={s.label}
               onClick={() => setActive(s.data)}

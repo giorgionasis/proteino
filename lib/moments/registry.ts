@@ -50,6 +50,17 @@ const suggestion_count_gte: PredicateFn = (ctx, args) => {
   return count != null && count >= min;
 };
 
+/** Fires when payload.count strictly equals args.n. Used by review
+ *  milestones — semantically identical to suggestion_count_eq but
+ *  surfaced with review-specific copy in the admin form so the editor
+ *  isn't confused about which counter the predicate is gating on. */
+const review_count_eq: PredicateFn = (ctx, args) => {
+  const target = toInt(args.n);
+  if (target == null) return false;
+  const count = toInt(ctx.payload.count);
+  return count === target;
+};
+
 /** Fires when payload.bookmarkers_count >= args.min. Used for the
  *  "hot — N+ people want it too" bookmark variant. */
 const bookmarkers_count_gte: PredicateFn = (ctx, args) => {
@@ -90,6 +101,7 @@ export const PREDICATES: Record<string, PredicateFn> = {
   always,
   suggestion_count_eq,
   suggestion_count_gte,
+  review_count_eq,
   bookmarkers_count_gte,
   bookmarkers_count_zero,
   category_bookmark_count_eq,
@@ -114,6 +126,13 @@ export const PREDICATE_SCHEMAS: Record<string, PredicateSchema> = {
     description: "Ταιριάζει όταν το suggestion_count είναι ≥ N. Χρήσιμο για 'συνεχόμενα' μηνύματα μετά από έναν αριθμό.",
     args: {
       n: { label: "Ελάχιστος αριθμός προτάσεων", type: "integer" },
+    },
+  },
+  review_count_eq: {
+    label: "Όταν ο χρήστης έγραψε N αξιολογήσεις",
+    description: "Ταιριάζει ακριβώς όταν ο χρήστης δημοσιεύσει την N-οστή αξιολόγηση. Χρησιμοποιείται με trigger 'review_published' για milestone celebrations.",
+    args: {
+      n: { label: "Αριθμός αξιολογήσεων (N)", type: "integer", hint: "π.χ. 1, 5, 10, 25, 50" },
     },
   },
   bookmarkers_count_gte: {

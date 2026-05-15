@@ -103,7 +103,20 @@ export function AchievementUnlockedModal({ open, achievement, onClose }: Props) 
     : 0;
 
   const isUnlock = variant === "tier_unlock";
-  const [labelLine1, labelLine2] = TIER_LABEL[badge];
+  // Label under the hex badge can be overridden per-moment via
+  // display.label_line1 / display.label_line2 (admin-editable in the
+  // moments table). Used by review-milestone celebrations to show
+  // "Πρώτη / αξιολόγηση" instead of the suggestion-tier "Επαληθευμένος
+  // / χρήστης" — same badge icon, different semantic.
+  const overrideLine1 = typeof achievement.display.label_line1 === "string"
+    ? (achievement.display.label_line1 as string)
+    : null;
+  const overrideLine2 = typeof achievement.display.label_line2 === "string"
+    ? (achievement.display.label_line2 as string)
+    : null;
+  const [defaultLine1, defaultLine2] = TIER_LABEL[badge];
+  const labelLine1 = overrideLine1 ?? defaultLine1;
+  const labelLine2 = overrideLine2 ?? defaultLine2;
   const tierColor = TIER_COLOR[badge];
 
   const dots = variant === "progress" ? buildDots(count, target) : null;

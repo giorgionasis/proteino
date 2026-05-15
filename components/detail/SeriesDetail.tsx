@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
+import { useFlipReorder } from "@/hooks/useFlipReorder";
+import type { AchievementData } from "@/hooks/useSubmission";
 import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
 import { cn } from "@/lib/utils/cn";
@@ -73,6 +76,18 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
   const [savedRating, setSavedRating] = useState<number | null>(data.myReview?.rating ?? null);
   const [savedReflection, setSavedReflection] = useState<string | null>(data.myReview?.reflection ?? null);
   const [liveReview, setLiveReview] = useState<{ id: string; rating: number; reflection: string | null } | null>(null);
+  const [achievement, setAchievement] = useState<AchievementData | null>(null);
+  const [achievementOpen, setAchievementOpen] = useState(false);
+  const reviewsCarouselRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!achievement) return;
+    const delay = typeof achievement.display.delay_ms === "number"
+      ? achievement.display.delay_ms
+      : 2000;
+    const t = setTimeout(() => setAchievementOpen(true), delay);
+    return () => clearTimeout(t);
+  }, [achievement]);
 
   const { item, extension: ext, suggestions } = data;
   const mySuggestion = data.currentUserId ? suggestions.find(s => s.user.id === data.currentUserId) ?? null : null;
@@ -114,6 +129,8 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
     myVote: r.my_vote,
     userData: r.user,
   }));
+
+  useFlipReorder(reviewsCarouselRef, "data-review-id", [reviews.map((r) => r.id).join(",")]);
 
   return (
     <div className="pb-8">
@@ -317,6 +334,7 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
                 setSavedRating(result.rating);
                 setSavedReflection(result.reflection);
                 setLiveReview({ id: result.review_id, rating: result.rating, reflection: result.reflection });
+                if (result.achievement) setAchievement(result.achievement);
                 if (bookmark.status === "wishlist") {
                   bookmark.setStatus("done");
                   showToast("Μετακινήθηκε στα Είδα ✓");
@@ -328,7 +346,7 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
           {/* Reviews */}
           {reviews.length > 0 && (
             <div className="flex flex-col items-center w-full gap-6">
-              <div className="flex gap-5 overflow-x-auto no-scrollbar py-2.5 pl-6 w-full">
+              <div ref={reviewsCarouselRef} className="flex gap-5 overflow-x-auto no-scrollbar py-2.5 pl-6 w-full">
                 {reviews.map(review => (
                   <ReviewCard
                   key={review.id}
@@ -363,6 +381,11 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
         result={savedModal}
         category="series"
         onClose={() => setSavedModal(null)}
+      />
+      <AchievementUnlockedModal
+        open={achievementOpen}
+        achievement={achievement}
+        onClose={() => setAchievementOpen(false)}
       />
       {toast}
     </div>

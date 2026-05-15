@@ -11,6 +11,7 @@ import {
   SOFT_WARN_CHARS,
   TONE_TO_COLOR,
 } from "@/lib/reviews/quality";
+import type { AchievementData } from "@/hooks/useSubmission";
 
 /**
  * Inline review composer + success modal with FLIP morph.
@@ -40,6 +41,11 @@ interface PublishResult {
   reflection: string | null;
   avg_rating: number;
   rating_count: number;
+  /** Milestone-crossing payload from the server. Null when this publish
+   *  didn't cross a review-count threshold (or wasn't a first-time
+   *  publish on this item). Drives the achievement celebration modal
+   *  rendered by the parent detail page. */
+  achievement: AchievementData | null;
 }
 
 interface Props {
@@ -114,13 +120,16 @@ export function RateThisItem({
         setError(b.error || `Σφάλμα (${res.status})`);
         return null;
       }
-      const body = (await res.json()) as Omit<PublishResult, "rating" | "reflection">;
+      const body = (await res.json()) as Omit<PublishResult, "rating" | "reflection"> & {
+        achievement?: unknown;
+      };
       return {
         review_id: body.review_id,
         avg_rating: body.avg_rating,
         rating_count: body.rating_count,
         rating: newRating,
         reflection: newText,
+        achievement: parseAchievement(body.achievement),
       };
     } catch (e) {
       setError((e as Error).message);
@@ -487,6 +496,36 @@ function ReviewSuccessModal({
     </div>,
     document.body,
   );
+}
+
+/* ── Achievement payload parser ──────────────────────────
+ *
+ * Defensive — returns null on any shape mismatch so a server-side
+ * schema drift can never break the publish flow. Mirrors
+ * useSubmission.parseAchievement.
+ */
+
+function parseAchievement(raw: unknown): AchievementData | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== "string" || typeof r.key !== "string") return null;
+  if (r.surface !== "achievement_modal") return null;
+  const copy = r.copy as Record<string, unknown> | undefined;
+  const display = (r.display as Record<string, unknown>) ?? {};
+  if (!copy || typeof copy.title !== "string") return null;
+  return {
+    id:      r.id,
+    key:     r.key,
+    surface: "achievement_modal",
+    copy: {
+      title:    copy.title,
+      subtitle: typeof copy.subtitle === "string" ? copy.subtitle : "",
+      body:     typeof copy.body     === "string" ? copy.body     : "",
+      cta_label: typeof copy.cta_label === "string" ? copy.cta_label : undefined,
+      cta_href:  typeof copy.cta_href  === "string" ? copy.cta_href  : undefined,
+    },
+    display,
+  };
 }
 
 /* ── Star icon ──────────────────────────────────────────── */

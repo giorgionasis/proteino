@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
+import { useFlipReorder } from "@/hooks/useFlipReorder";
+import type { AchievementData } from "@/hooks/useSubmission";
 import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
 import { ExpandableText } from "@/components/ui/ExpandableText";
@@ -60,6 +63,18 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
   // ID returned from the server. Drives both the carousel + the success-modal
   // FLIP morph target lookup.
   const [liveReview, setLiveReview] = useState<{ id: string; rating: number; reflection: string | null } | null>(null);
+  const [achievement, setAchievement] = useState<AchievementData | null>(null);
+  const [achievementOpen, setAchievementOpen] = useState(false);
+  const reviewsCarouselRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!achievement) return;
+    const delay = typeof achievement.display.delay_ms === "number"
+      ? achievement.display.delay_ms
+      : 2000;
+    const t = setTimeout(() => setAchievementOpen(true), delay);
+    return () => clearTimeout(t);
+  }, [achievement]);
 
   const { item, extension: ext, suggestions } = data;
   const mySuggestion = data.currentUserId ? suggestions.find(s => s.user.id === data.currentUserId) ?? null : null;
@@ -105,6 +120,8 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
     myVote: r.my_vote,
     userData: r.user,
   }));
+
+  useFlipReorder(reviewsCarouselRef, "data-review-id", [reviews.map((r) => r.id).join(",")]);
 
   return (
     <div className="pb-8">
@@ -274,6 +291,7 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
                   rating: result.rating,
                   reflection: result.reflection,
                 });
+                if (result.achievement) setAchievement(result.achievement);
                 if (bookmark.status === "wishlist") {
                   bookmark.setStatus("done");
                   showToast("Μετακινήθηκε στα Διάβασα ✓");
@@ -283,7 +301,7 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
           )}
 
           {reviews.length > 0 && (
-            <div className="flex gap-5 overflow-x-auto no-scrollbar py-2.5 pl-6 w-full">
+            <div ref={reviewsCarouselRef} className="flex gap-5 overflow-x-auto no-scrollbar py-2.5 pl-6 w-full">
               {reviews.map(review => (
                 <ReviewCard
                   key={review.id}
@@ -330,6 +348,11 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
         result={savedModal}
         category="books"
         onClose={() => setSavedModal(null)}
+      />
+      <AchievementUnlockedModal
+        open={achievementOpen}
+        achievement={achievement}
+        onClose={() => setAchievementOpen(false)}
       />
       {toast}
     </div>

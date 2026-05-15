@@ -16,6 +16,7 @@ export type MomentTrigger =
   | "bookmark_created"
   | "bookmark_status_changed"
   | "rating_submitted"
+  | "review_published"
   | "follow_created"
   | "search_logged"
   | "dormant_14d"

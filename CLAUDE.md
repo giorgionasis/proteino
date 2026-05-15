@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-15 (session 25 — admin IA + visual refresh + Reviews admin + review writing flow redesign)
+**Last meaningful update:** 2026-05-15 (session 26 — review-milestone moments + FLIP push-right + showcase)
 
 ---
 
@@ -1996,3 +1996,124 @@ components/admin/RelatedSectionsManager.tsx ← empty-state hints per category
 - **`Last edited by X on Y`** stamps on Moments / Layout / Filters / Collections — requires `modified_by` columns + admin lookup.
 - **Confirm-before-save** on Settings / Layout / Maintenance — risky surfaces shouldn't be one-click commits.
 - **Merge Reports + Data Quality into a single Inbox**. Considered for layer A but deferred since it needs new UI scaffolding (today they're separate sidebar entries within Moderation).
+
+---
+
+## 42. Review-milestone celebrations + FLIP push-right (session 26)
+> ✅ Shipped — migration 036, `useFlipReorder` hook, `AchievementUnlockedModal.display.label_line1/2` overrides, `review_count_eq` predicate, all 9 detail components wired.
+
+After the suggestion-milestone modal landed in session 20, the natural follow-up was the parallel celebration for reviews — same modal, same DB-driven `moments` infra, different counter. Session 26 ships it and pairs it with a smaller polish item: the existing reviews now smoothly slide right when a new review is inserted at position 0, instead of snapping into place via React reconciliation.
+
+### Review-milestone trigger schedule
+
+`/api/reviews` POST counts the user's total non-hidden reviews **only when the upsert is a brand-new row** (first review on this item). Re-rating an existing item must NOT re-trigger. The route then resolves a `review_published` moment for the new count.
+
+| Count | Tier visual | Label override | Title |
+|---|---|---|---|
+| 1   | verified (emerald)   | "Πρώτη / αξιολόγηση"    | "Πρώτη σου αξιολόγηση!" |
+| 5   | verified (emerald)   | "5 / αξιολογήσεις"      | "Πέντε αξιολογήσεις!" |
+| 10  | gold (blue)          | "Trusted / Reviewer"    | "Δέκα αξιολογήσεις!" |
+| 25  | expert (violet)      | "Expert / Reviewer"     | "25 αξιολογήσεις — εντυπωσιακό!" |
+| 50  | platinum (slate)     | "Top / Reviewer"        | "50 αξιολογήσεις!" |
+
+All 5 use the `tier_unlock` variant (sparkles + colored badge + no progress dots). Tier visuals reuse the existing badge icons + colors because (a) building parallel review-tier icons would have been needless asset work, and (b) the `display.label_line1/2` overrides cleanly disambiguate the semantic — users see "Πρώτη / αξιολόγηση" under the hex shield, not "Επαληθευμένος / χρήστης".
+
+### Architecture (three pieces)
+
+| Layer | File | Role |
+|---|---|---|
+| DB | `scripts/sql/036-moments-review-published.sql` | Extends `moments.trigger_event` CHECK + seeds 5 milestones |
+| Predicate | `lib/moments/registry.ts:review_count_eq` | Same shape as `suggestion_count_eq` but separately registered so the admin form's predicate dropdown surfaces it under the right label |
+| Display override | `AchievementUnlockedModal.tsx` | Honors `display.label_line1` + `display.label_line2` overrides on top of the existing `TIER_LABEL[badge]` lookup |
+
+The modal change is two lines — read overrides if present, fall back to defaults. Existing suggestion milestones unaffected (their seed rows don't set the override keys).
+
+### `/api/reviews` flow (post-session-26)
+
+```ts
+// Inside POST handler:
+// 1. Look up existing review BEFORE upsert
+const wasNewReview = !existingRow;
+
+// 2. Upsert (unchanged)
+// 3. Recompute item.avg_rating + rating_count (unchanged)
+
+// 4. Resolve milestone (NEW)
+if (wasNewReview) {
+  const { count } = await admin
+    .from("reviews")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("is_hidden", false);
+  
+  const ctx = { user, payload: { count }, vars: buildVars(...) };
+  const raw = await resolveOneMoment("review_published", "achievement_modal", ctx);
+  achievement = raw ? { ...raw, display: { ...raw.display, count } } : null;
+}
+
+return { review_id, avg_rating, rating_count, achievement };
+```
+
+### Client flow
+
+The `<RateThisItem>` composer's `PublishResult` now carries `achievement: AchievementData | null`. Defensive `parseAchievement` mirrors the one in `useSubmission` — null on any shape mismatch so a server drift never breaks the publish flow.
+
+Each detail component:
+1. Adds `achievement` + `achievementOpen` state.
+2. `useEffect` schedules the modal mount after the moment's `display.delay_ms` (default 2s — shorter than the 10s suggestion delay because the success modal has already done a celebration beat and dismissed).
+3. `onPublished` callback calls `setAchievement(result.achievement)` when present.
+4. Renders `<AchievementUnlockedModal>` at the end alongside `<BookmarkSavedModal>`.
+
+For the 5 venue-style components (Food / Hotel / Theater / Event / Recipe), the existing local `CommunitySection`'s `onPublished` prop type was widened to include `achievement`. The achievement state itself lives in the parent, not the section, because it persists across the modal lifecycle.
+
+### FLIP push-right (`hooks/useFlipReorder.ts`)
+
+Generic FLIP hook (First, Last, Invert, Play). Used today only on the reviews carousel but designed to work on any container that can reorder its children.
+
+```ts
+useFlipReorder(
+  containerRef,
+  "data-flip-id",        // attribute name
+  [keys.join(",")],      // deps — fire when membership changes
+  { durationMs?, easing? },
+);
+```
+
+On every render:
+1. Find children with the configured attribute.
+2. For each child also present in the previous render: compute `delta = oldRect - newRect`. If non-zero, apply `transform: translate(dx, dy)` + `transition: none` to "rewind" the card to its prior position.
+3. Two `requestAnimationFrame` gates: first commits the rewound frame; second flips on the transition and removes the transform, so the card animates back to identity.
+4. Capture destination rects (subtracting any active translate) so the *next* FLIP measures against the correct "at rest" position even mid-animation.
+
+Honors `prefers-reduced-motion` — the reorder still happens, just without the slide.
+
+### Carousel integration
+
+The `<ReviewCard>` root already carried `data-review-id={id}` from session 25 (used by the original FLIP-morph attempt) — reused as the FLIP key. Hook invocation lives:
+- **Pattern A** (Movies / Series / Books / Bars) — directly in the main component, ref attached to the carousel `<div>` inline.
+- **Pattern B** (Food / Hotel / Theater / Event / Recipe) — inside the local `CommunitySection`, since it owns the `reviews` prop and renders the carousel. Two-line addition per file: `const reviewsCarouselRef = useRef(...)` + `useFlipReorder(...)`.
+
+### Why `tier_unlock` and not a new "review_milestone" variant
+
+Considered building a separate visual variant — flatter aesthetic, no badge tier — but the existing modal already has the right anatomy (title + subtitle + decorated badge area + body). Adding a new variant would have doubled the modal's surface area for marginal visual gain. The `label_line1/2` overrides give us enough distinction without the modal-internal branching cost. When/if review milestones need a wholly different visual treatment (e.g. a different shape, different decorations, no hex badge), splitting then will be cheap — the moment row just sets a new `variant` key and the modal switches on it.
+
+### Files
+
+```
+scripts/sql/036-moments-review-published.sql        ← migration + seed
+lib/moments/types.ts                                ← +'review_published' in MomentTrigger
+lib/moments/registry.ts                             ← +review_count_eq predicate + schema
+app/api/reviews/route.ts                            ← count + resolve + return achievement
+components/submission/AchievementUnlockedModal.tsx  ← honor label_line1/2 overrides
+components/detail/RateThisItem.tsx                  ← PublishResult.achievement + parseAchievement
+hooks/useFlipReorder.ts                             ← NEW generic FLIP hook
+components/detail/{Movie,Series,Book,Bars}Detail.tsx        ← pattern A integration
+components/detail/{Food,Hotel,Theater,Event,Recipe}Detail.tsx ← pattern B integration
+app/admin/showcase/tabs/SubmissionAITab.tsx         ← +ReviewMilestoneModalShowcase
+```
+
+### Open polish items (review milestones)
+
+- **Animated label-line crossfade** when the modal transitions between celebrations (e.g. if the same modal could update its content). Today there's only one fire per publish, so this isn't needed.
+- **Per-category review milestones** — admin can already add these via `/admin/moments` (predicate `review_count_eq` + filter on `payload.category` if a future `category_eq` row is composed). Not seeded by default.
+- **Streak milestones** (`reviews_this_week_eq`, `reviews_this_month_eq`) — would need a new predicate that counts reviews in a window. Predicate registry already supports async DB-backed predicates (`bookmarkers_count_gte` is one).

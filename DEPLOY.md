@@ -63,11 +63,14 @@ scripts/sql/032-page-sections.sql
 scripts/sql/033-home-layout-seed-completion.sql
 scripts/sql/034-related-sections-config.sql
 scripts/sql/035-content-reports-add-review-type.sql
+scripts/sql/036-moments-review-published.sql
 ```
 
 **Note:** Migration 016 wipes the legacy `ratings` table and resets `items.rating_count` / `avg_rating` to 0 across all items. The legacy `comments` and `ratings` tables stay in the DB as archive but are NOT read by the new UI — all reviews from now on flow through the new `reviews` table (rating mandatory + reflection optional, one row per (user, item)).
 
 **Note:** Migration 032 renames `collection_placements` → `page_sections` and seeds widget rows for every (context, category, audience) bucket. Day-1 rendering is identical to the previous hardcoded JSX. Migration 033 completes the home seed (audience-split `movies_tonight` + 5 fallback carousels per audience). Migration 034 adds `related_sections_config` (admin-defined "More from {axis}" rules per category) with 8 seeded rules. See CLAUDE.md §37 + §38.
+
+**Note:** Migration 036 extends `moments.trigger_event` CHECK to include `'review_published'` and seeds 5 review-milestone celebrations (counts 1 / 5 / 10 / 25 / 50). Drops the existing CHECK constraint and re-adds it with the new value. Idempotent. See CLAUDE.md §42 + PROGRESS.md session 26.
 
 Each is idempotent (uses `IF NOT EXISTS` / `ON CONFLICT DO NOTHING`); rerunning is safe.
 

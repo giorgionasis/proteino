@@ -1,7 +1,7 @@
 # Proteino — Admin Panel
 
 > Route: `/admin` — protected via `public.users.role === 'admin'` (`ADMIN_DEV_BYPASS=1` for local skip)
-> Last updated: 2026-05-15 (session 25 — admin IA + visual refresh + Reviews admin)
+> Last updated: 2026-05-15 (session 26 — review-milestone moments + FLIP push-right)
 
 The admin panel is the back-office for managing all platform content, structure, metadata, and what users see on the frontend.
 
@@ -58,7 +58,7 @@ Admins never touch code. Everything is managed through the admin UI.
 | Extra Fields — New | 🚫 | — | Deleted; superseded by wizard in `/admin/extra-fields` main page |
 | Layout (page composition) | ✅ | ✅ | `/admin/layout` — DB-driven page composition via `page_sections` (migrations 032 + 033). Category + home pages support reorder, add, delete, audience toggle, mobile-frame iframe preview. See CLAUDE.md §37 |
 | Related Sections (detail pages) | ✅ | ✅ | `/admin/related-sections` — admin-defined "More from {director|writer|actor}" carousels per category via `related_sections_config` (migration 034). Auto-hide when `min_items` threshold isn't met. See CLAUDE.md §38 |
-| Moments | ✅ | ✅ | `/admin/moments` — DB-driven copy + timing + conditions for in-app moments (bookmark celebration, achievement modal, …). See PROGRESS.md session 21 |
+| Moments | ✅ | ✅ | `/admin/moments` — DB-driven copy + timing + conditions for in-app moments (bookmark celebration, achievement modal — for BOTH suggestion milestones [1/2/3/7/9/10/22/24/25/47/49/50] AND review milestones [1/5/10/25/50] per migration 036, …). See PROGRESS.md session 21 + 26 |
 
 Legend: ✅ done · ⏳ mock UI exists, needs data wiring · 🚫 deprecated
 

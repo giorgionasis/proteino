@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
+import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
+import { useFlipReorder } from "@/hooks/useFlipReorder";
+import type { AchievementData } from "@/hooks/useSubmission";
 import { ExpandableText } from "@/components/ui/ExpandableText";
 import { CarouselPortrait, type PortraitItem } from "@/components/recommendation/CarouselPortrait";
 import { cn } from "@/lib/utils/cn";
@@ -97,7 +100,23 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
   const [savedRating, setSavedRating] = useState<number | null>(data.myReview?.rating ?? null);
   const [savedReflection, setSavedReflection] = useState<string | null>(data.myReview?.reflection ?? null);
   const [liveReview, setLiveReview] = useState<{ id: string; rating: number; reflection: string | null } | null>(null);
+  const [achievement, setAchievement] = useState<AchievementData | null>(null);
+  const [achievementOpen, setAchievementOpen] = useState(false);
+  const reviewsCarouselRef = useRef<HTMLDivElement>(null);
   const [openAwardType, setOpenAwardType] = useState<string | null>(null);
+
+  // Schedule the achievement modal after the moment's configured delay
+  // (admin-editable via /admin/moments). Default 2s — the success modal
+  // has already dismissed and the new card has just appeared, so we
+  // want a short beat before the celebration overlays the page.
+  useEffect(() => {
+    if (!achievement) return;
+    const delay = typeof achievement.display.delay_ms === "number"
+      ? achievement.display.delay_ms
+      : 2000;
+    const t = setTimeout(() => setAchievementOpen(true), delay);
+    return () => clearTimeout(t);
+  }, [achievement]);
   const { item, extension: ext, suggestions, related } = data;
   const mySuggestion = data.currentUserId ? suggestions.find(s => s.user.id === data.currentUserId) ?? null : null;
 
@@ -201,6 +220,11 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
     dislikes: r.vote_down,
     myVote: r.my_vote,
   }));
+
+  // Animate sibling cards into their new x-position when a new review
+  // is prepended (FLIP). Keyed on the joined id list so any
+  // membership/order change fires the effect.
+  useFlipReorder(reviewsCarouselRef, "data-review-id", [reviews.map((r) => r.id).join(",")]);
 
   // Related items
   const relatedItems: PortraitItem[] = related.map(r => ({
@@ -547,6 +571,7 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
                 setSavedRating(result.rating);
                 setSavedReflection(result.reflection);
                 setLiveReview({ id: result.review_id, rating: result.rating, reflection: result.reflection });
+                if (result.achievement) setAchievement(result.achievement);
                 if (bookmark.status === "wishlist") {
                   bookmark.setStatus("done");
                   showToast("Μετακινήθηκε στα Είδα ✓");
@@ -559,8 +584,10 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
         {/* Reviews carousel + load more */}
         {reviews.length > 0 && (
           <div className="flex flex-col items-center w-full gap-6">
-            {/* Carousel */}
-            <div className="flex gap-5 overflow-x-auto no-scrollbar py-2.5 pl-6 w-full">
+            {/* Carousel — FLIP hook animates existing cards to their
+                new x-position when a new review is prepended at index 0
+                so the others smoothly slide right instead of snapping. */}
+            <div ref={reviewsCarouselRef} className="flex gap-5 overflow-x-auto no-scrollbar py-2.5 pl-6 w-full">
               {reviews.map(review => (
                 <ReviewCard
                   key={review.id}
@@ -599,6 +626,11 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
         result={savedModal}
         category="movies"
         onClose={() => setSavedModal(null)}
+      />
+      <AchievementUnlockedModal
+        open={achievementOpen}
+        achievement={achievement}
+        onClose={() => setAchievementOpen(false)}
       />
       {toast}
     </div>

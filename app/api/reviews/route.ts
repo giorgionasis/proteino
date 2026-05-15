@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveOneMoment, buildVars } from "@/lib/moments";
+import type { ResolvedMoment } from "@/lib/moments";
 
 /**
  * POST /api/reviews
@@ -9,11 +11,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * constraint on the `reviews` table enforces this. Calling again upserts.
  *
  * Body: { item_id: uuid, rating: 1..5, reflection?: string }
- * Returns: { review_id, avg_rating, rating_count }
+ * Returns: { review_id, avg_rating, rating_count, achievement? }
  *
  * After the upsert, recomputes items.avg_rating + items.rating_count from
  * the reviews table (single source of truth going forward) so the detail
  * page reflects the new aggregate immediately.
+ *
+ * When the upsert is a NEW review (not an update of an existing one), the
+ * route also counts the user's total non-hidden reviews and resolves a
+ * `review_published` moment — drives the milestone celebration modal on
+ * the detail page. Re-rating an item does NOT fire a milestone.
  */
 export async function POST(req: NextRequest) {
   const sb = createClient();
@@ -35,6 +42,17 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient();
+
+  // Was this a brand-new review or an update? Look up BEFORE upsert so the
+  // milestone fires only on the first publish per (user, item) — re-rating
+  // an item must not re-trigger a celebration.
+  const { data: existingRow } = await admin
+    .from("reviews")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("item_id", itemId)
+    .maybeSingle();
+  const wasNewReview = !existingRow;
 
   const { data: reviewRow, error: upErr } = await (admin.from("reviews") as any)
     .upsert(
@@ -68,10 +86,74 @@ export async function POST(req: NextRequest) {
     })
     .eq("id", itemId);
 
+  // Review-milestone celebration. Only fires on the first publish per
+  // (user, item). Counts the user's total non-hidden reviews including
+  // this one, then resolves any `review_published` moment whose
+  // predicate matches the new count.
+  let achievement: ResolvedMoment | null = null;
+  if (wasNewReview) {
+    const { count: totalReviewCount } = await admin
+      .from("reviews")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("is_hidden", false);
+
+    const newCount = totalReviewCount ?? 0;
+
+    if (newCount > 0) {
+      const { data: userMeta } = await admin
+        .from("users")
+        .select("handle, display_name")
+        .eq("id", user.id)
+        .single();
+
+      // Pick the next-tier target for vars (drives {remaining} +
+      // {ordinal} placeholders if a future moment uses them).
+      const targetForCount =
+        newCount <= 1   ? 1  :
+        newCount <= 5   ? 5  :
+        newCount <= 10  ? 10 :
+        newCount <= 25  ? 25 : 50;
+      const badgeForTarget =
+        targetForCount <= 5  ? "verified" :
+        targetForCount === 10 ? "gold" :
+        targetForCount === 25 ? "expert"   : "platinum";
+
+      const momentCtx = {
+        user: {
+          id:               user.id,
+          handle:           (userMeta as any)?.handle ?? null,
+          display_name:     (userMeta as any)?.display_name ?? null,
+          suggestion_count: null,
+        },
+        payload: {
+          count: newCount,
+        },
+        vars: buildVars({
+          user:   { handle: (userMeta as any)?.handle, display_name: (userMeta as any)?.display_name },
+          count:  newCount,
+          target: targetForCount,
+          badge:  badgeForTarget,
+        }),
+      };
+
+      const raw = await resolveOneMoment("review_published", "achievement_modal", momentCtx);
+      // Stamp the runtime count into display so the modal renderer
+      // doesn't have to re-derive it from `vars`.
+      if (raw) {
+        achievement = {
+          ...raw,
+          display: { ...raw.display, count: newCount },
+        };
+      }
+    }
+  }
+
   return NextResponse.json({
     review_id: reviewRow.id,
     avg_rating: Number(avgRating.toFixed(2)),
     rating_count: ratingCount,
+    achievement,
   });
 }
 

@@ -1,12 +1,54 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-15 (session 25 — admin IA + visual refresh + Reviews admin + review writing flow)
+Last updated: 2026-05-15 (session 26 — review-milestone moments + FLIP push-right + showcase)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 25 (current) finished:**
+**Current state — session 26 (current) finished:**
+
+Two surgical additions: (1) **review-milestone celebration modals** wired through the same DB-driven moments system as suggestion milestones, and (2) **FLIP push-right** animation on the reviews carousel so existing cards slide smoothly into their new positions when a new review lands at index 0.
+
+**Shipped — review-milestone celebrations:**
+- ✅ **Migration 036** — extends `moments.trigger_event` CHECK to include `'review_published'` (drops + re-adds the constraint with the new value) and seeds 5 milestones via `ON CONFLICT (key) DO UPDATE`: counts 1 / 5 / 10 / 25 / 50. All use the `tier_unlock` variant with new `display.label_line1` + `display.label_line2` overrides so the under-hex label reads "Πρώτη / αξιολόγηση", "5 / αξιολογήσεις", "Trusted / Reviewer", "Expert / Reviewer", "Top / Reviewer" instead of the suggestion-tier "Επαληθευμένος / χρήστης" labels. Idempotent.
+- ✅ **`review_count_eq` predicate** in `lib/moments/registry.ts` — semantically identical to `suggestion_count_eq` but with a review-specific label and description in the admin form ("Όταν ο χρήστης έγραψε N αξιολογήσεις") so editors don't have to disambiguate which counter the predicate is gating.
+- ✅ **`MomentTrigger` TS union** extended to include `'review_published'`.
+- ✅ **`AchievementUnlockedModal` extended** to honor `display.label_line1` + `display.label_line2` overrides. Backward-compatible — when both are absent, falls back to the existing `TIER_LABEL[badge]` lookup (suggestion-tier labels). Two-line additions, zero behavior change for existing call sites.
+- ✅ **`/api/reviews` POST resolves the moment.** Before the upsert, checks if the user already has a review on this item — re-rating must NOT re-trigger. If new, after the upsert + aggregate recompute, counts the user's total non-hidden reviews and resolves a `review_published` moment via `resolveOneMoment`. Returns `achievement` in the JSON response. Failures degrade gracefully — `null` achievement just skips the celebration.
+- ✅ **`RateThisItem.PublishResult` extended with `achievement: AchievementData | null`** + a defensive `parseAchievement` helper mirroring the one in `useSubmission`. Forwarded through `onPublished` to the parent detail component.
+- ✅ **All 9 detail components mount the modal.** Each adds `achievement` + `achievementOpen` state + a `useEffect` that schedules the modal mount after the moment's `display.delay_ms` (default 2s — shorter than suggestion milestones because the success modal has already dismissed). `onPublished` calls `setAchievement(result.achievement)` when present. The 5 venue-style components (Food / Hotel / Theater / Event / Recipe) widened their local `CommunitySection.onPublished` prop type to include `achievement`.
+- ✅ **Showcase entry** at `/admin/showcase` → Submission/AI tab. New `ReviewMilestoneModalShowcase` section with 5 interactive buttons portal-mounting the real modal. Synthetic data mirrors the migration 036 seed; admins editing the live copy via `/admin/moments` should preview from there for current production state.
+
+**Shipped — FLIP push-right animation:**
+- ✅ **`hooks/useFlipReorder.ts`** — generic FLIP hook. Takes a container ref + a data-attribute name + a deps array. On every render, finds children carrying the attribute, compares their `getBoundingClientRect()` to the previous-render rects, applies inverse-transform-then-release on any that moved more than 1px. Two `requestAnimationFrame` gates so the browser commits the start frame before switching to the target transition. Captures destination rects (subtracting any active transform) so the next FLIP measures against the correct "at rest" position even mid-animation. Honors `prefers-reduced-motion`.
+- ✅ **All 9 carousel containers carry a ref + invocation.** For pattern-A components (Movies / Series / Books / Bars) the ref + hook call live in the main component. For pattern-B components (Food / Hotel / Theater / Event / Recipe) they live inside the local `CommunitySection` so the hook has access to the same `reviews` array the carousel renders. The `<ReviewCard>` root already carries `data-review-id={id}` from session 25 — reused as the FLIP key.
+- ✅ **Behavior:** when `liveReview` flips from null to set, `mergedReviews` prepends the new card. React re-renders the carousel; the new card has `appearAnimation` (fade-in via `review-card-appear` keyframe) and the existing cards' positions all shift right by one card-width + gap. The FLIP hook captures the prior rects (one paint frame earlier), measures the new rects, applies `translateX(-shift)` with no transition, then on next frame applies a 480ms ease-spring transition back to identity. Result: the new card fades in at position 0 while the others slide smoothly to their new positions instead of snapping.
+
+**Files touched (session 26):**
+- `scripts/sql/036-moments-review-published.sql` (new — migration + seed)
+- `lib/moments/types.ts` — add `'review_published'` to `MomentTrigger`
+- `lib/moments/registry.ts` — add `review_count_eq` predicate + schema
+- `app/api/reviews/route.ts` — count user reviews + resolve moment + return `achievement`
+- `components/submission/AchievementUnlockedModal.tsx` — honor `display.label_line1/2` overrides
+- `components/detail/RateThisItem.tsx` — `PublishResult.achievement` + parser
+- `hooks/useFlipReorder.ts` (new) — generic FLIP hook
+- All 9 detail components — state, modal mount, ref, hook call, `result.achievement` capture
+- `app/admin/showcase/tabs/SubmissionAITab.tsx` — `ReviewMilestoneModalShowcase` with 5 interactive variants
+- `DEPLOY.md`, `START.md`, `PROGRESS.md`, `CLAUDE.md` — session 26 entries
+
+**Stats:** ~+450 / -25 across 14 files. `npx tsc --noEmit` → 0 errors.
+
+**Open follow-ups (next session):**
+- **Phase B — pgvector recommendations.** Biggest user-visible leap left. ~5 days. Architecture documented in AI.md §4 + PROGRESS §3 Phase B. The 1953-item corpus is finally rich enough; this unblocks the "Tailored for You" rail with real "because you liked X" reasoning.
+- **AI-coached review writing** — Gemini overlay on top of the char-count tiered praise (content-aware "πες ένα συγκεκριμένο σημείο που σε εντυπωσίασε" suggestions). ~1 hour + Gemini cost.
+- **SEO redirects + indexing follow-ups.** 301-redirect map from legacy K2 URLs (need sample of old URL format), `noindex` meta for thin pages, canonical URLs on category + profile pages.
+- **Per-category visual identity** (UI_AUDIT.md option B — ~1.5 weeks): cinematic hero for movies, warm photographic for hotels, paper-typographic for books.
+- **Remaining A.5 punch list:** drop legacy `ratings`/`comments` tables (data already wiped), geographic distance ranking via region centroids, browser geolocation opt-in, map↔list drop-down reveal (3-4 hours).
+
+---
+
+**Previous state — session 25 finished:**
 
 Three big arcs in one session: (1) admin IA + visual refresh, (2) new `/admin/reviews` surface and legacy comments split, (3) full review-writing flow redesign with success modal + carousel fade-in. Plus a long-standing bug fixed (admin client `auth.getUser()` was silently returning null on every detail page, breaking bookmark prefill and my-review prefill).
 
