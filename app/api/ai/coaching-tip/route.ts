@@ -30,9 +30,14 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const body = await req.json().catch(() => null) as { text?: unknown; category?: unknown } | null;
+  const body = await req.json().catch(() => null) as {
+    text?: unknown;
+    category?: unknown;
+    last_tip?: unknown;
+  } | null;
   const text = typeof body?.text === "string" ? body.text.trim() : "";
   const category = typeof body?.category === "string" && body.category ? body.category : null;
+  const lastTip = typeof body?.last_tip === "string" && body.last_tip.trim() ? body.last_tip.trim() : null;
 
   if (text.length < 60) {
     return new Response(null, { status: 204 });
@@ -44,9 +49,14 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const prompt = category
-    ? `Κατηγορία: ${category}\n\nΚείμενο χρήστη:\n${text}`
-    : `Κατηγορία: άγνωστη\n\nΚείμενο χρήστη:\n${text}`;
+  // Anti-repeat: when the previous tip is present, the prompt's
+  // hard rule kicks in — Gemini must pick a different angle.
+  const promptParts = [
+    `Κατηγορία: ${category ?? "άγνωστη"}`,
+    lastTip ? `Προηγούμενο tip (μην το επαναλάβεις): ${lastTip}` : null,
+    `Κείμενο χρήστη:\n${text}`,
+  ].filter(Boolean);
+  const prompt = promptParts.join("\n\n");
 
   const result = streamObject({
     model: getStreamingFlashModel(),

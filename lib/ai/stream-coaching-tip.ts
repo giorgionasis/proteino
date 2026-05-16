@@ -34,6 +34,7 @@ export interface CoachingUpdate {
 export async function streamCoachingTip(
   text: string,
   category: string | null,
+  lastTip: string | null,
   onUpdate: (update: CoachingUpdate) => void,
   signal?: AbortSignal,
 ): Promise<CoachingUpdate> {
@@ -42,7 +43,7 @@ export async function streamCoachingTip(
     response = await fetch("/api/ai/coaching-tip", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, category }),
+      body: JSON.stringify({ text, category, last_tip: lastTip }),
       signal,
     });
   } catch {
@@ -57,7 +58,7 @@ export async function streamCoachingTip(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let lastTip: string | null = null;
+  let currentTip: string | null = null;
   let lastLabel: CoachingLabel | null = null;
   let ready = false;
   const ALLOWED_LABELS: CoachingLabel[] = ["poor", "fair", "good", "excellent"];
@@ -84,20 +85,20 @@ export async function streamCoachingTip(
         : null;
       const tipRaw = typeof obj.tip === "string" ? obj.tip : null;
 
-      const changed = tipRaw !== lastTip || nextLabel !== lastLabel;
+      const changed = tipRaw !== currentTip || nextLabel !== lastLabel;
       if (changed) {
-        lastTip = tipRaw;
+        currentTip = tipRaw;
         if (nextLabel) lastLabel = nextLabel;
         onUpdate({ tip: tipRaw, label: lastLabel, ready });
       }
     }
   } catch {
-    return { tip: lastTip, label: lastLabel, ready };
+    return { tip: currentTip, label: lastLabel, ready };
   }
 
   const finalTip = (() => {
     if (ready) return null;
-    const t = lastTip?.trim() ?? "";
+    const t = currentTip?.trim() ?? "";
     return t.length > 0 && t.length <= 120 ? t : null;
   })();
 

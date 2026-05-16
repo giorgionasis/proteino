@@ -20,11 +20,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * Prompt-version bump invalidates cache on prompt changes. Bump when
  * tweaking the system prompt in gemini.ts.
  */
-// v11 — CoachingSchema extended with `quality_label` so Gemini drives
-// the dynamic badge + celebration state. Stale v10 entries would
-// replay {ready, tip} without the new field and break the partial-
-// JSON consumer's label tracking.
-const PROMPT_VERSION = "v11";
+// v13 — invitational tone bump: prompt now prefers conditional
+// ("θα ήθελες", "μήπως θες") over imperative ("πες μας") so the
+// coach feels like a polite friend, not a teacher giving an order.
+const PROMPT_VERSION = "v13";
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 interface CachedEntry {

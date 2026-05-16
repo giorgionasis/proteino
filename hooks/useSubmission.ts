@@ -189,6 +189,10 @@ export function useSubmission(): UseSubmissionReturn {
   // keystroke past the debounce cancels the previous stream so we
   // don't paint a stale tip on top of a fresh one.
   const semanticTipAbortRef = useRef<AbortController | null>(null);
+  // The last LLM-sourced tip we displayed. Passed back to the
+  // coaching route so Gemini can hard-block the same angle and
+  // pick something different — kills the "stuck on πιάτα" loop.
+  const lastLLMTipRef = useRef<string | null>(null);
   // Matches the user explicitly rejected on the duplicate screen. AI won't
   // auto-lock on these again for the rest of this session — without this,
   // the same keystrokes would re-trigger the same match → same dup screen.
@@ -309,11 +313,12 @@ export function useSubmission(): UseSubmissionReturn {
       semanticTipAbortRef.current = null;
     }
     if (value.trim().length >= 60) {
-      // Snapshot category at debounce-fire time. If AI has locked a
-      // match, pass its category so coaching is movie/book/food/etc-
-      // aware. Null when nothing is locked → server falls back to
-      // generic guidance.
+      // Snapshot category + previous LLM tip at debounce-fire time. The
+      // previous tip is passed to the server so Gemini's prompt rule
+      // can hard-block re-suggesting the same angle (kills the
+      // "πιάτα και συνοδευτικά" loop). Null on the first request.
       const lockedCategory = analysis?.category ?? null;
+      const previousTip = lastLLMTipRef.current;
       semanticTipDebounceRef.current = setTimeout(async () => {
         try {
           const { streamCoachingTip } = await import("@/lib/ai/stream-coaching-tip");
@@ -329,6 +334,7 @@ export function useSubmission(): UseSubmissionReturn {
           await streamCoachingTip(
             value,
             lockedCategory,
+            previousTip,
             (update) => {
               if (ctrl.signal.aborted) return;
               // Override regex label/badge with LLM judgment. Keep tip
@@ -337,6 +343,7 @@ export function useSubmission(): UseSubmissionReturn {
               setQuality((prev) => {
                 if (!prev) return prev;
                 const tip = update.tip?.trim() || prev.tip;
+                if (tip && tip !== prev.tip) lastLLMTipRef.current = tip;
                 const label = update.label ?? prev.label;
                 const badge = update.label ? LLM_BADGES[update.label] : prev.badge;
                 return { ...prev, tip, label, badge };
@@ -356,7 +363,7 @@ export function useSubmission(): UseSubmissionReturn {
           /* fail silently — regex tip stays */
           setCoachingStatus("idle");
         }
-      }, 900);
+      }, 1400);
     }
 
     if (!value.trim()) {
@@ -732,6 +739,7 @@ export function useSubmission(): UseSubmissionReturn {
     setCoachingStatus("idle");
     setCoachingReady(false);
     setAnalysisInFlight(false);
+    lastLLMTipRef.current = null;
     if (freshSettleRef.current) { clearTimeout(freshSettleRef.current); freshSettleRef.current = null; }
     rejectedMatchesRef.current.clear();
     lockedKeyRef.current = null;
