@@ -21,6 +21,8 @@ import { SupportSection } from "@/components/home/SupportSection";
 import { CollectionRenderer } from "@/components/recommendation/CollectionRenderer";
 import { MoviesTonightSection } from "@/components/home/MoviesTonightSection";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { unstable_cache } from "next/cache";
 import { fetchHomeCollections, type HydratedCollection } from "@/lib/collections";
 import { safeImageUrl } from "@/lib/image-url";
 import { fetchTonightAirings, type TonightAiring } from "@/lib/movies-tonight";
@@ -295,6 +297,26 @@ async function fetchSuggestionFeedItems(sb: SB): Promise<SuggestionFeedItem[]> {
   return all;
 }
 
+/**
+ * Total published-suggestion count for the guest hero number badge.
+ * Cached for 1 hour — guest landing page doesn't need second-level
+ * accuracy and the count is global (not per-viewer). Uses the admin
+ * client because `unstable_cache` forbids cookie access in its scope
+ * and the cookie-aware client reads cookies in its constructor.
+ */
+const fetchPublishedSuggestionCount = unstable_cache(
+  async (): Promise<number> => {
+    const sb = createAdminClient();
+    const { count } = await sb
+      .from("suggestions")
+      .select("id", { count: "exact", head: true })
+      .eq("is_published", true);
+    return count ?? 0;
+  },
+  ["published-suggestion-count"],
+  { revalidate: 3600 },
+);
+
 // ── Page ──────────────────────────────────────────────────────────
 
 export default async function HomePage() {
@@ -329,7 +351,7 @@ export default async function HomePage() {
 
   const regionMatchSet = await getRegionMatchSet(sb, viewerRegionId);
 
-  const [food, movies, series, books, recipes, topUsers, chips, feedItems, collections, tonight, layoutSections] =
+  const [food, movies, series, books, recipes, topUsers, chips, feedItems, collections, tonight, layoutSections, suggestionCount] =
     await Promise.all([
       // Bigger fetch limits so static_carousel widgets with custom limits
       // still have material to slice. Each fetcher returns at most the
@@ -349,6 +371,7 @@ export default async function HomePage() {
         category: null,
         viewerAudience: isRegistered ? "registered" : "guest",
       }),
+      fetchPublishedSuggestionCount(),
     ]);
 
   // Layout-driven path. Legacy hardcoded path falls back when the
@@ -362,6 +385,7 @@ export default async function HomePage() {
             displayName,
             food, movies, series, books, recipes,
             topUsers, chips, feedItems, tonight,
+            suggestionCount,
           })
         )}
       </div>
@@ -395,6 +419,7 @@ export default async function HomePage() {
       feedItems={feedItems}
       collections={collections}
       tonight={tonight}
+      suggestionCount={suggestionCount}
     />
   );
 }
@@ -410,14 +435,15 @@ interface GuestProps {
   feedItems: SuggestionFeedItem[];
   collections: HydratedCollection[];
   tonight: TonightAiring[];
+  suggestionCount: number;
 }
 
-function GuestHome({ movies, series, books, recipes, food, feedItems, collections, tonight }: GuestProps) {
+function GuestHome({ movies, series, books, recipes, food, feedItems, collections, tonight, suggestionCount }: GuestProps) {
   const hasCurated = collections.length > 0;
 
   return (
     <div className="space-y-10">
-      <HeroDiscover />
+      <HeroDiscover suggestionCount={suggestionCount} />
       <HeroSuggest />
       <HeroPersonalise />
 

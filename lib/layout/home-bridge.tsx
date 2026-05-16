@@ -42,6 +42,7 @@ export interface HomeRenderContext {
   chips: CategoryChip[];
   feedItems: SuggestionFeedItem[];
   tonight: TonightAiring[];
+  suggestionCount: number;
 }
 
 const PORTRAIT_CATEGORIES = new Set(["movies", "series", "books"]);
@@ -95,7 +96,7 @@ function renderHomeSectionInner(section: RenderedSection, ctx: HomeRenderContext
     case "greeting":
       return <GreetingBlock key={section.row.id} displayName={ctx.displayName} />;
 
-    case "hero_discover":     return <HeroDiscover key={section.row.id} />;
+    case "hero_discover":     return <HeroDiscover key={section.row.id} suggestionCount={ctx.suggestionCount} />;
     case "hero_suggest":      return <HeroSuggest key={section.row.id} />;
     case "hero_personalise":  return <HeroPersonalise key={section.row.id} />;
     case "category_tiles":    return <CategoryTiles key={section.row.id} />;

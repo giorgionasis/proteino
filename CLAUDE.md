@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-15 (session 26 — review-milestone moments + FLIP push-right + showcase)
+**Last meaningful update:** 2026-05-16 (compaction pass — narrative cut, gotchas + decisions preserved)
 
 ---
 
@@ -699,56 +699,12 @@ This is a **mobile-first web app**, not a native app. Runs in mobile browsers (i
 
 ---
 
-## 16. Metadata Enrichment
-> ✅ SHIPPED admin-side (session 10) — `/api/admin/enrich` + "✨ Auto-fetch cover" button in SuggestionEditor + `scripts/bulk-enrich.js`. User-facing submission-flow SYNCING integration still pending.
+## 16-17. Metadata Enrichment + Navigation duplicates — **moved / merged**
 
-During the SYNCING phase of the submission flow, after AI locks an item,
-fetch rich metadata from external APIs. See AI.md Section 11 for full code.
+- **Metadata Enrichment** spec lives in AI.md §11 (per-category API map + admin/user-side status + dispatch architecture).
+- **Navigation & UI Structure** was a duplicate of §15. The unique bits — subcategory table model, category access points — are covered in §5 Data Models and §16 Sub-Categories & Filter System.
 
-### APIs per category
-- Movies/Series → TMDB (free, themoviedb.org)
-- Books → Google Books API (free)
-- Food/Bars/Cafes/Hotels → Google Places API (free tier)
-- Theater/Events → Ticketmaster API (free tier)
-- Recipes → No enrichment (user-generated)
-
-### Key principle
-Enrichment NEVER blocks submission. If API fails → publish anyway with user data only.
-
-### Env vars needed (add when implementing)
-TMDB_API_KEY, GOOGLE_BOOKS_API_KEY, GOOGLE_PLACES_API_KEY, TICKETMASTER_API_KEY
-
----
-
-## 17. Navigation & UI Structure
-> ✅ IMPLEMENTED — Documents decisions already built. Do not rebuild.
-
-- Header registered: Logo (left) + Notification bell (right)
-- Header guest: Logo only
-- Bottom nav: HOME / SEARCH / YOU (3 items)
-- SEARCH = button → openSearch() — NOT a route link
-- FAB: coral gradient, fixed bottom-right, opens submission flow, hides when overlay open
-
-### Category Page Filters (✅ built as FilterRow + SubCategoryTabs)
-- Level 1: Genre chips horizontal scroll
-- Level 2: ⚙ Φίλτρα button → slide-up panel with advanced filters
-
-### Subcategories → Proper Table (✅ revised decision)
-Subcategories are a proper `subcategories` table (id, category, name, slug, description_seo, display_order, is_published).
-Items reference via `subcategory_id` FK. Subcategory = genre/type for ALL categories (never location):
-- Movies/Series/Books: genre (Δράμα, Κωμωδία, Θρίλερ...)
-- Food: cuisine (Ελληνική, Ιταλική, Ασιατική...)
-- Bars: type (Cocktail Bar, Wine Bar, Jazz Bar...)
-- Hotels: accommodation type (Ξενοδοχείο, Διαμέρισμα, Camping...)
-- Theater: genre (Θέατρο, Μιούζικαλ, Stand-up...)
-- Events: type (Συναυλία, Festival, Έκθεση...)
-- Recipes: type (Κυρίως Πιάτο, Ορεκτικά, Επιδόρπια...)
-Location filtering uses the `regions` table (id, name, slug, parent_id, display_order) — two-level hierarchy: Region → Area.
-Frontend category page tab dimension is independent of the DB model (can tab by city OR by subcategory per category).
-
-### Category Access Points (✅ built)
-1. Home screen "Εξερεύνησε" grid
-2. Search screen empty state
+Note: the **session-17 regions hierarchy is N-level**, not two-level. See §28.
 
 ---
 
@@ -777,50 +733,15 @@ Frontend category page tab dimension is independent of the DB model (can tab by 
 
 ---
 
-## 19. Dynamic Home Sections (CMS)
-> ⏳ PENDING — Currently hardcoded. Will be built during Priority 6 (Real Data Layer).
+## 19. Dynamic Home Sections — **superseded**
 
-Home feed sections should come from database, not hardcoded in code.
-
-```sql
-CREATE TABLE home_sections (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  title text NOT NULL,
-  category text,
-  filter_query jsonb,
-  display_order int NOT NULL,
-  is_active boolean DEFAULT true,
-  valid_from timestamptz,
-  valid_until timestamptz,
-  target_audience text DEFAULT 'all', -- 'all' | 'registered' | 'guest'
-  created_at timestamptz DEFAULT now()
-);
-```
-
-Future: Admin panel to manage sections + AI suggestions.
+The original `home_sections` CMS sketch has been superseded by the more general `page_sections` system in **§37 — Admin-controlled page layouts**. That table now drives both the home page and every category page; the admin surface is `/admin/layout`.
 
 ---
 
-## 20. MySQL → Supabase Migration Plan
-> ⏳ PENDING — Will be done after Auth is complete (Priority 6).
+## 20. MySQL → Supabase Migration — **done**
 
-### Source
-MySQL DB with: users, items/objects (categories + subcategories), suggestions, comments, ratings.
-
-### Mapping
-- categories → constants/categories.ts (static, no migration needed)
-- subcategories → subcategories table (id, category, name, slug, display_order, is_published)
-- items/objects → items + category extension tables
-- suggestions → suggestions table
-- comments → comments table
-- ratings → ratings table
-- users → public.users (passwords cannot migrate — users will reset via email)
-
-### Order
-1. Auth setup first (Supabase Auth users must exist before data)
-2. Custom Node.js migration script: MySQL read → transform → Supabase insert
-3. Connect home feed to real data
-
+K2/MySQL → Supabase migration completed in session 6 (627 users / 1953 items / 1952 suggestions / 953 ratings / 394 comments). Script lives at `scripts/migrate-mysql.ts`. Slug format `category/item-alias`. K2 extra_fields landed in `metadata.extra_fields_raw` (numeric keys: 23=genre, 24=author, 27=language, 28=year, 200=cover). Subcategories were back-filled separately (`scripts/assign-subcategories.js` + `fix-subcategories.js`).
 
 ---
 
@@ -875,50 +796,19 @@ See admin panel spec (TBD).
 ---
 
 ## 22. Duplicate Submission Handling
-> ⏳ PENDING — Implement during submission flow (after Auth + real data).
+> ✅ SHIPPED (session 12) — `app/api/suggestions/check`, `<DuplicateScreen>` in `SuggestionOverlay`.
 
-When AI matches an item during submission, check if it already exists in the platform.
+When AI matches an item during submission, `useSubmission.verify()` fires a preflight `GET /api/suggestions/check` between SYNCING and PREVIEW. If a suggestion already exists, jumps straight to the `duplicate` state.
 
-### Scenario A — Item exists, suggested by others (or same user forgot)
-```
-"Το [item] έχει ήδη προταθεί!"
-→ [Βαθμολόγησέ το ★]  [Ακολούθησε τον @[user]]  [Προτείνε κάτι άλλο]
-```
-
-Extra check — if the current user is the original suggester:
-```
-"Το έχεις ήδη προτείνει εσύ! 😄"
-→ [Δες την πρότασή σου]  [Προτείνε κάτι άλλο]
-```
-
-### Scenario B — Item does not exist in platform
-→ Continue submission flow normally
-
-### Implementation
-```typescript
-// In useSubmission hook, after AI match is confirmed (LOCKED state):
-const checkDuplicate = async (itemId: string, userId: string) => {
-  const { data } = await supabase
-    .from('suggestions')
-    .select('id, user_id, users(handle)')
-    .eq('item_id', itemId)
-    .limit(1)
-    .single()
-
-  if (!data) return { isDuplicate: false }
-
-  return {
-    isDuplicate: true,
-    isOwnSuggestion: data.user_id === userId,
-    originalSuggester: data.users,
-  }
-}
-```
-
-### UX Rules
-- Check happens immediately after LOCKED state — before SYNCING starts
-- Never a dead end — always show 2-3 alternative actions
-- "Ακολούθησε" CTA only shows if user doesn't already follow the suggester
+### UX rules (load-bearing)
+- **Check fires immediately after LOCKED state** — before SYNCING. Spares the user from typing a 200-char reflection POST would reject.
+- **Never a dead end.** Always 2-3 alternative actions.
+- **Own vs. other** branching:
+  - Same user: "Το έχεις ήδη προτείνει εσύ! 😄" → `[Δες την πρότασή σου]  [Προτείνε κάτι άλλο]`
+  - Other user: "Έχει ήδη προταθεί από @X" → `[★ Βαθμολόγησέ το]  [+ Ακολούθησε @X]  [Προτείνε κάτι άλλο]`
+- **"Ακολούθησε" only shows when not already following.**
+- **Session-scoped rejection set** (`useSubmission`): `dismissAndReject()` blacklists the matched item for the rest of the session so AI doesn't re-suggest it on the next keystroke — kills the duplicate-screen loop.
+- Race-safe: POST `/api/suggestions` still catches duplicates that slip past the preflight.
 
 ---
 
@@ -1229,20 +1119,8 @@ components/admin/ui/
   - `ease-soft` — `cubic-bezier(0.4, 0, 0.2, 1)` — Material-standard; general UI
   - `ease-pop` — `cubic-bezier(0.34, 1.56, 0.64, 1)` — overshoots 1.0; reward interactions (likes, bookmarks, achievements)
 
-### Shipped effects (see PROGRESS §0 for the full per-sprint list)
-- All overlays slide cleanly (Modal, FilterBottomSheet, FullScreenOverlay, ProfilePopup, ConfirmDeleteDialog, …)
-- Cards tap with `active:scale-[0.97]` (CategoryCard / CarouselLandscape / CarouselPortrait / RowCard / ResultCard)
-- Image opacity-on-load via `<FadeImage>` primitive
-- Bookmark / Follow / Star rating: `animate-pop-in` re-mount on state flip
-- SubCategoryTabs / BottomNav: measured sliding coral indicators (no class-swap snap)
-- Search ResultCard: 40ms stagger slide-in-from-bottom
-- AI Intelligence panel: slide-down-from-top on activation
-- Submission MATCH LOCKED: zoom-in + delayed pill slide-in
-- Toast: slide-in from edge
-- FAB: scale-in entrance on remount
-- Logo coral dot: 4s pulse, paused on hover
-- Map pin tap: classList `pin-pop` scale animation
-- Input focus: explicit 200ms ease-soft transition
+### Shipped effects
+Overlay slides, card tap scale, FadeImage, bookmark/follow/star pop-in, SubCategoryTabs/BottomNav sliding indicators, search result stagger, AI panel slide-down, MATCH LOCKED zoom+pill, Toast slide-in, FAB scale-in, logo dot pulse, map pin tap, input focus transition. See PROGRESS.md session 17 for the full per-sprint catalogue.
 
 ### CSS gotchas locked in (don't re-learn the hard way)
 - **Transformed ancestor → `position: fixed` containing block.** Any element with `transform`, `will-change-transform`, `filter`, or `perspective` becomes the containing block for fixed descendants, replacing the viewport. `FilterBottomSheet`, `Modal`, `ProfilePopup` ALL use `fixed inset-0`. If you animate a wrapper that contains them, they'll mis-position. Workaround: render the fixed elements as siblings of the animated wrapper, or via portal to `document.body`.
@@ -1293,39 +1171,13 @@ const END_PX      = 1;       // final clone size at icon centre — collapses to
 
 Discovery is DOM-based: hero wrapper carries `data-orbit-source`, IconButton carries `data-orbit-target`. No React refs through props. Honours `prefers-reduced-motion` (falls back to 200ms straight fade).
 
-### Bookmark bounce (`bookmark-bounce` keyframe)
-Defined in `tailwind.config.ts`:
-```typescript
-bookmarkBounce: {
-  "0%":   { transform: "scale(1)" },
-  "30%":  { transform: "scale(1.35)" },
-  "55%":  { transform: "scale(0.88)" },
-  "75%":  { transform: "scale(1.08)" },
-  "100%": { transform: "scale(1)" },
-},
-// "bookmark-bounce": "bookmarkBounce 520ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards"
-```
-Applied to the **whole 36px IconButton circle** (not just the inner icon). Wrapper has a `key={popKey}` that increments on every visual flip, forcing the animation to re-fire.
+### Bookmark bounce + orchestration
 
-### Orchestration in `DetailHeaderActions.tsx`
-```
-SAVE:
-  setOrbiting(true)                              // visual lag — icon stays unfilled
-  fly()           ┐  parallel
-  toggle()        ┘
-  await fly()                                    // wait ~700ms for the arc
-  setOrbiting(false)                             // icon flips to bookmark-added, bounces
-  await toggle().result                          // ensure API write succeeded
-  if (!ok) toast(error); return
-  await sleep(600)                               // hold so bounce plays before modal
-  onSaved(result)                                // open BookmarkSavedModal
+`bookmark-bounce` keyframe in `tailwind.config.ts`: `1.0 → 1.35 → 0.88 → 1.08 → 1.0` over 520ms with `ease-pop`. Applied to the **whole 36px IconButton circle**, re-fired via a `key={popKey}` that increments on every visual flip.
 
-REMOVE:
-  await toggle()                                 // instant, no orbit
-```
+SAVE orchestration (in `DetailHeaderActions.tsx`): fly + toggle in parallel → await fly (~700ms) → flip icon to bookmark-added (bounce plays) → await API → sleep 600ms so bounce settles → open `BookmarkSavedModal`. REMOVE is instant, no orbit.
 
-### Detail-page integration (all 9 pages)
-Each detail page wraps its hero cover with `data-orbit-source`, renders `<DetailHeaderActions … onSaved={setSavedModal} />` in the header, renders `<BookmarkStatusChips … />` above the rating box, and renders `<BookmarkSavedModal open={!!savedModal} … />` at the end.
+Detail-page integration (all 9 pages): wrap hero cover with `data-orbit-source`, render `<DetailHeaderActions onSaved={setSavedModal} />` in the header, `<BookmarkStatusChips />` above the rating box, `<BookmarkSavedModal />` at the end.
 
 ---
 
@@ -1355,13 +1207,7 @@ The profile hero badge + stats row + scoring cards were redesigned to match the 
 - Score uses `avg_quality_score` from `users` (shows "—" when 0).
 - Votes count is summed server-side from `reviews.vote_up` for the profile owner, passed as `voteUpCount` prop. New SELECT in `app/(main)/profile/[handle]/page.tsx`.
 
-### Dead code removed from `UserProfile.tsx`
-The following inline helpers became unreferenced after the redesign and were deleted: `PencilIcon`, `FlameIcon`, `ThumbUpSmall`, `ThumbUpBigIcon`, `StarIcon`, `RatingBarRow`. Net change: ~110 lines removed, ~50 lines added.
-
-### Showcase coverage
-Both new cards have full showcase coverage at `/admin/showcase` → Profile tab with 3 variants each:
-- `ProfileScoreCard`: healthy (4.56, 213 ratings) / new user (0, 0) / perfect (5.00, 3)
-- `ProfileVotesCard`: 27 votes / 0 votes / 1,247 votes (volume test)
+Both cards are covered in `/admin/showcase` → Profile tab with healthy / empty / extreme variants.
 
 ---
 
@@ -1409,49 +1255,25 @@ New optional method on the `AIService` interface. Gemini implementation lives in
 
 ---
 
-## 35. Achievement celebration (session 20)
-> ✅ Shipped — modal layered on Published screen at 12 trigger counts
+## 35. Achievement celebration (session 20, DB-driven since session 21)
+> ✅ Shipped — copy + timing now lives in the `moments` table (see §42), admin-editable via `/admin/moments`. Review-milestone variants added session 26 (counts 1/5/10/25/50 — see §42).
 
-Achievement unlock celebration matching the user's Figma screens 1-6. Two visual variants (`progress` + `tier_unlock`); 12 trigger counts arranged in 4 "approach runs" toward each badge tier.
+### Trigger schedule for suggestions
+`/api/suggestions` resolves a moment with `trigger_event='suggestion_published'` against the user's new `suggestion_count`. Hits fire the modal.
 
-### Trigger schedule (server-side)
+| Tier | Counts |
+|---|---|
+| Verified (3) | 1, 2 → progress · 3 → tier_unlock |
+| Έμπειρος (10) | 7, 9 → progress · 10 → tier_unlock |
+| Expert (25) | 22, 24 → progress · 25 → tier_unlock |
+| Platinum (50) | 47, 49 → progress · 50 → tier_unlock |
 
-`/api/suggestions` looks up `newCount` in a `TRIGGERS` map. Hits fire the modal; misses return `achievement: null`.
-
-| Tier | Counts | Variant pattern |
-|---|---|---|
-| Verified (3) | 1, 2 → progress · 3 → tier_unlock | |
-| Έμπειρος (10) | 7, 9 → progress · 10 → tier_unlock | |
-| Expert (25) | 22, 24 → progress · 25 → tier_unlock | |
-| Platinum (50) | 47, 49 → progress · 50 → tier_unlock | |
-
-Server payload reduced to `{ variant, count, target, badge }`. All copy lives client-side so wording can iterate without API churn.
-
-### Visual variants
-
-**`progress`** (screens 1, 2, 4, 5 — heading toward a tier):
-- Title ladder: "Μόλις έκανες την πρώτη σου πρόταση!" (count=1) → "Καταπληκτική αρχή!" (target=3, rem=1) → "Τα πας περίφημα!" (target≥10, rem>1) → "Είσαι πολύ κοντά!" (target≥10, rem=1)
-- Progress dots formula: `dotCount = max(3, remaining + 1)`. Dots span `[target - dotCount + 1 .. target]`. Position `n` rendered ✓-filled if `n ≤ count`, else dashed with the number inside.
-- Greyed badge (`filter: grayscale opacity-50`) under laurel SVGs (30% opacity) with subtle slate-300 sparkles.
-
-**`tier_unlock`** (screens 3, 6 — just reached the tier):
-- "Τα κατάφερες!" + ordinal subtitle ("Το πρώτο επίτευγμα είναι δικό σου" / "Απέκτησες και δεύτερο επίτευγμα" / etc.)
-- Colored badge (110px) with tier-colored 4-point sparkles popping in with staggered delays (320/420/500/380ms).
-- Tier colors: Verified `#1D9E75` (emerald) · Έμπειρος `#3B82F6` (blue) · Expert `#7C3AED` (violet) · Platinum `#64748B` (slate).
+Two visual variants: `progress` (dots toward target, grey badge) and `tier_unlock` (colored badge + sparkles + ordinal subtitle). Tier colors: Verified `#1D9E75` · Έμπειρος `#3B82F6` · Expert `#7C3AED` · Platinum `#64748B`.
 
 ### Architecture
-Modal mirrors `BookmarkSavedModal` — portal-mounted to body, 3-phase mount (DOM presence → next-frame transform target), body-scroll lock, X + backdrop both close. **NO auto-dismiss** — achievements are intentional pauses.
+`<AchievementUnlockedModal>` portal-mounts to body, 3-phase mount, body-scroll lock, X + backdrop close. **No auto-dismiss** — achievements are intentional pauses. Fires **10s after** Published mounts (decided 2026-05-12) so the ✓ checkmark lands first.
 
-Layered above the Published screen: `Published.tsx` opens the modal `350ms` after mount so the ✓ checkmark beat lands first, then the badge celebration on top.
-
-### Open question (deferred to next session)
-Currently fires 350ms after Published mounts. Alternatives under discussion:
-- 30s delay after submission (less interruptive in-flow)
-- Bell-icon notification (passive — user discovers when they want)
-- Surface on next home-page visit (turns it into a return-trip hook)
-
-### Showcase
-`/admin/showcase` → Submission/AI tab → 10 interactive buttons. Each portal-mounts the real modal so what design QA sees is byte-identical to what users see. Removes the need to reset `suggestion_count` for design review.
+Showcase coverage: `/admin/showcase` → Submission/AI tab → 10 interactive buttons portal-mounting the real modal (removes the need to reset `suggestion_count` for design review).
 
 ---
 
@@ -1567,44 +1389,21 @@ Single query + parallel collection hydration. Returns a discriminated union `{ k
 
 Both pages render the previous hardcoded JSX (preserved verbatim) when `layoutSections.length === 0` — safety net for un-applied migrations or empty seeds. After production stabilises this can be deleted.
 
-### `/admin/layout` — the admin surface
+### Admin surface (`/admin/layout`)
 
-Three columns:
+Three columns: page picker (Αρχική + 9 categories) · dnd-kit Sortable section stack (drag handle / audience select / active toggle / pencil / delete-disabled-for-fixed) · iPhone-bezel iframe preview pointing at `/preview/...`. `SectionPickerModal` filters widgets via `compatibleWidgets()`, grays singletons. `SectionConfigDrawer` auto-renders from `WidgetSpec.configSchema` + audience + `valid_from/until`.
 
-```
-┌─────────┬──────────────────────────┬─────────────────────────┐
-│ Page    │ Section stack            │ Mobile preview          │
-│ picker  │ (drag to reorder)        │ (iPhone bezel + iframe) │
-└─────────┴──────────────────────────┴─────────────────────────┘
-```
-
-- **Page picker** (left): Αρχική + 9 categories
-- **Section stack** (middle): dnd-kit Sortable. Each row → drag handle / icon / label / type-chip / per-row audience inline-select / active toggle / edit pencil / delete (disabled for `fixed` widgets). `+ Πρόσθεσε section` opens the picker modal.
-- **Preview pane** (right): audience selector (Όλοι / Εγγεγραμμένοι / Επισκέπτες) + 360×740 phone bezel iframing `/preview/...`. Reloads on every save.
-
-### `SectionPickerModal` + `SectionConfigDrawer`
-
-Picker: two tabs (Widget / Collection). Widget tab filters via `compatibleWidgets(context, category, audience)` and grays out singletons already placed. Collection tab fetches existing collections + offers a "Δημιουργία νέου" link.
-
-Config drawer: auto-renders fields from `WidgetSpec.configSchema` (text / textarea / number / toggle / select / category / item-source). Plus audience + lifecycle (valid_from / valid_until) controls. Collection-type rows show a deep link to the existing CollectionEditor (collection internals live there).
-
-### `/preview/...` routes
-
-`/preview/category/[slug]` and `/preview/home` — outside `app/(main)/` so they don't inherit the global header / bottom-nav / FAB. `force-dynamic`. Audience override via `?audience=guest|registered|all`. Lightweight per-category fetches (15 items, no extension tables — enough for layout review). Same render bridges as production = byte-identical output.
+`/preview/category/[slug]` + `/preview/home` live outside `app/(main)/` to skip global chrome. `force-dynamic`. Audience override via `?audience=guest|registered|all`. Reuse the production bridges for byte-identical output.
 
 ### API
 
-- `GET /api/admin/page-sections?context=...&category=...` — list bucket
-- `POST /api/admin/page-sections` — create section (validates widget compatibility + enforces singleton)
-- `PATCH /api/admin/page-sections/[id]` — update `is_active` / `audience` / `config` / lifecycle (section_type / widget_key / collection_id / context / category are immutable post-create)
-- `DELETE /api/admin/page-sections/[id]` — refuses if widget is `fixed`
-- `POST /api/admin/page-sections/reorder` — batch renumber display_order to `(i+1)*10`
+- `GET /api/admin/page-sections?context=...&category=...`
+- `POST /api/admin/page-sections` — validates compatibility + enforces singleton (409 on duplicate)
+- `PATCH /api/admin/page-sections/[id]` — only `is_active` / `audience` / `config` / lifecycle mutable; type/key/context/category are immutable post-create
+- `DELETE /api/admin/page-sections/[id]` — refuses when widget is `fixed`
+- `POST /api/admin/page-sections/reorder` — batch renumber to `(i+1)*10`
 
-All writes call `revalidatePath` for the affected page.
-
-### Day-1 seed parity
-
-Migrations 032 + 033 together seed every (context, category, audience) bucket with widget rows that reproduce the previous hardcoded JSX **exactly**. The first render after applying them is visually identical to before. Admin then edits from there.
+All writes call `revalidatePath`. Migrations 032 + 033 seed every bucket with widget rows that reproduce the previous hardcoded JSX exactly — day-1 render is visually identical.
 
 ### Resolver behaviour notes (locked invariants)
 
@@ -1678,32 +1477,13 @@ Parsed by `lib/related-sections.ts:parseFieldPath`:
 
 food / bars / hotels / recipes start with no rules — admin can add via the preset picker (cuisine, level, origin, etc.).
 
-### Fetcher contract (`lib/related-sections.ts`)
+### Fetcher + render contract
 
-```ts
-fetchRelatedSections(sb, { itemId, category, extension })
-  → Promise<RelatedSection[]>
-
-interface RelatedSection {
-  ruleId: string;
-  title: string;          // interpolated with {value}
-  items: RelatedItem[];   // hydrated, ready for carousel render
-}
-```
-
-Empty sections (no value, no siblings, threshold not met) are silently dropped — admin sees in the management UI; user never sees a hollow section.
-
-### Render (`components/detail/RelatedSections.tsx`)
-
-Takes `sections + category`. Renders `CarouselPortrait` (movies/series/books) or `CarouselLandscape` (rest). Returns `null` when sections is empty — no heading, no placeholder.
-
-Wired into all 9 detail components at a consistent slot — right before `GuestPromptModal`. `MovieDetail`'s hardcoded "Από {director}" block was deleted; the new system covers it via the `director` rule.
+`fetchRelatedSections(sb, { itemId, category, extension }) → RelatedSection[]` (`lib/related-sections.ts`). Empty sections (no value / no siblings / threshold not met) silently dropped — user never sees a hollow section. `<RelatedSections>` renders `CarouselPortrait` (movies/series/books) or `CarouselLandscape` (rest); returns null when empty. Wired into all 9 detail components right before `GuestPromptModal`. `MovieDetail`'s hardcoded "Από {director}" block was deleted; the `director` rule replaces it.
 
 ### `/admin/related-sections`
 
-Single-page grouped by category. Each rule row has inline title-template editor, min/max number inputs, active toggle, delete. `+ Πρόσθεσε rule` opens an inline form below the list with a field preset dropdown (per-category options + suggested title template). The `field` value is immutable post-create — switch axis by deleting + recreating.
-
-API: `GET/POST /api/admin/related-sections` + `PATCH/DELETE /[id]`. All writes call `revalidateCategory` for the affected category.
+Single-page grouped by category. Inline title-template / min-max / active-toggle / delete per rule. `+ Πρόσθεσε rule` opens an inline form with a field preset dropdown. The `field` value is immutable post-create — switch axis by deleting + recreating. API: `GET/POST /api/admin/related-sections` + `PATCH/DELETE /[id]`; all writes call `revalidateCategory`.
 
 ### When to use this vs. layout system (§37)
 
@@ -1789,9 +1569,9 @@ Adding any of these is one-line code work + an admin form field:
 ---
 
 ## 40. Review writing flow — inline composer + success modal + fade-in carousel insert (session 25)
-> ✅ Shipped — `RateThisItem.tsx`, `lib/reviews/composer-copy.ts`, `lib/reviews/quality.ts`, `lib/reviews/merge-live.ts`, `review-card-appear` keyframe. All 9 detail pages migrated.
+> ✅ Shipped — `RateThisItem.tsx`, `lib/reviews/composer-copy.ts`, `lib/reviews/quality.ts`, `lib/reviews/merge-live.ts`, `review-card-appear` keyframe. All 9 detail pages migrated. FLIP push-right on the carousel reorder added in session 26 (see §42).
 
-The original Figma prototype showed a smart-animated morph from the success modal into the new review card (Figma's Smart Animate handles container shape + content cross-fade for free). After several iterations attempting a true FLIP morph in code, settled on the cleaner pragmatic UX: fade out the modal, fade in the new review at carousel position 0, let the other reviews shift right via React reconciliation. No morph attempt — just a clean cross-fade with the right state-management to make the new card "arrive" as the modal vanishes.
+The Figma prototype used Smart Animate (cross-fade between modal and review card). Real CSS can't morph shape + children cleanly across two very different layouts. Settled on: fade out the modal, fade in the new review at carousel position 0 with the `review-card-appear` keyframe, let the others slide right via the FLIP hook (§42).
 
 ### State machine
 
@@ -1845,48 +1625,16 @@ Fix: introduce a cookie-aware auth client (`createClient` from `@/lib/supabase/s
 
 ### Animation primitive
 
-`@keyframes review-card-appear` (in `app/globals.css`):
+`@keyframes review-card-appear` in `app/globals.css`: opacity 0→1 + `scale(0.92) translateY(8px) → identity` over 420ms ease-spring, `transform-origin: left center` so the card grows from where existing reviews already were.
 
-```css
-0%   { opacity: 0; transform: scale(0.92) translateY(8px); }
-100% { opacity: 1; transform: scale(1) translateY(0);     }
-```
+### Open polish item
 
-Applied via `.review-card-appear` class with `420ms cubic-bezier(0.32, 0.72, 0, 1)` (iOS-spring easing) and `transform-origin: left center` so the card grows from where the existing reviews already were.
-
-### Files
-
-```
-components/detail/RateThisItem.tsx     ← inline composer + internal ReviewSuccessModal
-lib/reviews/composer-copy.ts            ← per-category placeholders + STAR_LABELS
-lib/reviews/quality.ts                  ← char-count tiered praise + progress bar tones
-lib/reviews/merge-live.ts               ← optimistic review row builder
-components/detail/ReviewCard.tsx        ← added `appearAnimation` prop
-app/globals.css                         ← review-card-appear keyframe
-app/(main)/[category]/[id]/page.tsx     ← currentUser fetch + auth-client fix
-```
-
-### What was tried + abandoned
-
-The first 5 attempts at this flow used a Web Animations API "FLIP container morph" — animate the modal's box from viewport center to the target card's rect, scale + border-radius interpolation, content cross-fade. It looked janky for two reasons:
-
-1. The modal's content (80px green check + h1 + body + button) and the review card's content (compact stars + text + author row) have nothing in common. Scaling the modal down to card size distorts; cross-fading creates a flicker mid-morph.
-2. CSS can't smoothly interpolate `box-shadow`, `padding`, or complex children. The eye catches that "this isn't right."
-
-The user's original Figma prototype achieved the smooth feel via **Figma's Smart Animate** — which does cross-state shape morphing + content cross-fade automatically in the prototype runtime. Real code doesn't get that for free; the closest equivalents are **Framer Motion `layoutId` (shared element transitions)** or the **View Transitions API**. We decided the morph was aspirational — clean fade with carousel insert delivers the same intent without the polish gap.
-
-### Open polish items
-
-- **Animated "push right"** for the other reviews when the new card inserts. Currently they shift via React reconciliation (instant layout change). For an animated shift, would need FLIP on each sibling (capture-before-render-after-animate-delta) or Framer Motion's `layout` prop. Not critical.
-- **Achievement modal for review milestones** (1st / 5th / 10th / 25th / 50th). Server-side trigger in `/api/reviews` returning an `achievement` payload, reuse of the existing `AchievementUnlockedModal`. ~1 hour.
-- **Gemini coaching overlay** on top of the char-count tiered praise. Content-aware suggestions ("Πες ένα συγκεκριμένο σημείο που σε εντυπωσίασε") via `lib/ai/cache-and-log`. ~1 hour.
+**Gemini coaching overlay** on top of the char-count tiered praise — content-aware suggestions like "Πες ένα συγκεκριμένο σημείο που σε εντυπωσίασε" via `lib/ai/cache-and-log`. ~1 hour. (Push-right + achievement-modal-for-reviews both shipped in session 26 — see §42.)
 
 ---
 
 ## 41. Admin IA + visual refresh (session 25)
-> ✅ Shipped — sidebar regrouped, Overview rewritten, page subtitles added, new `/admin/reviews` surface, legacy comments split.
-
-The admin panel before session 25 was a flat 18-entry sidebar with mixed-language labels ("Extra Fields", "Data Quality", "Moments", "Showcase") and an Overview that was 3 quick-create chips + 4 stat squares. A new admin landing on it had no map of "what do I do here?" and the most-used surface — moderating new reviews — wasn't accessible at all.
+> ✅ Shipped — sidebar regrouped into 6 jobs-based sections, Overview rewritten as a control room, new `/admin/reviews` surface, legacy comments split.
 
 ### Sidebar — 6 jobs-based sections
 
@@ -1944,69 +1692,31 @@ Three rows, server-rendered. Time-aware greeting ("Good morning, George") + soft
 
 Fail-soft when `ai_usage_log` migration (019) isn't applied — AI spend defaults to $0.00.
 
-### Page subtitles on the 4 trickiest surfaces
-
-Uses the existing `AdminPageHeader.subtitle` slot (already supported, was unused):
-
-- **Layout** — "Composes Home + each category page. Drag to reorder, click section to edit. Live preview on right."
-- **Moments** — "In-app celebrations + nudges (bookmark celebration, achievement modal, …). Edit copy + timing without deploy."
-- **Extra Fields** — Now explicitly says "**Admin-facing**, not user-facing. For user-facing filters see Filters."
-- **Collections** — "Lists of manually selected items. To appear in the frontend, they must be placed via Layout." with inline link to `/admin/layout`.
-- **Related Sections empty state** per category suggests example axes ("Συνηθισμένα: director, lead actor, writer.").
-
 ### `/admin/reviews` — first-class moderation for the new reviews table
 
-Previously: zero admin UI for the new `reviews` table. The route at `/admin/reviews` was misleadingly reading the legacy K2 `comments` table.
-
-Now:
-- `/admin/reviews` reads from `reviews` directly. Stats strip (Total / Last 24h / Reported / Hidden — clickable as filters), text search on reflection, mode chips (all / with-text / rating-only / reported / hidden), 1–5★ filter, per-category filter, 7 sort options.
-- Inline hide/unhide via `POST /api/admin/reviews/[id]/hide` (admin-gated, service-role write, ≥5-char reason required, audit-trailed in `hidden_by` + `hidden_at` + `hidden_reason`).
-- Row links: author → profile, item → live detail page.
-- Hidden state: row gets strikethrough + amber "Κρυμμένη: {reason}" annotation.
+Reads from `reviews` directly (the route formerly pointed at the legacy K2 `comments` table). Stats strip (Total / Last 24h / Reported / Hidden — clickable as filters), text search on reflection, mode chips (all / with-text / rating-only / reported / hidden), 1–5★ filter, per-category filter, 7 sort options. Inline hide/unhide via `POST /api/admin/reviews/[id]/hide` (admin-gated, service-role write, ≥5-char reason required, audit-trailed in `hidden_by` / `hidden_at` / `hidden_reason`).
 
 ### Legacy comments split
 
-- `app/admin/reviews/` → `app/admin/legacy-comments/`
-- `components/admin/ReviewsTable.tsx` → `components/admin/LegacyCommentsTable.tsx` (export renamed to `LegacyCommentsTable`)
-- All internal links repointed: `CommandPalette.tsx` (now opens "Reviews" → /admin/reviews instead of "Reviews → Reported"), `ReviewEditor.tsx`, `/api/admin/search/route.ts`.
-- Sidebar entry renamed "Legacy Comments" + moved under Platform with archive icon. Old `reportedComments` counter still attached to it.
-
-The legacy `comments` table (343 K2 archive rows) is now properly labelled and segregated — it's read-only for admin moderation of historical content, while new review moderation flows through `/admin/reviews`.
-
-### Files
-
-```
-components/admin/AdminSidebar.tsx           ← 6-section regroup + tone dots
-app/admin/page.tsx                          ← Overview rewrite (control room)
-components/admin/ReviewsAdminTable.tsx      ← NEW: reviews moderation table
-app/admin/reviews/page.tsx                  ← NEW: reads reviews table
-app/admin/legacy-comments/                  ← MOVED from app/admin/reviews/
-components/admin/LegacyCommentsTable.tsx    ← MOVED + renamed
-app/api/admin/reviews/[id]/hide/route.ts    ← NEW: hide/unhide endpoint
-components/admin/LayoutManager.tsx          ← subtitle tightened
-components/admin/MomentsManager.tsx         ← subtitle tightened
-components/admin/ExtraFieldsManager.tsx     ← admin-facing clarification added
-components/admin/CollectionsList.tsx        ← Layout dependency mentioned
-components/admin/RelatedSectionsManager.tsx ← empty-state hints per category
-```
+Moved `app/admin/reviews/` → `app/admin/legacy-comments/` (component renamed `LegacyCommentsTable`). Sidebar entry "Legacy Comments" under Platform. The 343 K2 archive rows are read-only for historical moderation; new review moderation flows through `/admin/reviews`. Internal links in `CommandPalette` / `ReviewEditor` / `/api/admin/search` were repointed.
 
 ### Open polish items (admin)
 
-- **Audit log** "recent admin changes" stream on Overview. Skipped because most tables don't track `modified_by`. Would need schema additions.
-- **`Last edited by X on Y`** stamps on Moments / Layout / Filters / Collections — requires `modified_by` columns + admin lookup.
+- **Audit log** "recent admin changes" on Overview — needs `modified_by` columns across the relevant tables.
+- **`Last edited by X on Y`** stamps on Moments / Layout / Filters / Collections — same prerequisite.
 - **Confirm-before-save** on Settings / Layout / Maintenance — risky surfaces shouldn't be one-click commits.
-- **Merge Reports + Data Quality into a single Inbox**. Considered for layer A but deferred since it needs new UI scaffolding (today they're separate sidebar entries within Moderation).
+- **Merge Reports + Data Quality into a single Inbox** — needs new UI scaffolding.
 
 ---
 
 ## 42. Review-milestone celebrations + FLIP push-right (session 26)
 > ✅ Shipped — migration 036, `useFlipReorder` hook, `AchievementUnlockedModal.display.label_line1/2` overrides, `review_count_eq` predicate, all 9 detail components wired.
 
-After the suggestion-milestone modal landed in session 20, the natural follow-up was the parallel celebration for reviews — same modal, same DB-driven `moments` infra, different counter. Session 26 ships it and pairs it with a smaller polish item: the existing reviews now smoothly slide right when a new review is inserted at position 0, instead of snapping into place via React reconciliation.
+Parallel celebration for reviews using the same modal + Moments infra as suggestion milestones, plus a polish item: existing review cards slide right via FLIP when a new review lands at position 0 instead of snapping.
 
-### Review-milestone trigger schedule
+### Trigger schedule
 
-`/api/reviews` POST counts the user's total non-hidden reviews **only when the upsert is a brand-new row** (first review on this item). Re-rating an existing item must NOT re-trigger. The route then resolves a `review_published` moment for the new count.
+`/api/reviews` POST counts the user's total non-hidden reviews **only when the upsert is a brand-new row** (first review on this item). Re-rating must NOT re-trigger. The route then resolves a `review_published` moment.
 
 | Count | Tier visual | Label override | Title |
 |---|---|---|---|
@@ -2016,104 +1726,29 @@ After the suggestion-milestone modal landed in session 20, the natural follow-up
 | 25  | expert (violet)      | "Expert / Reviewer"     | "25 αξιολογήσεις — εντυπωσιακό!" |
 | 50  | platinum (slate)     | "Top / Reviewer"        | "50 αξιολογήσεις!" |
 
-All 5 use the `tier_unlock` variant (sparkles + colored badge + no progress dots). Tier visuals reuse the existing badge icons + colors because (a) building parallel review-tier icons would have been needless asset work, and (b) the `display.label_line1/2` overrides cleanly disambiguate the semantic — users see "Πρώτη / αξιολόγηση" under the hex shield, not "Επαληθευμένος / χρήστης".
+All 5 use the `tier_unlock` variant. Tier visuals reuse existing badge icons; `display.label_line1/2` overrides disambiguate the semantic ("Πρώτη / αξιολόγηση" instead of "Επαληθευμένος / χρήστης" under the hex).
 
-### Architecture (three pieces)
+### Architecture
 
 | Layer | File | Role |
 |---|---|---|
 | DB | `scripts/sql/036-moments-review-published.sql` | Extends `moments.trigger_event` CHECK + seeds 5 milestones |
-| Predicate | `lib/moments/registry.ts:review_count_eq` | Same shape as `suggestion_count_eq` but separately registered so the admin form's predicate dropdown surfaces it under the right label |
-| Display override | `AchievementUnlockedModal.tsx` | Honors `display.label_line1` + `display.label_line2` overrides on top of the existing `TIER_LABEL[badge]` lookup |
+| Predicate | `lib/moments/registry.ts:review_count_eq` | Same shape as `suggestion_count_eq`, registered separately so admin dropdown surfaces it under the right label |
+| Display override | `AchievementUnlockedModal.tsx` | Honors `display.label_line1` + `display.label_line2` on top of the existing `TIER_LABEL[badge]` lookup (two-line change; suggestion milestones unaffected) |
 
-The modal change is two lines — read overrides if present, fall back to defaults. Existing suggestion milestones unaffected (their seed rows don't set the override keys).
-
-### `/api/reviews` flow (post-session-26)
-
-```ts
-// Inside POST handler:
-// 1. Look up existing review BEFORE upsert
-const wasNewReview = !existingRow;
-
-// 2. Upsert (unchanged)
-// 3. Recompute item.avg_rating + rating_count (unchanged)
-
-// 4. Resolve milestone (NEW)
-if (wasNewReview) {
-  const { count } = await admin
-    .from("reviews")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .eq("is_hidden", false);
-  
-  const ctx = { user, payload: { count }, vars: buildVars(...) };
-  const raw = await resolveOneMoment("review_published", "achievement_modal", ctx);
-  achievement = raw ? { ...raw, display: { ...raw.display, count } } : null;
-}
-
-return { review_id, avg_rating, rating_count, achievement };
-```
-
-### Client flow
-
-The `<RateThisItem>` composer's `PublishResult` now carries `achievement: AchievementData | null`. Defensive `parseAchievement` mirrors the one in `useSubmission` — null on any shape mismatch so a server drift never breaks the publish flow.
-
-Each detail component:
-1. Adds `achievement` + `achievementOpen` state.
-2. `useEffect` schedules the modal mount after the moment's `display.delay_ms` (default 2s — shorter than the 10s suggestion delay because the success modal has already done a celebration beat and dismissed).
-3. `onPublished` callback calls `setAchievement(result.achievement)` when present.
-4. Renders `<AchievementUnlockedModal>` at the end alongside `<BookmarkSavedModal>`.
-
-For the 5 venue-style components (Food / Hotel / Theater / Event / Recipe), the existing local `CommunitySection`'s `onPublished` prop type was widened to include `achievement`. The achievement state itself lives in the parent, not the section, because it persists across the modal lifecycle.
+`<RateThisItem>`'s `PublishResult` now carries `achievement: AchievementData | null`. Each detail component owns `achievement` state and schedules the modal mount after `display.delay_ms` (default **2s** — shorter than the 10s suggestion delay because the success modal already did a celebration beat). For the 5 venue-style components the local `CommunitySection.onPublished` prop type was widened to forward `achievement` up to the parent.
 
 ### FLIP push-right (`hooks/useFlipReorder.ts`)
 
-Generic FLIP hook (First, Last, Invert, Play). Used today only on the reviews carousel but designed to work on any container that can reorder its children.
+Generic FLIP hook (`First, Last, Invert, Play`). Takes a container ref + a `data-*` attribute name + a deps array. On every render: finds matching children, compares each to its prior `getBoundingClientRect()`, applies inverse `translate()` + `transition: none` to rewind, then on next frame removes the transform with `transition: 480ms ease-spring` so the card animates back to identity. Captures destination rects subtracting any active translate so the next FLIP measures against the correct at-rest position mid-animation. Honors `prefers-reduced-motion`.
 
-```ts
-useFlipReorder(
-  containerRef,
-  "data-flip-id",        // attribute name
-  [keys.join(",")],      // deps — fire when membership changes
-  { durationMs?, easing? },
-);
-```
-
-On every render:
-1. Find children with the configured attribute.
-2. For each child also present in the previous render: compute `delta = oldRect - newRect`. If non-zero, apply `transform: translate(dx, dy)` + `transition: none` to "rewind" the card to its prior position.
-3. Two `requestAnimationFrame` gates: first commits the rewound frame; second flips on the transition and removes the transform, so the card animates back to identity.
-4. Capture destination rects (subtracting any active translate) so the *next* FLIP measures against the correct "at rest" position even mid-animation.
-
-Honors `prefers-reduced-motion` — the reorder still happens, just without the slide.
-
-### Carousel integration
-
-The `<ReviewCard>` root already carried `data-review-id={id}` from session 25 (used by the original FLIP-morph attempt) — reused as the FLIP key. Hook invocation lives:
-- **Pattern A** (Movies / Series / Books / Bars) — directly in the main component, ref attached to the carousel `<div>` inline.
-- **Pattern B** (Food / Hotel / Theater / Event / Recipe) — inside the local `CommunitySection`, since it owns the `reviews` prop and renders the carousel. Two-line addition per file: `const reviewsCarouselRef = useRef(...)` + `useFlipReorder(...)`.
+`<ReviewCard>` already carried `data-review-id` (from the session-25 morph attempt) — reused as the FLIP key. Hook invocation lives in the main component for pattern-A categories (Movies/Series/Books/Bars) and inside the local `CommunitySection` for pattern-B (Food/Hotel/Theater/Event/Recipe).
 
 ### Why `tier_unlock` and not a new "review_milestone" variant
 
-Considered building a separate visual variant — flatter aesthetic, no badge tier — but the existing modal already has the right anatomy (title + subtitle + decorated badge area + body). Adding a new variant would have doubled the modal's surface area for marginal visual gain. The `label_line1/2` overrides give us enough distinction without the modal-internal branching cost. When/if review milestones need a wholly different visual treatment (e.g. a different shape, different decorations, no hex badge), splitting then will be cheap — the moment row just sets a new `variant` key and the modal switches on it.
+Considered a separate flatter variant — but the existing modal anatomy (title + subtitle + decorated badge + body) already fit. Adding a new variant would have doubled modal surface area for marginal visual gain; `label_line1/2` gives enough distinction. When/if review milestones need a wholly different treatment (different shape, no hex), splitting then is cheap — the moment row sets a new `variant` key and the modal switches on it.
 
-### Files
+### Open polish
 
-```
-scripts/sql/036-moments-review-published.sql        ← migration + seed
-lib/moments/types.ts                                ← +'review_published' in MomentTrigger
-lib/moments/registry.ts                             ← +review_count_eq predicate + schema
-app/api/reviews/route.ts                            ← count + resolve + return achievement
-components/submission/AchievementUnlockedModal.tsx  ← honor label_line1/2 overrides
-components/detail/RateThisItem.tsx                  ← PublishResult.achievement + parseAchievement
-hooks/useFlipReorder.ts                             ← NEW generic FLIP hook
-components/detail/{Movie,Series,Book,Bars}Detail.tsx        ← pattern A integration
-components/detail/{Food,Hotel,Theater,Event,Recipe}Detail.tsx ← pattern B integration
-app/admin/showcase/tabs/SubmissionAITab.tsx         ← +ReviewMilestoneModalShowcase
-```
-
-### Open polish items (review milestones)
-
-- **Animated label-line crossfade** when the modal transitions between celebrations (e.g. if the same modal could update its content). Today there's only one fire per publish, so this isn't needed.
-- **Per-category review milestones** — admin can already add these via `/admin/moments` (predicate `review_count_eq` + filter on `payload.category` if a future `category_eq` row is composed). Not seeded by default.
-- **Streak milestones** (`reviews_this_week_eq`, `reviews_this_month_eq`) — would need a new predicate that counts reviews in a window. Predicate registry already supports async DB-backed predicates (`bookmarkers_count_gte` is one).
+- **Per-category review milestones** — admin can compose these via `/admin/moments` (`review_count_eq` + a future `category_eq` predicate row). Not seeded by default.
+- **Streak milestones** (`reviews_this_week_eq`, `reviews_this_month_eq`) — needs a new predicate that counts within a window. Registry already supports async DB-backed predicates.

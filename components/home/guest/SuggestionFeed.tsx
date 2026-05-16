@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
+import { categoryImage } from "@/lib/category-images";
 
 export interface SuggestionFeedItem {
   id: string;
@@ -52,13 +54,30 @@ export function SuggestionFeed({ items }: Props) {
         <div className="flex gap-0 min-w-max">
           {CATEGORIES.map((cat) => {
             const isActive = activeCategory === cat.key;
+            const img = categoryImage(cat.key);
             return (
               <button
                 key={cat.key}
                 onClick={() => setActiveCategory(cat.key)}
                 className="flex flex-col items-center gap-4 px-4"
               >
-                <div className="w-[65px] h-[65px] rounded-full bg-zinc-200 overflow-hidden" />
+                <div
+                  className="w-[65px] h-[65px] rounded-full overflow-hidden transition-all"
+                  style={{
+                    boxShadow: isActive ? "0 0 0 2.5px #18181b" : undefined,
+                    backgroundColor: img ? undefined : "#e4e4e7",
+                  }}
+                >
+                  {img && (
+                    <Image
+                      src={img}
+                      alt=""
+                      width={65}
+                      height={65}
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                </div>
                 <div className="flex flex-col items-center gap-1">
                   <span
                     className={`text-base font-semibold leading-none ${

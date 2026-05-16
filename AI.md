@@ -4,7 +4,7 @@ This file documents exactly how AI is implemented across the entire Proteino eco
 AI is a visible, functional feature — not decoration. Every AI interaction must feel alive.
 Place this file in the project root alongside CLAUDE.md and HOOKS.md.
 
-**Last meaningful update:** 2026-05-11 (session 17 — Search v2 with structured filters)
+**Last meaningful update:** 2026-05-16 (compaction pass — code samples cut, behavioural rules + cost model preserved)
 
 ---
 
@@ -75,299 +75,89 @@ export const getAIService = (): AIService => {
 
 ## 2. AI Submission Flow
 
-### Overview
-User types freely → AI analyzes in real-time → identifies item + category → enriches with metadata → user previews → publishes.
+### State Machine (locked)
 
-### Input Modes
-The submission accepts 4 types of input:
-- **Text** — free description ("I want to add dune two a very good movie")
-- **Scan** — camera scan of book/movie cover (OCR → text → analyze)
-- **Link** — URL paste (scrape title/metadata → analyze)
-- **Voice** — speech to text → analyze
-- **List** — bulk paste (multiple items at once)
-
-### State Machine
 ```
 IDLE → LISTENING → ANALYZING → MATCHED → LOCKED → SYNCING → PREVIEW → PUBLISHED
                                         ↓
                                     NO_MATCH → SUGGEST_MANUAL
 ```
 
-### Real-Time Analysis Flow
+Plus `DUPLICATE` and `ERROR` states added in session 12 — see CLAUDE.md §7 / §22.
+
+### Behavioural rules
+
+- **Debounce 600ms** in `hooks/useSubmission.ts`. Analyze as the user types, never wait for them to finish.
+- **Confidence tiers** (from `/api/ai/match` via `computeTier`): `high` (≥100 exact + gap ≥20) → auto-lock · `medium` (60-80) → "Νομίζω είναι X. Σωστό;" Ναι/Όχι pills (NO auto-lock) · `low` (<60 OR runner-up within 20pts) → no-lock alternatives carousel "Ποιο εννοείς;"
+- **Auto-unlock** when the matched title is removed from textarea (case + accent-insensitive substring on `analysis.title` + `tried_candidate`).
+- **No match → never a dead end.** "Δεν μπόρεσα να αναγνωρίσω αυτό που περιγράφεις" + "Πρόσθεσέ το χειροκίνητα →" CTA.
+- **Quality coach** runs on every keystroke independently of AI lock (local `assessQuality` in `lib/ai/quality.ts`). 8 coaching dimensions (length / why / emotion / scene / character / plot / polish / celebrate) with rotating phrasings keyed off `floor(len/10) % pool.length`.
+
+### Quality thresholds (`lib/ai/quality.ts`)
+
+| Label | Range | Example |
+|---|---|---|
+| poor | 0-25 | "good movie" |
+| fair | 25-50 | "really good movie with great acting" |
+| good | 50-75 | "amazing cinematography, Nolan at his best" |
+| excellent | 75-100 | personal story + specific details + emotion |
+
+### Input modes (4 designed, only Text wired today)
+
+Text · Scan (OCR camera) · Link (URL paste) · Voice (STT) · List (bulk paste). Buttons exist in the UI; only Text path is implemented end-to-end.
+
+### Metadata enrichment dispatch (Syncing phase)
+
 ```typescript
-// hooks/useSubmission.ts
-
-// Trigger analysis after user stops typing for 600ms (debounce)
-// Do NOT wait for user to finish — analyze as they type
-
-const analyzeDebounced = debounce(async (text: string) => {
-  if (text.length < 10) return updateState({ pct: 5, msg: "Keep going..." })
-  
-  const analysis = await aiService.analyzeSubmission({ text })
-  
-  if (analysis.confidence > 0.85) {
-    updateState({
-      state: 'MATCHED',
-      pct: 100,
-      match: analysis.match,
-      category: analysis.category,
-      quality: analysis.quality,
-      msg: `Description quality is ${analysis.quality.label}. Metadata found.`
-    })
-    // Enable "Verify with AI" button
-  } else if (analysis.confidence > 0.4) {
-    updateState({
-      pct: Math.round(analysis.confidence * 100),
-      msg: analysis.progressMessage, // "Detecting category...", "Analyzing context..."
-    })
-  }
-}, 600)
-```
-
-### SubmissionAnalysis Type
-```typescript
-interface SubmissionAnalysis {
-  confidence: number          // 0-1, how sure the AI is
-  match: {
-    title: string
-    category: Category
-    externalId?: string       // TMDB id, ISBN, Google Places id etc.
-    coverUrl?: string
-    metadata: CategoryMetadata
-  } | null
-  quality: {
-    score: number             // 0-100
-    label: 'poor' | 'fair' | 'good' | 'excellent'
-    suggestions: string[]     // e.g. ["Add why you recommend it", "Too short"]
-  }
-  progressMessage: string     // Human-readable status for the UI panel
-  alternativeMatches?: Match[] // If confidence is medium, show alternatives
-}
-```
-
-### Quality Scoring Logic (Mock → Real)
-```typescript
-// Mock implementation scores based on text length + keywords
-// Real implementation uses LLM to evaluate:
-// - Does it explain WHY they recommend it? (most important)
-// - Is it specific enough to identify the item?
-// - Does it add value beyond what metadata provides?
-// - Is it authentic/personal vs generic?
-
-const QUALITY_THRESHOLDS = {
-  poor:      { min: 0,  max: 25  }, // "good movie"
-  fair:      { min: 25, max: 50  }, // "really good movie with great acting"
-  good:      { min: 50, max: 75  }, // "amazing cinematography, Nolan at his best"
-  excellent: { min: 75, max: 100 }, // Personal story + specific details + emotion
-}
-```
-
-### Metadata Enrichment (Syncing Phase)
-After match confirmed, fetch rich metadata from external APIs:
-```typescript
-// lib/enrichment/index.ts
 const enrichers = {
-  movie:   () => fetchFromTMDB(match.externalId),
-  series:  () => fetchFromTMDB(match.externalId),
-  book:    () => fetchFromGoogleBooks(match.externalId),
-  food:    () => fetchFromGooglePlaces(match.externalId),
-  bar:     () => fetchFromGooglePlaces(match.externalId),
-  hotel:   () => fetchFromBookingAPI(match.externalId),
-  recipe:  () => null, // user-generated, no external enrichment
-  theater: () => fetchFromTicketmaster(match.externalId),
-  event:   () => fetchFromTicketmaster(match.externalId),
+  movie / series : TMDB              // ✅ wired user-side
+  book           : Google Books      // admin-only today
+  food / bar     : Google Places     // admin-only today
+  hotel          : Google Places + Booking API stub
+  theater / event: Ticketmaster      // admin-only today
+  recipe         : none (user-generated)
 }
 ```
 
-### No Match Fallback
-```typescript
-// If AI cannot identify the item:
-if (!analysis.match) {
-  updateState({
-    state: 'NO_MATCH',
-    msg: "Δεν μπόρεσα να αναγνωρίσω αυτό που περιγράφεις.",
-    fallback: {
-      action: 'MANUAL_ENTRY',
-      cta: 'Πρόσθεσέ το χειροκίνητα →',
-      // Open category selector + manual form
-    }
-  })
-}
-```
+Enrichment NEVER blocks submission. If API fails → publish anyway with user data only.
 
-### ProteínoIntelligence Panel Messages
-The panel must feel alive. Use varied, contextual messages:
-
-```typescript
-const PANEL_MESSAGES = {
-  idle:       ["I'm listening. Tell me what you experienced."],
-  analyzing:  [
-    "Keep going, I'm analyzing context...",
-    "Detecting category...",
-    "Searching the database...",
-    "Processing your description...",
-  ],
-  nearMatch: [
-    "Almost there...",
-    "Finalizing match...",
-    "Cross-referencing metadata...",
-  ],
-  matched: [
-    "Description quality is excellent. Metadata found.",
-    "Perfect match found. Ready to verify.",
-  ],
-  searching: { // Search-specific
-    nightlife: "Scanning nightlife graph for matches...",
-    food:      "Searching restaurant database...",
-    movies:    "Browsing film catalog...",
-    books:     "Searching library...",
-    default:   "Analyzing semantic intent...",
-  }
-}
-```
+### ProteínoIntelligence panel
+The panel must feel alive — varied, contextual messages. Implementation in `components/ai/ProteinoIntelligence.tsx`; copy variants per state live in code rather than spec'd here so they can iterate freely.
 
 ---
 
 ## 3. Smart Search AI
 
-### Overview
-User types natural language → AI parses intent in real-time → extracts semantic tags (pills) → searches database → shows results BEFORE AI finishes → handles no-match gracefully.
+> Architecture + behaviour invariants live in CLAUDE.md §27 (Search v2). This section keeps the original UX principles + flow tier that still govern.
 
-### Search Analysis Flow
-```typescript
-// hooks/useSearch.ts
+### Search analysis flow (timing rules)
 
-// Trigger on EVERY keystroke (no debounce for pills)
-// Trigger full search on 500ms debounce
-const handleInput = async (query: string) => {
-  // 1. Instant: extract pills from query (regex + simple NLP)
-  const quickPills = extractPillsInstant(query)
-  updatePills(quickPills)
-  
-  // 2. Start showing results immediately (skeleton cards)
-  if (query.length > 3) showSkeletonResults()
-  
-  // 3. Debounced: full AI analysis + search
-  debouncedSearch(query)
-}
+`hooks/useSearch.ts`:
+- **Every keystroke**: instant regex/folded-token pill extraction (no AI).
+- **350ms debounce**: full Gemini `analyzeSearchQuery` + DB search in parallel via `/api/search`.
+- **8s `AbortSignal.timeout`** per request, distinct `error` state with retry button (separate from `no_match`).
+- **History persist**: 1.5s settle-debounced (not every keystroke). Dedup case + accent insensitive.
+- **aria-live="polite"** on results; real progress signal (0→30→70→100) not `Math.random()`.
 
-const debouncedSearch = debounce(async (query: string) => {
-  // AI analysis in parallel with DB search
-  const [analysis, quickResults] = await Promise.all([
-    aiService.analyzeSearchQuery(query),
-    searchDatabase(extractPillsInstant(query)) // fast, no AI
-  ])
-  
-  // Show quick results first
-  updateResults(quickResults)
-  
-  // Then enhance with AI-ranked results
-  const rankedResults = await rerankWithAI(analysis, quickResults)
-  updateResults(rankedResults)
-  updatePills(analysis.pills)
-  updatePanelMessage(analysis.message, analysis.pct)
-}, 500)
-```
+### Confidence tiers (mirrors submission)
 
-### SearchAnalysis Type
-```typescript
-interface SearchAnalysis {
-  pills: SearchPill[]          // Extracted semantic tags
-  intent: SearchIntent         // What the user is looking for
-  pct: number                  // Analysis progress 0-100
-  message: string              // Panel message
-  hasDirectMatches: boolean
-  fallbackMessage?: string     // If no matches: "No jazz bars in Chalandri"
-  fallbackResults?: Item[]     // Smart alternatives
-}
+From `tierFromScores(best, runnerUp)` in `app/api/search/route.ts`:
+- **high** (≥500 + gap ≥100): FEATURED hero card on single-item match.
+- **medium** (≥300): ranked list with "Άλλα αποτελέσματα · N".
+- **low**: clarification chips + "Διαφορετική κατηγορία" picker + "Πρότεινέ το πρώτος" CTA.
 
-interface SearchPill {
-  type: 'VIBE' | 'TYPE' | 'LOC' | 'TIME' | 'PRICE' | 'PLATFORM'
-  value: string                // e.g. "JAZZ", "BAR", "CHALANDRI"
-  confidence: number
-}
+### No-match strategy (never a dead end)
 
-// Examples:
-// "a jazz bar in chalandri" →
-//   pills: [VIBE:JAZZ, TYPE:BAR, LOC:CHALANDRI]
-//   intent: { category: 'bar', location: 'Chalandri', vibe: 'jazz' }
+1. Expand location radius (Chalandri → Athens) — surfaces with **amber region-ghost banner** when fallback fires.
+2. Relax one constraint at a time.
+3. Show what exists nearby.
+4. **Honest empty state**: when the user explicitly specified a location AND zero matches found, return 0 items + `region_fallback_used: true` rather than silently falling back to global popular (which was a confusing leak).
+5. **Latent-intent log**: every no-match search inserts into `public.search_log`; DB trigger `trg_fanout_search_matches` fires `search_match` notifications when matching items publish later (migration 013).
+6. **Submission deeplink**: "Πρόσθεσε X πρώτος →" opens suggestion overlay with the query pre-filled via `useOverlay.openSuggestion(prefill)`.
 
-// "sci-fi series with one season on netflix" →
-//   pills: [VIBE:SCI-FI, TYPE:SERIES, PLATFORM:NETFLIX]
-//   intent: { category: 'series', genre: 'sci-fi', seasons: 1, platform: 'netflix' }
+### Mini-chat fallback
 
-// "romantic dinner athens under 40 euros" →
-//   pills: [VIBE:ROMANTIC, TYPE:FOOD, LOC:ATHENS, PRICE:<40€]
-//   intent: { category: 'food', vibe: 'romantic', location: 'Athens', maxPrice: 40 }
-```
-
-### Instant Pill Extraction (No AI needed)
-```typescript
-// lib/search/pillExtractor.ts
-// Fast regex-based extraction that runs on every keystroke
-
-const PILL_PATTERNS = {
-  VIBE: {
-    jazz: /jazz/i,
-    romantic: /ρομαντικ|romantic/i,
-    rooftop: /rooftop|ταράτσα/i,
-    cozy: /cozy|ζεστ|άνετ/i,
-    'sci-fi': /sci.?fi|επιστημονικ/i,
-    classic: /κλασικ|classic/i,
-    // ... more vibes
-  },
-  TYPE: {
-    bar: /bar|μπαρ/i,
-    restaurant: /εστιατόρι|restaurant|φαγητό|food/i,
-    series: /σειρ|series/i,
-    movie: /ταινί|movie|film/i,
-    book: /βιβλί|book/i,
-    hotel: /ξενοδοχ|hotel|διαμον/i,
-    // ... more types
-  },
-  LOC: {
-    // Greek cities and neighborhoods
-    athens: /αθήνα|athens/i,
-    chalandri: /χαλάνδρι|chalandri/i,
-    kolonaki: /κολωνάκι/i,
-    // ... more locations
-  },
-  PLATFORM: {
-    netflix: /netflix/i,
-    hbo: /hbo/i,
-    'apple tv': /apple tv/i,
-    // ... more platforms
-  }
-}
-```
-
-### No-Match Handling (Never a Dead End)
-```typescript
-// Always show something — never an empty screen
-const handleNoMatch = (query: string, pills: SearchPill[]) => {
-  // Strategy 1: Expand location radius
-  // "No jazz bars in Chalandri" → show jazz bars in Athens
-  
-  // Strategy 2: Relax one constraint at a time
-  // "No romantic italian in Glyfada" → show romantic restaurants in Glyfada
-  
-  // Strategy 3: Show what exists nearby
-  // "No jazz bars in Chalandri" → show best bars in Chalandri
-  
-  // Strategy 4: Suggest submission
-  // "Be the first to suggest a jazz bar in Chalandri →"
-  
-  return {
-    message: buildNoMatchMessage(query, pills),
-    // e.g. "Δεν βρέθηκαν jazz bars στο Χαλάνδρι."
-    fallbackResults: getFallbackResults(pills),
-    submissionCTA: {
-      text: `Πρόσθεσε "${query}" πρώτος →`,
-      prefillText: query // pre-fills the submission textarea
-    }
-  }
-}
-```
+Auto-escalates after 2 failed chip narrows. Real LLM call via `conversationalSearchFallback` (optional method on `AIService`) — generates contextual clarifying question + suggested chips. Falls back to canned chips if provider down.
 
 ---
 
@@ -551,121 +341,22 @@ These chips are AI-generated, personalized, and rotate each session.
 
 ---
 
-## 6. Mock AI Implementation
+## 6. Mock + provider implementations
+> ✅ Production runs on Gemini Flash-Lite via `lib/ai/gemini.ts`. Mock retained as the fallback when no provider key is set.
 
-Until real AI provider is available, all AI responses are mocked.
-Mocks must be realistic — they define the UX.
+`MockAIService` (in `lib/ai/mock.ts`) simulates realistic latency + keyword-based matches so the UI flows can be developed without an API key. Returns `confidence: 0.95` for `dune` / `interstellar` keywords, medium confidence for any input > 30 chars, low otherwise. Quality scoring is length-based (linear ramp to 100). Random 1536-dim vectors for embeddings.
 
-```typescript
-// lib/ai/mock.ts
+`GeminiAIService` (in `lib/ai/gemini.ts`) implements the same `AIService` interface against Google's Gemini 2.5 Flash-Lite. Wrapped by `cache-and-log.ts` which adds 30-day Postgres-backed query cache + per-call usage logging.
 
-export class MockAIService implements AIService {
-  
-  async analyzeSubmission(input: SubmissionInput): Promise<SubmissionAnalysis> {
-    // Simulate realistic latency
-    await delay(800 + Math.random() * 400)
-    
-    const text = input.text.toLowerCase()
-    
-    // Simple keyword matching for demo
-    if (text.includes('dune') || text.includes('interstellar')) {
-      return {
-        confidence: 0.95,
-        match: {
-          title: text.includes('dune') ? 'Dune: Part Two' : 'Interstellar',
-          category: 'movie',
-          metadata: { year: 2024, director: 'Denis Villeneuve' }
-        },
-        quality: this.scoreQuality(text),
-        progressMessage: 'Match found!'
-      }
-    }
-    
-    // Generic medium confidence response
-    return {
-      confidence: text.length > 30 ? 0.6 : 0.2,
-      match: null,
-      quality: this.scoreQuality(text),
-      progressMessage: text.length > 30 
-        ? 'Analyzing context...' 
-        : 'Keep going...'
-    }
-  }
-  
-  async analyzeSearchQuery(query: string): Promise<SearchAnalysis> {
-    await delay(300)
-    
-    return {
-      pills: extractPillsInstant(query), // uses regex, always works
-      intent: parseIntent(query),
-      pct: Math.min(query.length * 3, 100),
-      message: getProgressMessage(query),
-      hasDirectMatches: query.length > 5,
-    }
-  }
-  
-  async generateEmbedding(text: string): Promise<number[]> {
-    // Return random 1536-dim vector for testing
-    return Array.from({ length: 1536 }, () => Math.random() - 0.5)
-  }
-  
-  private scoreQuality(text: string): QualityScore {
-    const score = Math.min(text.length / 2, 100)
-    return {
-      score,
-      label: score < 25 ? 'poor' : score < 50 ? 'fair' : score < 75 ? 'good' : 'excellent',
-      suggestions: score < 50 ? ['Πρόσθεσε γιατί το προτείνεις'] : []
-    }
-  }
-}
-```
+To swap providers: add `lib/ai/{provider}.ts` implementing the interface, register in `lib/ai/factory.ts:getAIService()` with the env-var key, ship. UI doesn't change.
 
----
-
-## 7. Real AI Integration (When Ready)
-
-### Anthropic Claude Implementation
-```typescript
-// lib/ai/anthropic.ts
-
-export class AnthropicAIService implements AIService {
-  private client: Anthropic
-  
-  async analyzeSubmission(input: SubmissionInput): Promise<SubmissionAnalysis> {
-    const response = await this.client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 500,
-      system: `You are Proteino's submission analyzer. 
-        Identify what item the user is describing (movie, book, restaurant, etc).
-        Return JSON only: { confidence, match: { title, category, year? }, quality: { score, label, suggestions } }`,
-      messages: [{ role: 'user', content: input.text }]
-    })
-    
-    return JSON.parse(response.content[0].text)
-  }
-  
-  async analyzeSearchQuery(query: string): Promise<SearchAnalysis> {
-    const response = await this.client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 300,
-      system: `Extract search intent from natural language queries for a recommendation platform.
-        Return JSON only: { pills: [{type, value}], intent: {...}, message: string }`,
-      messages: [{ role: 'user', content: query }]
-    })
-    
-    return JSON.parse(response.content[0].text)
-  }
-}
-```
-
-### Environment Variables Needed
+### Env vars
 ```bash
-# .env.local
-ANTHROPIC_API_KEY=sk-ant-...          # When ready
-OPENAI_API_KEY=sk-...                  # Alternative
-TMDB_API_KEY=...                       # Movies + Series metadata
-GOOGLE_BOOKS_API_KEY=...               # Books metadata
-GOOGLE_PLACES_API_KEY=...              # Food, Bars, Hotels
+GEMINI_API_KEY=...            # active (set up via Google AI Studio)
+TMDB_API_KEY=...              # movies + series cover enrichment
+GOOGLE_BOOKS_API_KEY=...      # books (optional)
+GOOGLE_PLACES_API_KEY=...     # food / bars / hotels venue photos
+ANTHROPIC_API_KEY=...         # placeholder — not wired today
 ```
 
 ---
@@ -842,401 +533,126 @@ When in doubt: AI should be visible, fast, and never block the user.*
 ---
 
 ## 11. Metadata Enrichment APIs
-> ✅ SHIPPED (session 12) — Admin-side AND user-facing for movies/series via TMDB. Other categories (books / food / bars / hotels / theater / events) follow the same architecture; not yet wired for user-side.
 
-**Admin-side (session 10):**
-- `/api/admin/enrich` endpoint dispatches by category and returns up to 8 candidates (poster/backdrop URLs + title/subtitle/description)
-- "✨ Auto-fetch cover" button in `SuggestionEditor` opens a modal with a grid of candidates → click to apply
-- All three APIs degrade gracefully if env keys missing (returns `{ candidates: [], reason }`)
-- `scripts/bulk-enrich.js` walks items missing covers, calls the endpoint, picks the first candidate, updates `poster_url` + `backdrop_url` + `cover_url`
+> ✅ Admin-side wired across all 9 categories via `/api/admin/enrich`. User-facing submission: only **movies/series via TMDB** today. Books / food / bars / hotels / theater / events still fall back to local heuristic in `/api/ai/match` — same architecture, just need per-category branches.
 
-**User-side (session 12) — movies/series via TMDB:**
-- `/api/ai/match?text=...` is the public match endpoint. Used by the (still-named) `MockAIService.analyzeSubmission` instead of pure local heuristics.
-- Extracts candidate titles via `\p{Lu}` + `\p{L}` Unicode property classes (handles Greek + Latin), tries each against TMDB concurrently, scores results by string similarity to the candidate, picks the highest score. Stops Greek opening verbs ("Είδα") from beating real titles via TMDB's fuzzy matching.
-- Returns canonical title (Greek-localized when TMDB has it), year, director, full cast with avatars, plot, runtime, poster, backdrop. PreviewScreen renders all of it.
-- When TMDB returns nothing, refuses to pretend — shows "Δεν βρήκα τον τίτλο" instead of shipping garbage to the DB.
-- `/api/suggestions` writes the full TMDB metadata into `items` (poster_url, backdrop_url, description_seo, metadata.tmdb_id) + `item_movies`/`item_series` (director, directors[], actors[] with avatars, plot, release_date, duration_min) on first publish. Admin's existing suggestion editor reads these columns, so a user submission appears in `/admin/suggestions` with full metadata, no admin work needed.
+### Admin-side (session 10)
 
-**Quality coaching (session 12):**
-- `lib/ai/quality.ts::assessQuality(text)` returns `{score 0-100, label poor|fair|good|excellent, tip, badge}`
-- Real-time text analysis: length, "γιατί/why" markers, emotional language, specificity, sentence count
-- Drives the ProteínoIntelligence panel: tip becomes message, colored badge replaces bare progress %
-- Same shape real Anthropic Claude will populate later — swap implementation, UI doesn't change
+`/api/admin/enrich` dispatches by category and returns up to 8 candidates (poster/backdrop URLs + title/subtitle/description). "✨ Auto-fetch cover" button in `SuggestionEditor` opens a modal grid → click to apply. All three APIs degrade gracefully if env keys missing (returns `{ candidates: [], reason }`). `scripts/bulk-enrich.js` walks items missing covers, picks the first candidate, updates `poster_url` + `backdrop_url` + `cover_url`.
 
-**Still pending:**
-- **Books** via Google Books, **Food/Bars/Hotels** via Google Places, **Theater/Events** via Ticketmaster — same `/api/ai/match` architecture, just need the per-category branches
-- Real Anthropic Claude integration: `lib/ai/anthropic.ts` implementing the same `AIService` interface. Mock+TMDB hybrid is good enough for dev; swap when going to production scale.
+### User-side movies/series (session 12)
 
-### API Map
+`/api/ai/match?text=...` is the public match endpoint:
+- Extracts candidate titles via `\p{Lu}` + `\p{L}` Unicode property classes (handles Greek + Latin), tries each against TMDB concurrently, scores by string similarity to the candidate.
+- Stops Greek opening verbs ("Είδα") from beating real titles via TMDB's fuzzy matching.
+- Returns canonical title (Greek-localized when TMDB has it), year, director, full cast with avatars, plot, runtime, poster, backdrop. `PreviewScreen` renders all of it.
+- **Refuses to pretend** when TMDB returns nothing — "Δεν βρήκα τον τίτλο" instead of garbage in the DB.
+- `/api/suggestions` writes the TMDB metadata into `items` (poster_url, backdrop_url, description_seo, metadata.tmdb_id) + `item_movies`/`item_series` (director, directors[], actors[] with avatars, plot, release_date, duration_min) on first publish. Admin's suggestion editor reads these columns — user submission appears in `/admin/suggestions` with full metadata, no admin work needed.
 
-| Category | API | Free? | Key Data |
+### API map
+
+| Category | API | Cost | Key data |
 |---|---|---|---|
-| Movies | TMDB (themoviedb.org) | ✅ Free | Poster, director, cast, trailer, year, runtime |
-| Series | TMDB | ✅ Free | Poster, seasons, cast, network, status |
-| Books | Google Books API | ✅ Free | Cover, author, publisher, pages, ISBN |
-| Food | Google Places API | 💰 Free tier | Photos, hours, phone, address, price level |
-| Bars/Cafes | Google Places API | 💰 Free tier | Photos, hours, phone, address |
-| Hotels | Google Places API | 💰 Free tier | Photos, stars, amenities, address |
-| Theater | Ticketmaster API | ✅ Free tier | Poster, dates, venue, prices |
-| Events | Ticketmaster API | ✅ Free tier | Poster, dates, venue, prices |
-| Recipes | None | — | User-generated, no enrichment |
+| Movies / Series | TMDB | Free | Poster, director, cast, trailer, year, runtime; series adds seasons + network |
+| Books | Google Books | Free | Cover, author, publisher, pages, ISBN |
+| Food / Bars / Hotels | Google Places | Free tier ($200/mo credit) | Photos, hours, phone, address, price level |
+| Theater / Events | Ticketmaster | Free tier | Poster, dates, venue, prices |
+| Recipes | none | — | User-generated, no enrichment |
 
-### Implementation
+### Dispatch architecture (`lib/enrichment/index.ts`)
+
 ```typescript
-// lib/enrichment/index.ts
-export const enrichItem = async (category: Category, match: AIMatch) => {
-  switch(category) {
-    case 'movie':   return enrichFromTMDB(match, 'movie')
-    case 'series':  return enrichFromTMDB(match, 'tv')
-    case 'book':    return enrichFromGoogleBooks(match)
-    case 'food':    
-    case 'bar':     
-    case 'hotel':   return enrichFromGooglePlaces(match)
-    case 'theater': 
-    case 'event':   return enrichFromTicketmaster(match)
-    case 'recipe':  return {}
-    default:        return {}
-  }
-}
-
-// NEVER block submission on enrichment failure
-export const safeEnrich = async (category: Category, match: AIMatch) => {
-  try {
-    return await enrichItem(category, match)
-  } catch (error) {
-    console.error('Enrichment failed — continuing without metadata:', error)
-    return {}
-  }
-}
+enrichItem(category, match) → switch on category → enrichFromTMDB / GoogleBooks / GooglePlaces / Ticketmaster
+safeEnrich(category, match) → wraps enrichItem in try/catch — NEVER blocks submission on failure
 ```
 
-### TMDB (Movies + Series)
-```typescript
-// lib/enrichment/tmdb.ts
-const enrichFromTMDB = async (match: AIMatch, type: 'movie' | 'tv') => {
-  const { results } = await fetch(
-    `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(match.title)}&api_key=${process.env.TMDB_API_KEY}`
-  ).then(r => r.json())
-  
-  const item = results[0]
-  const [details, credits] = await Promise.all([
-    fetch(`https://api.themoviedb.org/3/${type}/${item.id}?api_key=${process.env.TMDB_API_KEY}`).then(r => r.json()),
-    fetch(`https://api.themoviedb.org/3/${type}/${item.id}/credits?api_key=${process.env.TMDB_API_KEY}`).then(r => r.json()),
-  ])
+Implementation per provider lives at `lib/enrichment/{tmdb,googleBooks,googlePlaces,ticketmaster}.ts`. Standard pattern: search → details + credits/photos in parallel → return normalised shape `{externalId, coverUrl, ...categorySpecific}`.
 
-  return {
-    externalId: String(item.id),
-    coverUrl: `https://image.tmdb.org/t/p/w500${item.poster_path}`,
-    backdropUrl: `https://image.tmdb.org/t/p/w500${item.backdrop_path}`,
-    year: new Date(item.release_date || item.first_air_date).getFullYear(),
-    runtime: details.runtime || details.episode_run_time?.[0],
-    genres: details.genres.map((g: any) => g.name),
-    director: credits.crew?.find((c: any) => c.job === 'Director')?.name,
-    cast: credits.cast?.slice(0, 5).map((c: any) => c.name),
-    description: item.overview,
-    seasons: details.number_of_seasons,
-    network: details.networks?.[0]?.name,
-  }
-}
-```
+### Quality coaching (session 12)
 
-### Google Books
-```typescript
-// lib/enrichment/googleBooks.ts
-const enrichFromGoogleBooks = async (match: AIMatch) => {
-  const { items } = await fetch(
-    `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(match.title)}&key=${process.env.GOOGLE_BOOKS_API_KEY}`
-  ).then(r => r.json())
-  
-  const book = items[0].volumeInfo
-  return {
-    coverUrl: book.imageLinks?.thumbnail?.replace('http:', 'https:'),
-    author: book.authors?.[0],
-    publisher: book.publisher,
-    pageCount: book.pageCount,
-    isbn: book.industryIdentifiers?.find((i: any) => i.type === 'ISBN_13')?.identifier,
-    description: book.description,
-    publishedDate: book.publishedDate,
-  }
-}
-```
+`lib/ai/quality.ts::assessQuality(text)` returns `{score, label, tip, badge}`. Real-time text analysis: length, "γιατί/why" markers, emotional language, specificity, sentence count. Drives the IntelligencePanel — tip becomes message, colored badge replaces bare progress %. Gemini implementation can populate the same shape — UI unchanged on swap.
 
-### Google Places (Food, Bars, Hotels)
-```typescript
-// lib/enrichment/googlePlaces.ts
-const enrichFromGooglePlaces = async (match: AIMatch) => {
-  const { candidates } = await fetch(
-    `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(match.title)}&inputtype=textquery&fields=place_id&key=${process.env.GOOGLE_PLACES_API_KEY}`
-  ).then(r => r.json())
-  
-  const { result } = await fetch(
-    `https://maps.googleapis.com/maps/api/place/details/json?place_id=${candidates[0].place_id}&fields=name,rating,photos,formatted_address,formatted_phone_number,opening_hours,website,price_level&key=${process.env.GOOGLE_PLACES_API_KEY}`
-  ).then(r => r.json())
+### Env vars
 
-  return {
-    externalId: candidates[0].place_id,
-    coverUrl: result.photos?.[0]
-      ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${result.photos[0].photo_reference}&key=${process.env.GOOGLE_PLACES_API_KEY}`
-      : null,
-    address: result.formatted_address,
-    phone: result.formatted_phone_number,
-    website: result.website,
-    openingHours: result.opening_hours?.weekday_text,
-    priceLevel: result.price_level,
-    googleRating: result.rating,
-  }
-}
-```
-
-### UX Messages During Syncing
-```typescript
-const SYNCING_MESSAGES = [
-  "Εμπλουτίζουμε τα στοιχεία...",
-  "Βρίσκουμε φωτογραφίες...",
-  "Φορτώνουμε πληροφορίες...",
-  "Σχεδόν έτοιμο...",
-]
-```
-
-### Env Vars (add to .env.local when implementing)
 ```bash
 TMDB_API_KEY=...              # themoviedb.org — free
 GOOGLE_BOOKS_API_KEY=...      # console.cloud.google.com — free tier
 GOOGLE_PLACES_API_KEY=...     # console.cloud.google.com — $200/month free credit
 TICKETMASTER_API_KEY=...      # developer.ticketmaster.com — free tier
-ANTHROPIC_API_KEY=...         # console.anthropic.com — pay-per-use, individual plan
+GEMINI_API_KEY=...            # aistudio.google.com — active provider
 ```
+
+### UX during syncing
+
+Rotate "Εμπλουτίζουμε τα στοιχεία…" / "Βρίσκουμε φωτογραφίες…" / "Φορτώνουμε πληροφορίες…" / "Σχεδόν έτοιμο…" in the SYNCING screen. Enrichment is timeboxed — if it doesn't finish in N seconds, publish anyway with what we have.
 
 ---
 
-## 12. Anthropic Claude Haiku Integration (LOCKED PLAN — session 13, 2026-05-05)
+## 12. Provider decisions + cost model (Phase A shipped via Gemini)
 
-This section is the source of truth for Phase A of the AI roadmap.
-Built and locked across a multi-turn conversation with the user. Read top-to-bottom before implementing.
+Phase A originally planned around Anthropic Haiku 4.5; pivoted to **Gemini 2.5 Flash-Lite** in session 18 before Anthropic credits were activated. Implementation lives at `lib/ai/gemini.ts`. The original Anthropic decision rationale still applies (most of it is provider-agnostic) — the deltas vs. Haiku are: Gemini paid pricing is ~3× cheaper per call, free tier is hard-capped at 20 requests/day per project, and the Greek language quality has held up across our integration points.
 
-### 12.1 Decision summary
+### Provider decision summary (still load-bearing)
 
-**Provider:** Anthropic Claude Haiku 4.5 (cheap + fast + excellent Greek)
-- Pricing: $1/1M input tokens, $5/1M output tokens
-- Latency: 400-800ms p50
-- Greek language quality: very high (frontier model)
-- Pricing model: pay-per-use credits (no monthly fee)
+- **Why not self-hosted (Llama / Mistral / Meltemi):** Greek quality drops dramatically on 7-13B open models. Engineering setup 3-6 weeks. Server cost €200-800/mo doesn't pay back until ~50K DAU. **Revisit only at 50K+ DAU sustained.**
+- **Why not fine-tuning:** Frontier providers don't expose it on self-serve tiers. Requires 10K+ labeled examples we don't have. RAG (runtime prompt context) achieves the same outcome for diverse tasks, faster to iterate.
+- **Account plan:** Individual / pay-per-use credits, no monthly fee.
 
-**Why not self-hosted (Llama / Mistral / Meltemi):**
-- Greek quality drops dramatically on 7-13B open models — confirmed by spot-tests on transliterations and disambiguation
-- Engineering setup time: 3-6 weeks vs 4 days for Anthropic
-- Per-month server cost ($200-800) doesn't pay back until ~50K DAU
-- Engineering time better spent on product, not model ops
-- **Revisit only at 50K+ DAU sustained**
+### Four integration points (all live)
 
-**Why not fine-tuning:**
-- Anthropic fine-tuning only available via enterprise contracts
-- Requires 10K+ labeled examples we don't have
-- RAG (retrieval-augmented generation) achieves the same outcome — give the model context at runtime via prompt
-- Faster to iterate on prompts than to retrain weights
+1. **Search intent extraction** — replaces regex in `/api/search`. Solves transliteration (`νολαν` → Nolan, `leonardo di caprio` → DB lookup) + multi-word location resolution.
+2. **Submission match** — augments `/api/ai/match`. LLM extracts candidate title from the full reflection, TMDB / Google Books / Places confirms. All categories supported.
+3. **Reflection quality coach** — replaces `lib/ai/quality.ts` regex. 4 dimensions (WHY / SPECIFIC / EMOTIONAL / ACTIONABLE). Outputs `{ score, label, next_prompt }` for the IntelligencePanel.
+4. **Conversational fallback** — replaces canned chip choices in the no-match mini-chat. Generates contextual clarifying questions.
 
-**User account setup:**
-- Plan: **Individual** (NOT Enterprise)
-- Pre-paid credits, top up manually
-- Initial deposit: $20
-- Soft spend cap: $30/month (set in Anthropic console settings → usage limits)
-- Auto-reload: OFF initially
+### Cost framework
 
-### 12.2 Cost projections (locked numbers)
+Original Haiku projections (preserved for sanity-checking the Gemini reality):
 
-**Per-call estimates with prompt caching (system prompt cached for 5min):**
-
-| Task | Input tokens | Output tokens | Cost/call |
+| Task | Input tokens | Output tokens | Cost/call (Haiku) |
 |---|---|---|---|
-| Search intent extraction | 180 (cached) + 10 user | 70 | $0.000378 |
-| Submission match (full reflection) | 400 (cached) + 100 user | 120 | $0.001 |
-| Quality coach (per coach call) | 150 (cached) + 50 user | 60 | $0.0004 |
-| Conversational fallback | 600 (cached) + 200 user | 200 | $0.0016 |
+| Search intent extraction | 180 cached + 10 user | 70 | $0.000378 |
+| Submission match | 400 cached + 100 user | 120 | $0.001 |
+| Quality coach (per call) | 150 cached + 50 user | 60 | $0.0004 |
+| Conversational fallback | 600 cached + 200 user | 200 | $0.0016 |
 
-**At 100,000 DAU + 3 searches/day + 30,000 submissions/month:**
+At 100,000 DAU × 3 searches/day + 30K submissions/month under Haiku pricing: **~$3,520/month** (≈ €3,250). Gemini paid runs ~3× cheaper at our prompt sizes. AI as a % of projected revenue (€122K at 100K DAU): 1-3%. Healthy margin.
 
-| Volume | Cost/call | Subtotal |
+Scaling table:
+
+| DAU | Haiku-pricing monthly | Gemini-pricing monthly |
 |---|---|---|
-| 9,000,000 searches/month | $0.000378 | $3,402 |
-| 30,000 submissions × ~$0.004 (1 match + 5-8 coach calls) | $0.004 | $120 |
-| **Monthly total** | | **~$3,520** = €3,250 |
+| 1,000 | $30 | ~$10 |
+| 10,000 | $350 | ~$120 |
+| 100,000 | $3,520 | ~$1,200 |
 
-**Worst case (no cache hits, heavy user):** ~$5,040/month = €4,650
-**Per user/month:** $0.035 = ~3.5 cents
-**Per user/year:** ~$0.42
+### Caching (shipped — `lib/ai/cache-and-log.ts`)
 
-**Revenue at 100K DAU (from CLAUDE.md monetization phases):**
-- Affiliate (5% × €5 commission × 100K × 30d): €75K
-- Verified business (€30 × 800 venues): €24K
-- Premium subs (€4 × 2K subs): €8K
-- Sponsored carousels: €15K
-- **Total gross: ~€122K/month**
+Postgres `ai_query_cache` table keyed by `hash(provider|model|version|task|query)` with **30-day TTL**. `PROMPT_VERSION` constant (currently `v6`) is appended to the cache key — bump it on any prompt change to invalidate all prior entries cleanly. `ai_usage_log` records every call with token counts + latency for the `/admin/ai-usage` dashboard.
 
-**AI cost as % of revenue: 2.7-3.3%** — extremely healthy for SaaS (industry COGS target is 10-15% all-in).
+### Failure modes + safeguards (architectural — still apply for Gemini)
 
-**Scaling table:**
+- **Provider down or rate-limited:** every call wrapped in try/catch with 8s timeout. On error → fall back to regex/mock. User sees same UI, degraded intelligence.
+- **Free-tier quota exhaustion (current operational blocker):** Gemini Flash-Lite free tier caps at 20 req/day per project. When hit, `analyzeSearchQuery` returns `{categories:[]}` and the route falls through to title-only matching. Enable billing at https://aistudio.google.com to lift.
+- **Cost spike defense (deferred — when needed):** per-user rate limit via Postgres counter table, 429 with friendly Greek message.
+- **Hallucination prevention:** LLM only suggests queries; DB is source of truth. We run the actual SQL query the LLM proposes. Empty results surface as honest empty states — never invent. This grounding pattern prevents 99% of hallucination problems.
+- **Privacy:** user queries go to the LLM provider. Privacy policy mentions this. No personal identifiers (user_id, email) attached. Providers we use don't train on API data by default.
 
-| DAU | Monthly cost | Monthly revenue (rough) | AI as % |
-|---|---|---|---|
-| 1,000 | $30 | €0-500 | n/a (early) |
-| 10,000 | $350 | €5-15K | 3-7% |
-| 100,000 | $3,520 | €100-122K | 3% |
-
-### 12.3 The four integration points
-
-**1. Search intent extraction** — replaces regex in `/api/search`
-- Input: user's free-text query (Greek + Latin + mixed)
-- Output: structured `{ category, actors[], directors[], location, vibe, time, ambiguity_level, filter_logic }`
-- Used to drive structured DB queries (jsonb path on `actors`, `region_id` on extension tables, etc.)
-- Solves: `νολαν` → "Christopher Nolan" mapping, `leonardo di caprio` (with space) → DB lookup, `γαλάτσι μπαρ` → clarifying question generation
-
-**2. Submission match** — augments `/api/ai/match`
-- Input: full reflection text from textarea
-- Output: `{ candidate_title, category, year_hint, actor_hint, director_hint, mood, confidence }`
-- TMDB / Google Books / Places confirms what the LLM extracted
-- All categories supported (not just movies/series)
-- Solves: long natural-language descriptions that regex can't extract title from
-
-**3. Reflection quality coach** — replaces `lib/ai/quality.ts` regex
-- Input: current reflection text (debounced ~800ms while user types)
-- Output: `{ score, label, missing_dimensions, next_prompt, celebrate }`
-- 4 coaching dimensions: WHY / SPECIFIC / EMOTIONAL / ACTIONABLE
-- Solves: generic "Πες περισσότερα" tips → contextual "Πες ποια σκηνή σε άγγιξε"
-
-**4. Conversational fallback** — replaces theatrical regex in mini-chat
-- Input: user's stuck query + conversation history + 0-result context
-- Output: `{ question, suggested_chips }`
-- Generates contextual clarifying questions instead of canned chips
-- Solves: "Ρώτα τον AI" actually feels like AI
-
-### 12.4 Implementation plan (4 days, sequential)
-
-**Day 1 — Foundation**
-1. `npm install @anthropic-ai/sdk`
-2. `lib/ai/anthropic.ts` implementing the existing `AIService` interface (mock is the contract)
-3. `lib/ai/index.ts` updated: pick Anthropic when `ANTHROPIC_API_KEY` is set, else fall back to Mock
-4. `lib/ai/prompts/` directory with one file per task — system prompts as TypeScript constants
-5. Anthropic client wrapper in `lib/ai/anthropic-client.ts`:
-   - Default model: `claude-haiku-4-5`
-   - Default temperature: 0.2 (deterministic for structured output)
-   - Default max_tokens: 500
-   - Cache control on system prompts: `{ type: "ephemeral" }`
-6. Test harness: small CLI script that calls each prompt with sample inputs
-
-**Day 2 — Search intent extraction**
-1. Update `/api/search` to call Haiku for intent extraction
-2. Replace the regex `extractCategories` / `extractVibe` / `resolveLocation` flow with one LLM call
-3. DB query consumes structured output (actors[] jsonb path query, region_id, etc.)
-4. Graceful fallback to current regex if Anthropic call throws (network outage, rate limit)
-5. Smoke test: run the user's regression cases (`νολαν`, `leonardo di caprio`, `γαλάτσι μπαρ`)
-
-**Day 3 — Submission match upgrade**
-1. Update `/api/ai/match` to add LLM extraction step BEFORE TMDB lookup
-2. LLM extracts candidate title from full reflection text
-3. TMDB/Books/Places confirms — current logic stays
-4. Better confidence — LLM returns its own confidence + we combine with title-match score
-5. Fallback to current regex extraction if Anthropic fails
-
-**Day 4 — Quality coach + conversation + cost dashboard**
-1. Replace `lib/ai/quality.ts` regex with Haiku-backed implementation
-2. Same shape, same return type — UI doesn't change
-3. Debounce in `useSubmission` to 800ms (was 400ms — give the API a moment)
-4. Optimistic UI: show local heuristic instantly, replace when AI returns (no awkward waits)
-5. Conversational fallback: real LLM in the no-match mini-chat
-6. Admin cost dashboard at `/admin/ai-usage`:
-   - Daily token spend chart (last 30 days)
-   - Top 10 most-expensive queries
-   - Active rate-limit warnings
-   - Per-user spend ranking
-
-### 12.5 Prompt templates (drafts — refine before coding)
-
-**Search intent system prompt (lib/ai/prompts/searchIntent.ts):**
-
-```typescript
-export const SEARCH_INTENT_SYSTEM_PROMPT = `
-You are the search intent extractor for Proteino, a Greek recommendation
-platform. Users write queries in Greek, English, or mixed. Extract:
-
-- category: one of [movies, series, books, food, bars, recipes, hotels,
-  theater, events] or null if ambiguous
-- actors: array of person names. Transliterate to ENGLISH (νολαν →
-  Nolan, ντικάπριο → DiCaprio).
-- directors: same as actors
-- location: city or neighborhood, normalized to Greek (αθήνα → Αθήνα,
-  halandri → Χαλάνδρι). Null if no location.
-- vibe: one of [cozy, romantic, loud, family, intimate, upscale, casual]
-  or null
-- ambiguity_level: 0-1 — how much disambiguation the query needs
-- filter_logic: "AND" if multiple constraints must all match, "OR" if
-  any-match (e.g. "movies OR series with Tom Hanks")
-
-Return ONLY valid JSON. No prose, no markdown fences.
-`;
-```
-
-**Quality coach system prompt (lib/ai/prompts/qualityCoach.ts):** see earlier draft in conversation — 4 coaching dimensions (WHY / SPECIFIC / EMOTIONAL / ACTIONABLE), few-shot examples, JSON output with `next_prompt` capped at 90 characters.
-
-### 12.6 Caching strategy
-
-**Anthropic-side prompt caching (free, automatic):**
-- Mark `cache_control: { type: "ephemeral" }` on system message blocks
-- 5-minute TTL — covers active session windows
-- 90% cost reduction on cached portions
-- Always-on for system prompts (they don't change)
-
-**Application-side query caching (Postgres):**
-- Add `public.ai_response_cache` table: `(query_hash, response_json, created_at, ttl_minutes)`
-- Hash = SHA-256 of (task_type, normalized_input)
-- TTL: 24h for search intent (popular queries hit cache often), 0 for submission/quality (always fresh)
-- Cache layer wraps the Anthropic client — checks before calling, writes after
-- Cuts cost on hot queries by ~50% (estimated)
-
-### 12.7 Failure modes + safeguards
-
-**Anthropic API down or rate-limited:**
-- Every call wrapped in try/catch with timeout (8s)
-- On error: fall back to current regex/mock implementation
-- User sees same UI, slightly degraded intelligence
-- Health check endpoint logs failures for monitoring
-
-**Cost spike (malicious user):**
-- Per-user rate limit: 200 calls/day for free users, 1000/day for premium
-- Implemented as Postgres counter table updated atomically per call
-- 429 response with friendly Greek message when limit hit
-
-**Hallucination (LLM invents a movie/actor):**
-- LLM only **suggests** queries; DB is source of truth
-- e.g. LLM says "look up Leonardo DiCaprio" → we run actual SQL query
-- If the SQL returns 0, we surface an honest empty state — don't invent results
-- This grounding pattern prevents 99% of hallucination problems
-
-**Privacy:**
-- User queries go to Anthropic. Add to privacy policy: "Searches and
-  reflections are processed by Claude (Anthropic) for intent extraction
-  and quality scoring. No personal identifiers attached."
-- GDPR: queries are anonymized at the API layer (no user_id in the LLM
-  prompt unless explicitly needed)
-- Anthropic doesn't train on API data by default (per their data usage policy)
-
-### 12.8 Decision log (so we don't re-litigate later)
+### Decision log
 
 | Decision | Choice | Reason | Date |
 |---|---|---|---|
-| Provider | Anthropic Haiku 4.5 | Greek quality + cost + speed sweet spot | 2026-05-05 |
-| Self-hosted? | No, until 50K+ DAU | Greek quality drop, eng cost | 2026-05-05 |
+| Provider | Anthropic Haiku 4.5 → **Gemini 2.5 Flash-Lite** | Greek quality + cost + speed; Gemini paid is ~3× cheaper per call than Haiku, decision pivoted before Anthropic credits were activated | 2026-05-05 / 2026-05-09 |
+| Self-hosted? | No, until 50K+ DAU | Greek quality drop on small open models | 2026-05-05 |
 | Fine-tune? | No, ever | RAG > fine-tune for diverse tasks | 2026-05-05 |
-| Account plan | Individual | Pay-per-use, self-serve | 2026-05-05 |
-| Initial budget | $20 deposit, $30/mo soft cap | Conservative start | 2026-05-05 |
 | First integration | Search intent | Highest UX impact | 2026-05-05 |
-| Cache strategy | Anthropic native + Postgres | Layered, both cheap | 2026-05-05 |
-| Production provider (interim) | **Gemini 2.5 Flash-Lite** | Free dev tier (20/day) + paid is ~3× cheaper than Haiku. Decision pivoted before Anthropic credits were activated. | 2026-05-09 |
+| Cache strategy | Provider native + Postgres (30-day) | Layered, both cheap | 2026-05-05 |
 
 ---
 
-## 13. Search v2 — Structured-Filter Engine (session 17, 2026-05-11)
+## 13. Search v2 — additional implementation reference
 
-Extension of the search route from "title ilike + region resolution" to a full structured-extraction pipeline. The Gemini prompt now extracts 7 distinct signals beyond the legacy `type` + `location`, and the route composes them into per-category Postgres queries.
+> Architecture + behaviour invariants live in CLAUDE.md §27. This section keeps the parts AI.md is the natural home for: the full TypeScript schema, the `tokenMatches` body, the people-search column list, and the outstanding data gaps.
 
 ### 13.1 Extended `SearchAnalysis` schema
 
@@ -1265,22 +681,7 @@ export interface SearchAnalysis {
 
 Prompt-version `v6` (in `lib/ai/cache-and-log.ts`). Bump on any prompt change to flush cache entries.
 
-### 13.2 Route architecture
-
-`app/api/search/route.ts` (~1200 lines) processes a query in this order:
-
-1. **`analyzeSearchQuery`** (Gemini, Postgres-cached) — extracts the structured analysis.
-2. **`resolveLocation`** — multi-word region-name matching against the `regions` table. Returns `{ id, name, slug, descendantIds }`. Multi-word names require ALL words to appear in the query (fixes "Νότια Προάστια" beating "Βόρεια Προάστια").
-3. **Venue branch** (food/bars/hotels/theater/events when category resolved):
-   - `fetchVenueItems(category, regionIds, limit)` — joins extension table to items, pulls address + cuisine + type + dates.
-   - Token split: words matching the resolved location → `locationTokens` (address-text filter); rest → `refinementTokens` (title / cuisine / type via `tokenMatches`).
-   - **Smart-related layer**: when refinementTokens find a title anchor, look at the full candidate pool for items sharing the anchor's type + address area (Tier A) — fall back to "same type anywhere" if Tier A empty (Tier B).
-   - **Period filter** (events only): translates `period` to month-set, JS-filters `item_events.dates` jsonb for overlap.
-   - **People-search fallback** for venues: when refinement + ambiguous-address both yielded nothing, runs `fetchPeopleMatches(person ?? query)` and keeps hits in the active venue category.
-4. **Non-venue branch** (movies/series/books/recipes): when Gemini extracted `genre` / `channel` / `status` / `duration` (`hasStructuredSignals`), `fetchByStructuredFilters` composes them into per-category items queries. Genre lookup via `resolveSubcategoryIds` with `tokenMatches` + `GENRE_ALIASES` (παιδικά → Animation, νουάρ → Θρίλερ, …). Otherwise falls through to title ilike (legacy path) + people search.
-5. **No dead ends**: every code path has a popular-in-category fallback or honest no_match flow.
-
-### 13.3 `tokenMatches` — Greek inflection
+### 13.2 `tokenMatches` — Greek inflection
 
 Asymmetric match used for cuisine / type / subcategory-name comparisons:
 

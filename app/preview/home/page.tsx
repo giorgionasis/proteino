@@ -74,6 +74,7 @@ export default async function PreviewHomePage({ searchParams }: Props) {
             chips: [],
             feedItems: [],
             tonight: [],
+            suggestionCount: 0,
           })
         )
       )}

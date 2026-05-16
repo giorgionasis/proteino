@@ -1,7 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { CATEGORIES } from "@/constants/categories";
+import { categoryImage } from "@/lib/category-images";
 
 interface CategoryTilesProps {
   className?: string;
@@ -13,24 +15,37 @@ export function CategoryTiles({ className }: CategoryTilesProps) {
       <div className="flex flex-col gap-12">
         {chunk(CATEGORIES, 3).map((row, ri) => (
           <div key={ri} className="flex justify-between px-5">
-            {row.map((cat) => (
-              <Link
-                key={cat.slug}
-                href={`/${cat.slug}`}
-                className="flex flex-col items-center gap-4 active:opacity-75 transition-opacity"
-                style={{ width: 112 }}
-              >
-                <div
-                  className="w-[90px] h-[90px] rounded-full overflow-hidden flex items-center justify-center text-3xl"
-                  style={{ backgroundColor: TILE_COLORS[cat.slug] ?? "#d4d4d8" }}
+            {row.map((cat) => {
+              const img = categoryImage(cat.slug);
+              return (
+                <Link
+                  key={cat.slug}
+                  href={`/${cat.slug}`}
+                  className="flex flex-col items-center gap-4 active:opacity-75 transition-opacity"
+                  style={{ width: 112 }}
                 >
-                  {cat.icon}
-                </div>
-                <p className="text-base font-bold text-zinc-800 text-center leading-[21.64px]">
-                  {cat.labelEl.toUpperCase()}
-                </p>
-              </Link>
-            ))}
+                  <div
+                    className="w-[90px] h-[90px] rounded-full overflow-hidden flex items-center justify-center text-3xl"
+                    style={{ backgroundColor: img ? undefined : TILE_COLORS[cat.slug] ?? "#d4d4d8" }}
+                  >
+                    {img ? (
+                      <Image
+                        src={img}
+                        alt=""
+                        width={90}
+                        height={90}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      cat.icon
+                    )}
+                  </div>
+                  <p className="text-base font-bold text-zinc-800 text-center leading-[21.64px]">
+                    {cat.labelEl.toUpperCase()}
+                  </p>
+                </Link>
+              );
+            })}
           </div>
         ))}
       </div>

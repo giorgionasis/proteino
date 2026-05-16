@@ -331,7 +331,7 @@ function HeroDiscoverShowcase() {
     >
       <Variant label="Full-height hero (733px)" note="Scaled down — see live for real size">
         <div className="w-[400px] bg-white" style={{ transform: "scale(0.55)", transformOrigin: "top left", height: 405 }}>
-          <HeroDiscover />
+          <HeroDiscover suggestionCount={1952} />
         </div>
       </Variant>
     </ShowcaseSection>
