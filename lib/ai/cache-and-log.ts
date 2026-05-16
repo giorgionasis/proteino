@@ -20,10 +20,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * Prompt-version bump invalidates cache on prompt changes. Bump when
  * tweaking the system prompt in gemini.ts.
  */
-// v13 — invitational tone bump: prompt now prefers conditional
-// ("θα ήθελες", "μήπως θες") over imperative ("πες μας") so the
-// coach feels like a polite friend, not a teacher giving an order.
-const PROMPT_VERSION = "v13";
+// v16 — SubmissionExtractionSchema extended with location_hint so
+// Google Places can disambiguate same-name venues (Δίοενυσος in
+// Πλάκα vs. anywhere else). Defaults to "Αθήνα" when no location
+// mentioned, since that's the most likely location.
+const PROMPT_VERSION = "v16";
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 interface CachedEntry {

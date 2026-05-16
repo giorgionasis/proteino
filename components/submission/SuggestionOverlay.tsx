@@ -356,6 +356,123 @@ interface MatchPreview {
   director: string | null;
   cast: Array<{ name: string; avatar: string | null }>;
   year: number | null;
+  /** Books only — publisher imprint surfaced under the title. */
+  publisher: string | null;
+  /** Drives which copy + which fields render in the preview. */
+  category: string | null;
+  /** Venue (food/bars/hotels) extras from Google Places. */
+  venue: {
+    address: string | null;
+    short_address: string | null;
+    phone: string | null;
+    website: string | null;
+    google_maps_url: string | null;
+    google_rating: number | null;
+    google_rating_count: number | null;
+    price_level: number | null;
+    primary_type_label: string | null;
+    open_now: boolean | null;
+  } | null;
+}
+
+/** Per-category label for the "cast" section. Books use a single
+ *  "ΣΥΓΓΡΑΦΕΑΣ" / "ΣΥΓΓΡΑΦΕΙΣ" instead of "ΠΡΩΤΑΓΩΝΙΣΤΟΥΝ". Movies/
+ *  series keep the original. Returns null when the section
+ *  shouldn't render at all for this category (food/bars/hotels). */
+function castLabelFor(category: string | null, count: number): string | null {
+  switch (category) {
+    case "movies":
+    case "series":
+      return "Πρωταγωνιστούν";
+    case "books":
+      return count === 1 ? "Συγγραφέας" : "Συγγραφείς";
+    case "theater":
+      return "Συντελεστές";
+    case "events":
+      return "Καλλιτέχνες";
+    case "recipes":
+    case "food":
+    case "bars":
+    case "hotels":
+      return null;
+    default:
+      return count > 0 ? "Πρωταγωνιστούν" : null;
+  }
+}
+
+/** Per-category label for the "director" line above cast. Books
+ *  swap to "Εκδότης" (publisher) when we have one. */
+function topMetaLabelFor(category: string | null): string {
+  switch (category) {
+    case "books":   return "Εκδότης";
+    case "theater": return "Σκηνοθεσία";
+    case "movies":
+    case "series":
+    default:        return "Σκηνοθεσία";
+  }
+}
+
+/** Venue (food/bars/hotels) info block — shown instead of the cast
+ *  carousel. Surfaces Google's address + rating + open-now signal +
+ *  price level so the user immediately sees we matched the right
+ *  venue and not a same-name place in a different neighborhood. */
+function VenuePreviewBlock({ venue }: { venue: NonNullable<MatchPreview["venue"]> }) {
+  const priceLabel = venue.price_level === null ? null
+    : venue.price_level === 0 ? "Δωρεάν"
+    : "€".repeat(Math.max(1, venue.price_level));
+  return (
+    <div className="mt-3 space-y-2 text-[13px] text-zinc-700">
+      {venue.primary_type_label && (
+        <p className="text-[11px] font-medium text-coral-700">{venue.primary_type_label}</p>
+      )}
+      {venue.address && (
+        <p className="leading-snug">
+          <span className="text-[10px] font-bold text-zinc-400 tracking-widest uppercase mr-2 align-middle">
+            Διεύθυνση
+          </span>
+          <span className="text-zinc-700">{venue.address}</span>
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-2 mt-2">
+        {venue.google_rating !== null && (
+          <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-zinc-700">
+            <span className="text-coral-600">★</span>
+            <span className="tabular-nums">{venue.google_rating.toFixed(1)}</span>
+            {venue.google_rating_count !== null && (
+              <span className="text-zinc-400 font-normal">({venue.google_rating_count.toLocaleString("el-GR")})</span>
+            )}
+          </span>
+        )}
+        {priceLabel && (
+          <span className="text-[11px] font-semibold text-zinc-600">{priceLabel}</span>
+        )}
+        {venue.open_now !== null && (
+          <span className={cn(
+            "text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-xs",
+            venue.open_now ? "bg-green-50 text-green-700" : "bg-zinc-100 text-zinc-500",
+          )}>
+            {venue.open_now ? "Ανοιχτά" : "Κλειστά"}
+          </span>
+        )}
+      </div>
+      {(venue.phone || venue.website) && (
+        <div className="flex flex-wrap items-center gap-3 text-[12px] pt-1">
+          {venue.phone && <span className="text-zinc-600">📞 {venue.phone}</span>}
+          {venue.website && (
+            <a
+              href={venue.website}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-coral-600 underline underline-offset-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Ιστοσελίδα
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function PreviewScreen({
@@ -379,6 +496,13 @@ function PreviewScreen({
   onEdit:  () => void;
   onClose: () => void;
 }) {
+  // Books: prefer publisher over director (director is null for books anyway).
+  // Movies/series: director field stays as-is.
+  const topMetaValue = preview.category === "books"
+    ? preview.publisher
+    : preview.director;
+  const topMetaLabel = topMetaLabelFor(preview.category);
+  const castLabel = castLabelFor(preview.category, preview.cast.length);
   return (
     <div className="flex flex-col h-full min-h-screen bg-white">
       <div className="flex items-center justify-end h-14 px-5 border-b border-zinc-200">
@@ -420,17 +544,17 @@ function PreviewScreen({
                   <span className="ml-2 text-base font-medium text-zinc-400">({preview.year})</span>
                 )}
               </h3>
-              {preview.director && (
+              {topMetaValue && (
                 <div className="mt-2 text-[13px] text-zinc-600">
                   <p>
-                    <span className="text-[10px] font-bold text-zinc-400 tracking-widest uppercase mr-2">Σκηνοθεσία</span>
-                    <span className="font-semibold text-zinc-800">{preview.director}</span>
+                    <span className="text-[10px] font-bold text-zinc-400 tracking-widest uppercase mr-2">{topMetaLabel}</span>
+                    <span className="font-semibold text-zinc-800">{topMetaValue}</span>
                   </p>
                 </div>
               )}
-              {preview.cast.length > 0 && (
+              {preview.cast.length > 0 && castLabel && (
                 <div className="mt-3">
-                  <p className="text-[10px] font-bold text-zinc-400 tracking-widest uppercase mb-2">Πρωταγωνιστούν</p>
+                  <p className="text-[10px] font-bold text-zinc-400 tracking-widest uppercase mb-2">{castLabel}</p>
                   <div className="flex gap-3 overflow-x-auto -mx-4 px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {preview.cast.slice(0, 6).map((c, i) => (
                       <div key={`${c.name}-${i}`} className="flex flex-col items-center gap-1 shrink-0 w-16">
@@ -450,6 +574,7 @@ function PreviewScreen({
                   </div>
                 </div>
               )}
+              {preview.venue && <VenuePreviewBlock venue={preview.venue} />}
             </div>
 
             {/* Star rating — embedded with the suggestion (CLAUDE.md §11) */}
@@ -1146,17 +1271,34 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
 
   if (hookState === "preview") {
     const md = (analysis?.matchData ?? {}) as Record<string, any>;
+    const isVenue = analysis?.category === "food" || analysis?.category === "bars" || analysis?.category === "hotels";
     const preview: MatchPreview = {
       posterUrl: typeof md.poster_url === "string" ? md.poster_url : null,
       backdropUrl: typeof md.backdrop_url === "string" ? md.backdrop_url : null,
       director: typeof md.director === "string" ? md.director : null,
       year: typeof md.year === "number" ? md.year : null,
+      publisher: typeof md.publisher === "string" ? md.publisher : null,
+      category: analysis?.category ?? null,
       cast: Array.isArray(md.cast)
         ? md.cast.slice(0, 5).map((c: any) => ({
             name: typeof c?.name === "string" ? c.name : "",
             avatar: typeof c?.avatar === "string" ? c.avatar : null,
           })).filter((c) => c.name)
         : [],
+      venue: isVenue && md.source === "google-places"
+        ? {
+            address: typeof md.address === "string" ? md.address : null,
+            short_address: typeof md.short_address === "string" ? md.short_address : null,
+            phone: typeof md.telephone === "string" ? md.telephone : null,
+            website: typeof md.website === "string" ? md.website : null,
+            google_maps_url: typeof md.google_maps_url === "string" ? md.google_maps_url : null,
+            google_rating: typeof md.external_ratings?.google?.rating === "number" ? md.external_ratings.google.rating : null,
+            google_rating_count: typeof md.external_ratings?.google?.count === "number" ? md.external_ratings.google.count : null,
+            price_level: typeof md.price_level === "number" ? md.price_level : null,
+            primary_type_label: typeof md.primary_type_label === "string" ? md.primary_type_label : null,
+            open_now: typeof md.opening_hours?.open_now === "boolean" ? md.opening_hours.open_now : null,
+          }
+        : null,
     };
     return (
       <PreviewScreen

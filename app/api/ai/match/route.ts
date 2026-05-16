@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import type { CategorySlug, SubmissionAnalysis } from "@/types";
 import { assessQuality } from "@/lib/ai/quality";
 import { extractSubmissionFields } from "@/lib/ai/gemini";
+import { searchGoogleBooks, googleBookToMatchData } from "@/lib/enrichment/google-books";
+import { searchGooglePlace, googlePlaceToMatchData, categorizeGooglePlace } from "@/lib/enrichment/google-places";
+import { computeTier as computeTierShared } from "@/lib/enrichment/scoring";
 
 /**
  * GET /api/ai/match?text=<user description>
@@ -505,10 +508,137 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(out);
   }
 
+  // Books — Google Books verification on top of Gemini extraction.
+  // Mirrors the TMDB branch shape: search → score → tier → enriched
+  // matchData. Greek-first (langRestrict=el) with English fallback,
+  // see lib/enrichment/google-books.ts.
+  //
+  // Falls through to the generic fallback below when no hit ≥60 —
+  // user still gets a soft Gemini-only lock.
+  const categoryForBooks =
+    geminiExtraction?.category === "books" || categoryHint === "books" ? "books" : null;
+  if (categoryForBooks === "books") {
+    const bookTitle = (geminiExtraction?.title || titleHint || candidates[0] || "").trim();
+    if (bookTitle) {
+      // Gemini's schema uses `actor_hint` as a shared field for
+      // ηθοποιό/συγγραφέα/καλλιτέχνη across categories — for books it
+      // carries the author name. See SUBMISSION_PROMPT in lib/ai/gemini.ts.
+      const authorHint = geminiExtraction?.actor_hint || null;
+      // English equivalents for the Google Books fallback tier. Greek
+      // classics (Καζαντζάκης etc.) often live only under their Latin
+      // spelling in Google's index — Gemini supplies the equivalent.
+      const englishTitle = geminiExtraction?.english_title_hint || null;
+      const englishAuthor = geminiExtraction?.english_author_hint || null;
+      const match = await searchGoogleBooks({
+        title: bookTitle,
+        author: authorHint,
+        englishTitle,
+        englishAuthor,
+      });
+      if (match) {
+        const tier = computeTierShared(match.match_score, null);
+        const payload = googleBookToMatchData(match);
+        const tierMessage =
+          tier === "low"
+            ? "Βρήκα κάτι αλλά δεν είμαι σίγουρος. Σωστό;"
+            : tier === "medium"
+              ? `Νομίζω είναι "${match.title}"${match.authors[0] ? ` του ${match.authors[0]}` : ""}. Σωστό;`
+              : `Βρήκα: "${match.title}"${match.published_year ? ` (${match.published_year})` : ""}`;
+
+        const out: SubmissionAnalysis = {
+          matched: true,
+          title: match.title,
+          category: "books",
+          confidence: tier === "high" ? 0.95 : tier === "medium" ? 0.7 : 0.45,
+          progress: 100,
+          message: quality.tip ?? tierMessage,
+          matchData: {
+            ...payload,
+            tried_candidate: bookTitle,
+            confidence_tier: tier,
+            best_score: match.match_score,
+            alternatives: [],
+          },
+          quality,
+        };
+        return NextResponse.json(out);
+      }
+      // No Google Books hit at all → fall through to soft Gemini-only
+      // lock below. Better than pretending we don't recognize "books".
+    }
+  }
+
+  // Venues (food, bars, hotels) — Google Places (New) verification on
+  // top of Gemini extraction. Same shape as TMDB / Books: search →
+  // score → tier → enriched matchData. Greek-localized (languageCode=
+  // el, regionCode=GR) so Google returns Greek display names + types.
+  //
+  // location_hint from Gemini bias-narrows the search ("Δίοενυσος Πλάκα
+  // Αθήνα") so a venue with a common name doesn't match the wrong city.
+  const venueCategory = (() => {
+    const cat = geminiExtraction?.category ?? categoryHint;
+    if (cat === "food" || cat === "bars" || cat === "hotels") return cat;
+    return null;
+  })();
+  if (venueCategory) {
+    const venueName = (geminiExtraction?.title || titleHint || candidates[0] || "").trim();
+    if (venueName) {
+      // Gemini's actor_hint can carry a person name (chef, owner) —
+      // not useful for venue search. Location hints come from the
+      // free-text description instead (Gemini infers location from
+      // context, surfaced as part of the title sometimes).
+      const place = await searchGooglePlace({
+        name: venueName,
+        locationHint: geminiExtraction?.location_hint || null,
+        category: venueCategory,
+      });
+      if (place) {
+        // Override Gemini's initial category guess with what Google
+        // actually says the venue is. An all-day bar/cafe/restaurant
+        // (Etouto, common in Athens) might be described as "πήγαμε
+        // για φαγητό" → Gemini guesses "food" — but Google's
+        // primaryType is "bar", which means it belongs in /bars.
+        // Per product rule: bar/cafe types win over restaurant types
+        // when both are present.
+        const googleDerivedCategory = categorizeGooglePlace(place.primary_type, place.types);
+        const finalCategory: "food" | "bars" | "hotels" = googleDerivedCategory ?? venueCategory;
+        const tier = computeTierShared(place.match_score, null);
+        const payload = googlePlaceToMatchData(place);
+        const tierMessage =
+          tier === "low"
+            ? "Βρήκα κάτι αλλά δεν είμαι σίγουρος. Σωστό;"
+            : tier === "medium"
+              ? `Νομίζω είναι "${place.name}"${place.short_address ? ` στην ${place.short_address}` : ""}. Σωστό;`
+              : `Βρήκα: "${place.name}"${place.short_address ? ` — ${place.short_address}` : ""}`;
+
+        const out: SubmissionAnalysis = {
+          matched: true,
+          title: place.name,
+          category: finalCategory,
+          confidence: tier === "high" ? 0.95 : tier === "medium" ? 0.7 : 0.45,
+          progress: 100,
+          message: quality.tip ?? tierMessage,
+          matchData: {
+            ...payload,
+            tried_candidate: venueName,
+            confidence_tier: tier,
+            best_score: place.match_score,
+            alternatives: [],
+            gemini_guessed_category: venueCategory,
+            google_derived_category: googleDerivedCategory,
+          },
+          quality,
+        };
+        return NextResponse.json(out);
+      }
+      // No Places hit → fall through to soft Gemini-only lock below.
+    }
+  }
+
   // Other categories: prefer Gemini's title + category (semantic — it
   // read the full text + DB taxonomy). Falls back to regex first
   // candidate only when Gemini had nothing. No external verification
-  // yet (TODO: wire Google Books / Places / Ticketmaster).
+  // yet (TODO: wire Google Places / Ticketmaster).
   const geminiCategory = (geminiExtraction?.category ?? categoryHint) as CategorySlug | null;
   const finalCategory = geminiCategory ?? candidateCategory;
   const finalTitle =
