@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { CategorySlug, SubmissionAnalysis } from "@/types";
 import { assessQuality } from "@/lib/ai/quality";
+import { extractSubmissionFields } from "@/lib/ai/gemini";
 
 /**
  * GET /api/ai/match?text=<user description>
@@ -326,13 +327,16 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const text = (url.searchParams.get("text") ?? "").trim();
 
-  // Optional hints passed by GeminiAIService.analyzeSubmission. The
-  // route now treats Gemini as the source of truth — when titleHint /
-  // categoryHint are present they're used directly, no regex parallel
-  // path. Regex extractors are kept only as emergency fallback when
-  // Gemini returned nothing (no API key / network down / parse fail).
-  const titleHint = url.searchParams.get("title_hint")?.trim() ?? null;
-  const categoryHint = url.searchParams.get("category_hint")?.trim() ?? null;
+  // Optional hints passed by GeminiAIService.analyzeSubmission. When
+  // absent (client called us through MockAIService, the common case
+  // today) we fire Gemini extraction here server-side so all 9
+  // categories get a real title/category instead of regex first-capital
+  // garbage like "Πήγα" / "Διάβασα". Regex extractors stay as final
+  // fallback when Gemini also fails (no key / network down / parse fail).
+  let titleHint = url.searchParams.get("title_hint")?.trim() ?? null;
+  let categoryHint = url.searchParams.get("category_hint")?.trim() ?? null;
+  let yearHint = url.searchParams.get("year_hint")?.trim() ?? null;
+  let confidenceHint = url.searchParams.get("confidence_hint")?.trim() ?? null;
 
   const quality = assessQuality(text);
 
@@ -349,6 +353,24 @@ export async function GET(req: NextRequest) {
       quality,
     };
     return NextResponse.json(empty);
+  }
+
+  // Server-side Gemini extraction when client didn't pass hints. Today
+  // useSubmission goes through MockAIService → here without hints, so
+  // this branch fires for every real submission. Gives us a proper
+  // title + category to feed downstream (TMDB candidate for movies/
+  // series; the actual match for the other 7 categories).
+  let geminiExtraction: Awaited<ReturnType<typeof extractSubmissionFields>> = null;
+  if (!titleHint) {
+    geminiExtraction = await extractSubmissionFields(text);
+    if (geminiExtraction) {
+      if (geminiExtraction.title) titleHint = geminiExtraction.title;
+      if (geminiExtraction.category) categoryHint = geminiExtraction.category;
+      if (geminiExtraction.year_hint) yearHint = String(geminiExtraction.year_hint);
+      if (typeof geminiExtraction.confidence === "number") {
+        confidenceHint = String(geminiExtraction.confidence);
+      }
+    }
   }
 
   // Candidate sourcing policy:
@@ -483,17 +505,55 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(out);
   }
 
-  // Other categories: accept the first candidate without external
-  // verification (TODO: wire Google Books / Places / Ticketmaster).
-  const candidateTitle = candidates[0] ?? "";
+  // Other categories: prefer Gemini's title + category (semantic — it
+  // read the full text + DB taxonomy). Falls back to regex first
+  // candidate only when Gemini had nothing. No external verification
+  // yet (TODO: wire Google Books / Places / Ticketmaster).
+  const geminiCategory = (geminiExtraction?.category ?? categoryHint) as CategorySlug | null;
+  const finalCategory = geminiCategory ?? candidateCategory;
+  const finalTitle =
+    geminiExtraction?.title?.trim()
+      || titleHint
+      || candidates[0]
+      || "";
+  const source: "gemini" | "heuristic" = geminiExtraction?.title ? "gemini" : "heuristic";
+  const geminiConfidenceRaw =
+    typeof geminiExtraction?.confidence === "number" ? geminiExtraction.confidence : null;
+  const confidenceFromGemini =
+    geminiConfidenceRaw !== null
+      ? Math.min(0.4 + geminiConfidenceRaw / 125, 0.95)  // 0-100 → 0.4-0.95
+      : Math.min(0.6 + text.length / 400, 0.92);
+
+  // confidence_tier drives whether useSubmission auto-locks. For
+  // non-TMDB categories we don't have a runner-up to gap-test, so
+  // tier comes purely from Gemini's self-reported confidence:
+  //   ≥80 → high  (auto-lock, no friction)
+  //   60-79 → medium (lock + "Όχι;" escape — but no alternatives panel
+  //                    exists for non-movie/series, so the user just
+  //                    re-edits the text)
+  //   <60 → low   (no lock — soft suggestion only)
+  const tier: "high" | "medium" | "low" | null = geminiConfidenceRaw === null
+    ? null
+    : geminiConfidenceRaw >= 80
+      ? "high"
+      : geminiConfidenceRaw >= 60
+        ? "medium"
+        : "low";
+
   const out: SubmissionAnalysis = {
-    matched: true,
-    title: candidateTitle,
-    category: candidateCategory,
-    confidence: Math.min(0.6 + text.length / 400, 0.92),
+    matched: finalTitle.length > 0 && (tier === "high" || tier === "medium"),
+    title: finalTitle || null,
+    category: finalCategory,
+    confidence: confidenceFromGemini,
     progress: 100,
-    message: quality.tip ?? `Βρήκα: ${candidateTitle}`,
-    matchData: { source: "heuristic", derived_title: candidateTitle },
+    message: quality.tip ?? (finalTitle ? `Βρήκα: ${finalTitle}` : "Συνέχισε να γράφεις..."),
+    matchData: {
+      source,
+      derived_title: finalTitle,
+      confidence_tier: tier,
+      gemini_extraction: geminiExtraction ?? null,
+      alternatives: [],
+    },
     quality,
   };
   return NextResponse.json(out);

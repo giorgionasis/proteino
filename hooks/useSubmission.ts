@@ -131,6 +131,16 @@ interface UseSubmissionReturn {
   duplicate: DuplicateInfo | null;
   /** Human-readable error message when state="error". */
   errorMessage: string | null;
+  /** Coaching pipeline status — drives the "AI thinking" cue in the
+   *  IntelligencePanel. "thinking" while a Gemini stream is in flight,
+   *  "fresh" right after a new tip lands (settles to "idle" shortly
+   *  after), "idle" otherwise. */
+  coachingStatus: "idle" | "thinking" | "fresh";
+  /** True when Gemini judged the writing as already rich + personal
+   *  enough (quality_label === "excellent"). Drives the celebration
+   *  state in the panel. Cleared when the user keeps typing — they
+   *  may be adding more, so it should be re-evaluated. */
+  coachingReady: boolean;
   setText: (value: string) => void;
   setRating: (value: number) => void;
   /** Drop the current locked match → go back to "typing" so the AI can re-match. */
@@ -165,12 +175,20 @@ export function useSubmission(): UseSubmissionReturn {
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [duplicate, setDuplicate] = useState<DuplicateInfo | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [coachingStatus, setCoachingStatus] = useState<"idle" | "thinking" | "fresh">("idle");
+  const [coachingReady, setCoachingReady] = useState<boolean>(false);
+  const [analysisInFlight, setAnalysisInFlight] = useState<boolean>(false);
+  const freshSettleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Separate, longer debounce for the semantic quality tip — only fires
   // when the user has paused for ~1.5s AND text is substantive (>60
   // chars). Prevents one LLM call per keystroke while still feeling
   // alive when they pause to think.
   const semanticTipDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // AbortController for the in-flight coaching-tip stream. A new
+  // keystroke past the debounce cancels the previous stream so we
+  // don't paint a stale tip on top of a fresh one.
+  const semanticTipAbortRef = useRef<AbortController | null>(null);
   // Matches the user explicitly rejected on the duplicate screen. AI won't
   // auto-lock on these again for the rest of this session — without this,
   // the same keystrokes would re-trigger the same match → same dup screen.
@@ -256,29 +274,89 @@ export function useSubmission(): UseSubmissionReturn {
     textRef.current = value;
 
     // Quality coach: regex runs locally on every keystroke (instant
-    // feedback, free, no LLM round-trip). Then ~1.5s after the user
-    // pauses, we ask Gemini for a semantic tip and replace the regex
-    // tip if the LLM gave us something more specific. Empty → null.
+    // feedback, free, no LLM round-trip) and drives score/label/badge.
+    // The tip itself is HELD across keystrokes — only the LLM stream
+    // updates it. Otherwise the regex tip would clobber the (more
+    // specific) LLM tip the moment the user types another character.
+    // On first keystroke we seed with the regex tip so something shows
+    // before Gemini gets a chance to reply.
     const localQuality = value.trim() ? assessQuality(value) : null;
-    setQuality(localQuality);
+    setQuality((prev) => {
+      if (!localQuality) return null;
+      // Preserve LLM-sourced tip + label across keystrokes. The local
+      // regex score (which moves with length) still drives the
+      // progress bar; the LLM judgment owns the badge until the next
+      // stream completes.
+      return {
+        ...localQuality,
+        tip: prev?.tip ?? localQuality.tip,
+        label: prev?.label ?? localQuality.label,
+        badge: prev?.badge ?? localQuality.badge,
+      };
+    });
+    // Coaching readiness is re-evaluated on every keystroke past the
+    // last judgment. User added more → not "ready" anymore until LLM
+    // confirms again.
+    setCoachingReady(false);
 
-    // Schedule the semantic tip request. Cancel any previous one.
+    // Schedule the semantic tip request. Cancel any previous debounce
+    // AND any in-flight stream so a stale tip can't paint over fresh
+    // typing. Streams the response so the IntelligencePanel renders
+    // the tip token-by-token instead of popping in at the end.
     if (semanticTipDebounceRef.current) clearTimeout(semanticTipDebounceRef.current);
+    if (semanticTipAbortRef.current) {
+      semanticTipAbortRef.current.abort();
+      semanticTipAbortRef.current = null;
+    }
     if (value.trim().length >= 60) {
+      // Snapshot category at debounce-fire time. If AI has locked a
+      // match, pass its category so coaching is movie/book/food/etc-
+      // aware. Null when nothing is locked → server falls back to
+      // generic guidance.
+      const lockedCategory = analysis?.category ?? null;
       semanticTipDebounceRef.current = setTimeout(async () => {
         try {
-          const { getAIService } = await import("@/lib/ai");
-          const ai = getAIService();
-          if (!ai.getSemanticQualityTip) return;
-          const tip = await ai.getSemanticQualityTip(value);
-          if (!tip) return;
-          // Replace the tip but preserve the local score/label/badge —
-          // those drive the colored progress bar and shouldn't flicker.
-          setQuality((prev) => prev ? { ...prev, tip } : prev);
+          const { streamCoachingTip } = await import("@/lib/ai/stream-coaching-tip");
+          const ctrl = new AbortController();
+          semanticTipAbortRef.current = ctrl;
+          setCoachingStatus("thinking");
+          const LLM_BADGES: Record<"poor" | "fair" | "good" | "excellent", string> = {
+            poor:      "Συνέχισε...",
+            fair:      "Καλό ξεκίνημα",
+            good:      "✓ Καλή περιγραφή",
+            excellent: "🔥 Εξαιρετικό",
+          };
+          await streamCoachingTip(
+            value,
+            lockedCategory,
+            (update) => {
+              if (ctrl.signal.aborted) return;
+              // Override regex label/badge with LLM judgment. Keep tip
+              // in sync. Preserve score (regex still drives the
+              // progress bar's numeric position).
+              setQuality((prev) => {
+                if (!prev) return prev;
+                const tip = update.tip?.trim() || prev.tip;
+                const label = update.label ?? prev.label;
+                const badge = update.label ? LLM_BADGES[update.label] : prev.badge;
+                return { ...prev, tip, label, badge };
+              });
+              setCoachingReady(update.ready);
+            },
+            ctrl.signal,
+          );
+          if (!ctrl.signal.aborted) {
+            setCoachingStatus("fresh");
+            if (freshSettleRef.current) clearTimeout(freshSettleRef.current);
+            freshSettleRef.current = setTimeout(() => setCoachingStatus("idle"), 1600);
+          } else {
+            setCoachingStatus("idle");
+          }
         } catch {
           /* fail silently — regex tip stays */
+          setCoachingStatus("idle");
         }
-      }, 1500);
+      }, 900);
     }
 
     if (!value.trim()) {
@@ -315,6 +393,10 @@ export function useSubmission(): UseSubmissionReturn {
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
+      // Make the panel feel alive — flip the activity cue ON before
+      // the request fires so the user sees AI is engaged even for the
+      // ~400-700ms before the result lands.
+      setAnalysisInFlight(true);
       try {
         const { getAIService } = await import("@/lib/ai");
         const result = await getAIService().analyzeSubmission(value);
@@ -344,6 +426,8 @@ export function useSubmission(): UseSubmissionReturn {
         }
       } catch {
         // Non-blocking — keep typing state
+      } finally {
+        setAnalysisInFlight(false);
       }
     }, 400);
   }, [state, analysis]);
@@ -645,10 +729,22 @@ export function useSubmission(): UseSubmissionReturn {
     setPublishResult(null);
     setDuplicate(null);
     setErrorMessage(null);
-    setState("empty");
+    setCoachingStatus("idle");
+    setCoachingReady(false);
+    setAnalysisInFlight(false);
+    if (freshSettleRef.current) { clearTimeout(freshSettleRef.current); freshSettleRef.current = null; }
     rejectedMatchesRef.current.clear();
     lockedKeyRef.current = null;
+    setState("empty");
   }, []);
+
+  // Visible "AI is working" state — true if EITHER the submission
+  // match analysis OR the coaching tip stream is in flight. Lets the
+  // panel show a single "Σκέφτεται" cue covering both pipelines so
+  // the user sees AI engagement from the first keystroke, not only
+  // during the slow coaching stream.
+  const exposedCoachingStatus: "idle" | "thinking" | "fresh" =
+    analysisInFlight ? "thinking" : coachingStatus;
 
   return {
     state,
@@ -660,6 +756,8 @@ export function useSubmission(): UseSubmissionReturn {
     publishResult,
     duplicate,
     errorMessage,
+    coachingStatus: exposedCoachingStatus,
+    coachingReady,
     setText,
     setRating,
     unlock,

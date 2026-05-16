@@ -1,31 +1,21 @@
-import { generateObject, embed } from "ai";
-import { gateway } from "@ai-sdk/gateway";
-import { z } from "zod";
+import { GoogleGenerativeAI, type GenerationConfig } from "@google/generative-ai";
 import type { Item, SubmissionAnalysis, SearchAnalysis, CategorySlug } from "@/types";
 import type { AIService } from "./index";
 import { assessQuality } from "./quality";
 import { getTaxonomy, renderTaxonomyForPrompt } from "./taxonomy";
 
 /**
- * Gemini-backed AIService — now routed through Vercel AI Gateway.
+ * Direct-to-Google Gemini implementation. Legacy fallback for local
+ * dev environments that don't have AI_GATEWAY_API_KEY provisioned —
+ * keeps `GEMINI_API_KEY` working without requiring a Gateway round
+ * trip. Production should always go through `gemini.ts` (Vercel AI
+ * Gateway) so cost + observability flow through a single pane.
  *
- * Switched from the raw `@google/generative-ai` SDK to the AI SDK's
- * `generateObject` + `gateway()` provider. Behaviour, prompts, and
- * cache keys are unchanged; the wire format is Gateway → Google. This
- * unlocks unified observability + zero-data-retention + fallback
- * routing without changing the AIService interface.
- *
- * Model id format: "google/gemini-2.5-flash-lite" (provider/model).
- *
- * Auth: the gateway picks up AI_GATEWAY_API_KEY from process.env
- * automatically. GEMINI_API_KEY is no longer read here (kept only for
- * the legacy direct-Gemini code path in lib/ai/index.ts during dev).
+ * Model + prompts mirror `gemini.ts` 1:1 so cache keys are stable
+ * across the two code paths.
  */
-const MODEL_FLASH = "google/gemini-2.5-flash-lite";
-const MODEL_EMBEDDING = "google/text-embedding-004";
-
-export const GEMINI_PROVIDER_LABEL = "gemini-gateway";
-export const GEMINI_MODEL_ID = MODEL_FLASH;
+const MODEL_FLASH = "gemini-2.5-flash-lite";
+const MODEL_EMBEDDING = "text-embedding-004";
 
 const VALID_CATEGORIES: CategorySlug[] = [
   "movies", "series", "books", "food", "recipes", "bars", "hotels", "theater", "events",
@@ -112,20 +102,19 @@ const COACHING_PROMPT = `Είσαι warm Greek coach για το Proteino. Ο χ
 JSON: {
   "ready": <true αν η κριτική είναι ήδη πλούσια+προσωπική>,
   "tip": <max 120 chars Greek string ή null αν ready=true>,
-  "quality_label": <ένα από "poor" | "fair" | "good" | "excellent" — η δική σου εκτίμηση για το πόσο καλή είναι η κριτική ΑΥΤΗ ΤΗ ΣΤΙΓΜΗ>
+  "quality_label": <ένα από "poor" | "fair" | "good" | "excellent">
 }
 
 quality_label rubric:
-- poor      → πολύ γενικό, μόνο "ωραίο/χάλια", καμία λεπτομέρεια
-- fair      → έχει 1-2 λεπτομέρειες αλλά τίποτα προσωπικό
-- good      → έχει λεπτομέρειες ΚΑΙ ένα συναίσθημα/προσωπική κρίση
+- poor → γενικό, μόνο "ωραίο", καμία λεπτομέρεια
+- fair → 1-2 λεπτομέρειες, τίποτα προσωπικό
+- good → λεπτομέρειες ΚΑΙ συναίσθημα/προσωπική κρίση
 - excellent → πλούσιο, συγκεκριμένο, με γιατί + λεπτομέρειες + συναίσθημα
 
 Κανόνες:
 - Εμπιστεύσου τις γνώσεις σου για το τι κάνει μια κριτική καλή σε κάθε domain
 - ΟΧΙ "γράψε περισσότερα" — πάντα concrete subject
 - Μη ζητάς κάτι που είπε ήδη
-- Αν δεις επανάληψη (πχ "πολυ πολυ πολυ"), αναγνώρισε τον ενθουσιασμό και ζήτα μια συγκεκριμένη λεπτομέρεια
 - Όταν quality_label = "excellent" → ready: true, tip: null
 - Μόνο ελληνικά. Μόνο JSON.`;
 
@@ -168,73 +157,53 @@ const INTERESTS_PROMPT = `Διαβάζεις μια σύντομη αυτο-πε
 - "Μαγειρεύω συχνά αλλά τρώω και έξω" → ["recipes", "food"]
 - ΟΧΙ επεξήγηση. ΜΟΝΟ έγκυρο JSON.`;
 
-// ── Zod schemas — replace manual JSON.parse + ad-hoc validation ──────
-// Used both here for non-streaming `generateObject` and re-exported for
-// the streaming routes so the partial-object shape on the client is
-// type-aligned with the final.
+interface GeminiSearchExtraction {
+  intent: string;
+  categories: string[];
+  vibe: string | null;
+  type: string | null;
+  genre: string | null;
+  channel: string | null;
+  status: string | null;
+  period: string | null;
+  duration_min: number | null;
+  duration_max: number | null;
+  decade: string | null;
+  price: string | null;
+  person: string | null;
+  location: string | null;
+}
 
-export const SearchExtractionSchema = z.object({
-  intent: z.string(),
-  categories: z.array(z.string()),
-  vibe: z.string().nullable(),
-  type: z.string().nullable(),
-  genre: z.string().nullable(),
-  channel: z.string().nullable(),
-  status: z.string().nullable(),
-  period: z.string().nullable(),
-  duration_min: z.number().nullable(),
-  duration_max: z.number().nullable(),
-  decade: z.string().nullable(),
-  price: z.string().nullable(),
-  person: z.string().nullable(),
-  location: z.string().nullable(),
-});
-export type SearchExtraction = z.infer<typeof SearchExtractionSchema>;
+interface GeminiSubmissionExtraction {
+  title: string | null;
+  category: string | null;
+  confidence: number;
+  year_hint: number | null;
+  actor_hint: string | null;
+  director_hint: string | null;
+  mood: string | null;
+}
 
-export const SubmissionExtractionSchema = z.object({
-  title: z.string().nullable(),
-  category: z.string().nullable(),
-  confidence: z.number(),
-  year_hint: z.number().nullable(),
-  actor_hint: z.string().nullable(),
-  director_hint: z.string().nullable(),
-  mood: z.string().nullable(),
-});
-export type SubmissionExtraction = z.infer<typeof SubmissionExtractionSchema>;
+const GEN_CONFIG: GenerationConfig = {
+  // 0.1 (was 0.2) — extraction is factual, we want maximum determinism.
+  // Combined with the Postgres cache (lib/ai/cache-and-log.ts), repeat
+  // queries return identical results.
+  temperature: 0.1,
+  topP: 0.9,
+  responseMimeType: "application/json",
+};
 
-export const CoachingSchema = z.object({
-  ready: z.boolean(),
-  tip: z.string().nullable(),
-  /** Gemini's own freshness judgment on the writing. Drives the panel
-   *  badge dynamically so it actually moves as the user writes better
-   *  content (instead of staying stuck on the regex-derived label). */
-  quality_label: z.enum(["poor", "fair", "good", "excellent"]),
-});
-export type Coaching = z.infer<typeof CoachingSchema>;
+export const GEMINI_DIRECT_PROVIDER_LABEL = "gemini-direct";
+export const GEMINI_DIRECT_MODEL_ID = MODEL_FLASH;
 
-export const FallbackSchema = z.object({
-  question: z.string().nullable(),
-});
+export class GeminiDirectAIService implements AIService {
+  readonly provider = GEMINI_DIRECT_PROVIDER_LABEL;
+  readonly model = GEMINI_DIRECT_MODEL_ID;
+  private client: GoogleGenerativeAI;
 
-export const InterestsSchema = z.object({
-  categories: z.array(z.string()),
-});
-
-// 0.1 — extraction is factual, we want maximum determinism. Combined
-// with the Postgres cache (lib/ai/cache-and-log.ts), repeat queries
-// return identical results.
-const DEFAULT_TEMPERATURE = 0.1;
-
-export class GeminiAIService implements AIService {
-  /** Public for cache-and-log to label usage rows with the right
-   *  provider string instead of a hardcoded "gemini". */
-  readonly provider = GEMINI_PROVIDER_LABEL;
-  readonly model = GEMINI_MODEL_ID;
-
-  constructor(_apiKeyIgnored?: string) {
-    // Gateway picks up AI_GATEWAY_API_KEY automatically. The optional
-    // arg is kept so existing callers (lib/ai/index.ts) compile
-    // unchanged during the transition; it's a no-op now.
+  constructor(apiKey: string) {
+    if (!apiKey) throw new Error("GEMINI_API_KEY not set");
+    this.client = new GoogleGenerativeAI(apiKey);
   }
 
   async analyzeSearchQuery(query: string): Promise<SearchAnalysis> {
@@ -242,32 +211,38 @@ export class GeminiAIService implements AIService {
       return { intent: query, vibe: null, type: null, location: null, categories: [], query };
     }
 
+    // Build full system prompt with DB taxonomy injected. getTaxonomy()
+    // is module-cached for 5min so this is a fast lookup after first call.
     let fullPrompt = SEARCH_PROMPT;
     try {
       const taxonomy = await getTaxonomy();
       fullPrompt = SEARCH_PROMPT + "\n\n" + renderTaxonomyForPrompt(taxonomy);
     } catch {
-      /* taxonomy unavailable — base prompt only */
+      // Taxonomy unavailable (DB down) — fall through with base prompt.
     }
 
     try {
-      const { object } = await generateObject({
-        model: gateway(MODEL_FLASH),
-        schema: SearchExtractionSchema,
-        system: fullPrompt,
-        prompt: query,
-        temperature: DEFAULT_TEMPERATURE,
+      const model = this.client.getGenerativeModel({
+        model: MODEL_FLASH,
+        systemInstruction: fullPrompt,
+        generationConfig: GEN_CONFIG,
       });
+      const res = await model.generateContent(query);
+      const text = res.response.text();
+      const parsed = JSON.parse(text) as GeminiSearchExtraction;
 
-      const categories = (object.categories ?? [])
+      const categories = (parsed.categories ?? [])
         .filter((c): c is CategorySlug => VALID_CATEGORIES.includes(c as CategorySlug));
 
-      const rawStatus = (object.status ?? "").toString().toLowerCase().trim();
+      // Status normalization — Gemini may return Greek aliases.
+      const rawStatus = (parsed.status ?? "").toString().toLowerCase().trim();
       const status: "completed" | "ongoing" | null =
         rawStatus === "completed" ? "completed"
         : rawStatus === "ongoing" ? "ongoing"
         : null;
 
+      // Numeric coercion — Gemini occasionally returns durations as
+      // strings. Accept both, reject NaN.
       const toMinutes = (v: unknown): number | null => {
         if (v == null) return null;
         const n = typeof v === "number" ? v : parseInt(String(v), 10);
@@ -275,24 +250,26 @@ export class GeminiAIService implements AIService {
       };
 
       return {
-        intent: object.intent ?? query,
-        vibe: object.vibe ?? null,
-        type: object.type ?? null,
-        location: object.location ?? null,
+        intent: parsed.intent ?? query,
+        vibe: parsed.vibe ?? null,
+        type: parsed.type ?? null,
+        location: parsed.location ?? null,
         categories,
         query,
-        decade: object.decade ?? null,
-        price: (object.price === "budget" || object.price === "mid" || object.price === "high") ? object.price : null,
-        person: object.person ?? null,
-        genre: object.genre ?? null,
-        channel: object.channel ?? null,
+        decade: parsed.decade ?? null,
+        price: (parsed.price === "budget" || parsed.price === "mid" || parsed.price === "high") ? parsed.price : null,
+        person: parsed.person ?? null,
+        genre: parsed.genre ?? null,
+        channel: parsed.channel ?? null,
         status,
-        period: object.period ?? null,
-        duration_min: toMinutes(object.duration_min),
-        duration_max: toMinutes(object.duration_max),
+        period: parsed.period ?? null,
+        duration_min: toMinutes(parsed.duration_min),
+        duration_max: toMinutes(parsed.duration_max),
       };
     } catch (err) {
       console.error("[gemini.analyzeSearchQuery]", err);
+      // Graceful degradation: return passthrough so the regex-based
+      // fallback in /api/search still produces results.
       return { intent: query, vibe: null, type: null, location: null, categories: [], query };
     }
   }
@@ -313,38 +290,53 @@ export class GeminiAIService implements AIService {
       };
     }
 
-    const extraction = await extractSubmissionFields(text);
+    let fullSubmissionPrompt = SUBMISSION_PROMPT;
+    try {
+      const taxonomy = await getTaxonomy();
+      fullSubmissionPrompt = SUBMISSION_PROMPT + "\n\n" + renderTaxonomyForPrompt(taxonomy);
+    } catch {
+      /* taxonomy unavailable — base prompt only */
+    }
+
+    let extraction: GeminiSubmissionExtraction | null = null;
+    try {
+      const model = this.client.getGenerativeModel({
+        model: MODEL_FLASH,
+        systemInstruction: fullSubmissionPrompt,
+        generationConfig: GEN_CONFIG,
+      });
+      const res = await model.generateContent(text);
+      extraction = JSON.parse(res.response.text()) as GeminiSubmissionExtraction;
+    } catch (err) {
+      console.error("[gemini.analyzeSubmission]", err);
+    }
 
     // Hand off to /api/ai/match for the actual TMDB / Books / Places
     // confirmation step. Gemini's role is to extract a clean title +
     // category hint; the existing match endpoint does the canonical
     // lookup. Pass extracted hints via query params so the endpoint
     // can prefer them over raw-text heuristics.
-    //
-    // Only attempted on the client (where window exists). When invoked
-    // server-side (e.g., from a Route Handler), we return the bare
-    // extraction so the caller can wire the match call itself.
-    if (typeof window !== "undefined") {
-      try {
-        const url = new URL("/api/ai/match", window.location.origin);
-        url.searchParams.set("text", text);
-        if (extraction?.title) url.searchParams.set("title_hint", extraction.title);
-        if (extraction?.category) url.searchParams.set("category_hint", extraction.category);
-        if (extraction?.year_hint) url.searchParams.set("year_hint", String(extraction.year_hint));
-        if (typeof extraction?.confidence === "number") {
-          url.searchParams.set("confidence_hint", String(extraction.confidence));
-        }
-
-        const res = await fetch(url.toString());
-        if (res.ok) {
-          const j = (await res.json()) as SubmissionAnalysis;
-          return { ...j, quality };
-        }
-      } catch {
-        /* fall through */
+    try {
+      const url = new URL("/api/ai/match", window.location.origin);
+      url.searchParams.set("text", text);
+      if (extraction?.title) url.searchParams.set("title_hint", extraction.title);
+      if (extraction?.category) url.searchParams.set("category_hint", extraction.category);
+      if (extraction?.year_hint) url.searchParams.set("year_hint", String(extraction.year_hint));
+      if (typeof extraction?.confidence === "number") {
+        url.searchParams.set("confidence_hint", String(extraction.confidence));
       }
+
+      const res = await fetch(url.toString());
+      if (res.ok) {
+        const j = (await res.json()) as SubmissionAnalysis;
+        return { ...j, quality };
+      }
+    } catch {
+      /* fall through */
     }
 
+    // Match endpoint unreachable: surface what Gemini gave us, don't
+    // pretend to have a confirmed match.
     return {
       matched: false,
       title: extraction?.title ?? null,
@@ -360,25 +352,27 @@ export class GeminiAIService implements AIService {
   }
 
   async scoreDescriptionQuality(text: string): Promise<number> {
-    // Local-only heuristic — fast, free, no round-trip.
+    // Quality coach stays local — fast, doesn't need an LLM round-trip
+    // for length / sentence-count heuristics. Migrate to Gemini later
+    // if we want semantic feedback ("πες ποια σκηνή σε άγγιξε").
     return assessQuality(text).score / 100;
   }
 
   async getSemanticQualityTip(text: string, category?: string | null): Promise<string | null> {
-    if (text.trim().length < 60) return null;
+    if (text.trim().length < 60) return null; // not substantive enough yet
     try {
       const prompt = category
         ? `Κατηγορία: ${category}\n\nΚείμενο χρήστη:\n${text}`
         : `Κατηγορία: άγνωστη\n\nΚείμενο χρήστη:\n${text}`;
-      const { object } = await generateObject({
-        model: gateway(MODEL_FLASH),
-        schema: CoachingSchema,
-        system: COACHING_PROMPT,
-        prompt,
-        temperature: 0.6,
+      const model = this.client.getGenerativeModel({
+        model: MODEL_FLASH,
+        systemInstruction: COACHING_PROMPT,
+        generationConfig: { temperature: 0.6, topP: 0.9, responseMimeType: "application/json" },
       });
-      if (object.ready) return null;
-      const tip = (object.tip ?? "").trim();
+      const res = await model.generateContent(prompt);
+      const parsed = JSON.parse(res.response.text()) as { tip?: string | null; ready?: boolean };
+      if (parsed.ready) return null; // user's writing is good — no tip
+      const tip = (parsed.tip ?? "").trim();
       return tip.length > 0 && tip.length <= 120 ? tip : null;
     } catch (err) {
       console.error("[gemini.getSemanticQualityTip]", err);
@@ -389,15 +383,15 @@ export class GeminiAIService implements AIService {
   async conversationalSearchFallback(query: string, hint?: string): Promise<string | null> {
     if (query.trim().length < 3) return null;
     try {
-      const input = hint ? `Query: "${query}"\nHint: ${hint}` : `Query: "${query}"`;
-      const { object } = await generateObject({
-        model: gateway(MODEL_FLASH),
-        schema: FallbackSchema,
-        system: FALLBACK_PROMPT,
-        prompt: input,
-        temperature: 0.6,
+      const model = this.client.getGenerativeModel({
+        model: MODEL_FLASH,
+        systemInstruction: FALLBACK_PROMPT,
+        generationConfig: { temperature: 0.6, topP: 0.9, responseMimeType: "application/json" },
       });
-      const q = (object.question ?? "").trim();
+      const input = hint ? `Query: "${query}"\nHint: ${hint}` : `Query: "${query}"`;
+      const res = await model.generateContent(input);
+      const parsed = JSON.parse(res.response.text()) as { question?: string | null };
+      const q = (parsed.question ?? "").trim();
       return q.length > 0 && q.length <= 120 ? q : null;
     } catch (err) {
       console.error("[gemini.conversationalSearchFallback]", err);
@@ -409,15 +403,16 @@ export class GeminiAIService implements AIService {
     const trimmed = text.trim();
     if (trimmed.length < 4) return null;
     try {
-      const { object } = await generateObject({
-        model: gateway(MODEL_FLASH),
-        schema: InterestsSchema,
-        system: INTERESTS_PROMPT,
-        prompt: trimmed,
-        temperature: DEFAULT_TEMPERATURE,
+      const model = this.client.getGenerativeModel({
+        model: MODEL_FLASH,
+        systemInstruction: INTERESTS_PROMPT,
+        generationConfig: { temperature: 0.1, topP: 0.9, responseMimeType: "application/json" },
       });
-      const valid = object.categories
-        .filter((s) => typeof s === "string")
+      const res = await model.generateContent(trimmed);
+      const parsed = JSON.parse(res.response.text()) as { categories?: unknown };
+      if (!Array.isArray(parsed.categories)) return null;
+      const valid = parsed.categories
+        .filter((x): x is string => typeof x === "string")
         .filter((s) => VALID_CATEGORIES.includes(s as CategorySlug));
       // De-dupe, preserve order.
       const seen = new Set<string>();
@@ -434,11 +429,9 @@ export class GeminiAIService implements AIService {
 
   async generateEmbedding(text: string): Promise<number[]> {
     try {
-      const { embedding } = await embed({
-        model: gateway.textEmbeddingModel(MODEL_EMBEDDING),
-        value: text,
-      });
-      return embedding;
+      const model = this.client.getGenerativeModel({ model: MODEL_EMBEDDING });
+      const res = await model.embedContent(text);
+      return res.embedding.values;
     } catch (err) {
       console.error("[gemini.generateEmbedding]", err);
       return [];
@@ -446,59 +439,8 @@ export class GeminiAIService implements AIService {
   }
 
   async rerankRecommendations(_userId: string, candidates: Item[]): Promise<Item[]> {
-    // Reranking lives in Phase B. Passthrough so the interface is satisfied.
+    // Reranking lives in Phase B (recommendations). For now passthrough
+    // so the AIService interface is satisfied.
     return candidates;
   }
 }
-
-/**
- * Standalone Gemini extraction for a user submission. Returns just the
- * structured fields (title / category / confidence / hints) — no TMDB
- * handoff, no quality scoring, no message synthesis. Used by both
- * `analyzeSubmission` (which then orchestrates the TMDB call) and by
- * `/api/ai/match` server-side (which needs the extraction inline to
- * replace the regex first-capital-word fallback for non-movie/series
- * categories). Sub-10-char inputs return null without hitting the LLM.
- *
- * Best-effort: returns null on any provider error so callers degrade
- * gracefully to their regex fallback.
- */
-export async function extractSubmissionFields(
-  text: string,
-): Promise<SubmissionExtraction | null> {
-  if (!text || text.trim().length < 10) return null;
-
-  let fullPrompt = SUBMISSION_PROMPT;
-  try {
-    const taxonomy = await getTaxonomy();
-    fullPrompt = SUBMISSION_PROMPT + "\n\n" + renderTaxonomyForPrompt(taxonomy);
-  } catch {
-    /* taxonomy unavailable — base prompt only */
-  }
-
-  try {
-    const { object } = await generateObject({
-      model: gateway(MODEL_FLASH),
-      schema: SubmissionExtractionSchema,
-      system: fullPrompt,
-      prompt: text,
-      temperature: DEFAULT_TEMPERATURE,
-    });
-    return object;
-  } catch (err) {
-    console.error("[gemini.extractSubmissionFields]", err);
-    return null;
-  }
-}
-
-// Re-exported prompt + model constants for the streaming routes —
-// keeps the system prompt single-sourced.
-export {
-  SEARCH_PROMPT,
-  SUBMISSION_PROMPT,
-  COACHING_PROMPT,
-  FALLBACK_PROMPT,
-  INTERESTS_PROMPT,
-  MODEL_FLASH,
-  MODEL_EMBEDDING,
-};

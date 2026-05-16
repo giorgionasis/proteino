@@ -78,6 +78,8 @@ function IntelligencePanel({
   lockedCategory,
   qualityLabel,
   qualityBadge,
+  coachingStatus,
+  coachingReady,
 }: {
   progress:       number;
   message:        string;
@@ -87,6 +89,12 @@ function IntelligencePanel({
   lockedCategory: string | null;
   qualityLabel:   QualityLabel | null;
   qualityBadge:   string | null;
+  /** "thinking" → animated dot + reduced opacity on tip. "fresh" →
+   *  brief glow on the tip line. "idle" → static. */
+  coachingStatus: "idle" | "thinking" | "fresh";
+  /** Gemini judged the writing as rich + personal — show celebration
+   *  state above the tip. */
+  coachingReady:  boolean;
 }) {
   return (
     <div className="bg-zinc-900 rounded-card p-4 space-y-3">
@@ -94,13 +102,21 @@ function IntelligencePanel({
         <span className="text-[10px] font-bold text-coral-600 tracking-[0.2em] uppercase">
           Proteino Intelligence
         </span>
-        {qualityBadge ? (
-          <span className={cn("text-[10px] font-bold tracking-widest uppercase", qualityLabel ? QUALITY_COLOR[qualityLabel] : "text-zinc-400")}>
-            {qualityBadge}
-          </span>
-        ) : (
-          <span className="text-xs text-zinc-500 tabular-nums">{progress}%</span>
-        )}
+        <div className="flex items-center gap-2">
+          {coachingStatus === "thinking" && (
+            <span className="flex items-center gap-1 text-[10px] font-medium text-coral-400 tracking-widest uppercase">
+              <span className="w-1.5 h-1.5 rounded-full bg-coral-400 animate-pulse" />
+              Σκέφτεται
+            </span>
+          )}
+          {qualityBadge ? (
+            <span className={cn("text-[10px] font-bold tracking-widest uppercase", qualityLabel ? QUALITY_COLOR[qualityLabel] : "text-zinc-400")}>
+              {qualityBadge}
+            </span>
+          ) : (
+            <span className="text-xs text-zinc-500 tabular-nums">{progress}%</span>
+          )}
+        </div>
       </div>
 
       {/* Locked match banner — prominent, unambiguous. Shown above the
@@ -129,7 +145,31 @@ function IntelligencePanel({
         </div>
       )}
 
-      <p className="text-sm font-medium text-white leading-snug">{message}</p>
+      {coachingReady && (
+        <div
+          className="rounded-card px-3 py-2.5 border border-success/40 animate-in zoom-in-95 fade-in duration-300 ease-pop"
+          style={{ background: "linear-gradient(135deg, rgba(29,158,117,0.18), rgba(29,158,117,0.08))" }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-success tracking-widest uppercase">
+              ✓ Έτοιμη πρόταση
+            </span>
+          </div>
+          <p className="text-sm font-bold text-white leading-snug mt-0.5">
+            Εξαιρετική περιγραφή — μπορείς να δημοσιεύσεις
+          </p>
+        </div>
+      )}
+
+      <p
+        className={cn(
+          "text-sm font-medium leading-snug transition-all duration-300",
+          coachingStatus === "thinking" ? "text-white/60" : "text-white",
+          coachingStatus === "fresh" && "animate-in fade-in duration-500",
+        )}
+      >
+        {message}
+      </p>
 
       <div className="h-[3px] bg-zinc-700 rounded-full overflow-hidden">
         <div
@@ -980,6 +1020,8 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
     publishResult,
     duplicate,
     errorMessage,
+    coachingStatus,
+    coachingReady,
     setText,
     setRating,
     unlock,
@@ -1279,6 +1321,8 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
           lockedCategory={panelLockedCategory}
           qualityLabel={qualityLabel}
           qualityBadge={qualityBadge}
+          coachingStatus={coachingStatus}
+          coachingReady={coachingReady}
         />
 
         {/* Medium tier: AI picked something but isn't 100% sure. Don't lock —

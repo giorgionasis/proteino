@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 /**
  * Wrapper that adds Postgres-backed caching + per-call usage logging
  * around any AIService implementation. Wraps the underlying provider
- * (Gemini, future Anthropic, Mock) without touching its logic.
+ * (Gemini, Haiku, Mock) without touching its logic.
  *
  * - Cache: hot queries skip the LLM round-trip on repeat. Keyed by
  *   (provider, model, prompt-version, task, query). 30-day TTL.
@@ -20,11 +20,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * Prompt-version bump invalidates cache on prompt changes. Bump when
  * tweaking the system prompt in gemini.ts.
  */
-// v6 — same prompt as v5; bumped because the route-side resolveLocation
-// + isLocationInQuery validators now reject + recompute Gemini's
-// location suggestion when it doesn't appear in the query. Cache flush
-// ensures stale (mis-located) extractions don't replay.
-const PROMPT_VERSION = "v6";
+// v11 — CoachingSchema extended with `quality_label` so Gemini drives
+// the dynamic badge + celebration state. Stale v10 entries would
+// replay {ready, tip} without the new field and break the partial-
+// JSON consumer's label tracking.
+const PROMPT_VERSION = "v11";
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 interface CachedEntry {
@@ -49,10 +49,8 @@ async function readCache(key: string): Promise<unknown | null> {
       .eq("cache_key", key)
       .maybeSingle<CachedEntry>();
     if (error || !data) return null;
-    // TTL check
     const age = Date.now() - new Date(data.last_hit_at).getTime();
     if (age > CACHE_TTL_MS) return null;
-    // Bump hit count + timestamp (fire-and-forget, no need to await)
     void (sb.from("ai_query_cache") as any)
       .update({ hit_count: data.hit_count + 1, last_hit_at: new Date().toISOString() })
       .eq("cache_key", key);
@@ -83,6 +81,7 @@ async function writeCache(key: string, task: string, queryText: string, result: 
 
 interface UsageLogEntry {
   task: string;
+  provider: string;
   model: string;
   query_text: string | null;
   input_tokens?: number;
@@ -96,7 +95,7 @@ async function logUsage(entry: UsageLogEntry): Promise<void> {
     const sb = createAdminClient();
     await (sb.from("ai_usage_log") as any).insert({
       task: entry.task,
-      provider: "gemini",
+      provider: entry.provider,
       model: entry.model,
       query_text: entry.query_text ? entry.query_text.slice(0, 500) : null,
       input_tokens: entry.input_tokens ?? null,
@@ -109,8 +108,17 @@ async function logUsage(entry: UsageLogEntry): Promise<void> {
   }
 }
 
-const PROVIDER = "gemini";
-const MODEL_FLASH_LITE = "gemini-2.5-flash-lite";
+/** Inner services may expose `provider` + `model` so cache + usage
+ *  rows are labelled with what was actually called. The fallback
+ *  preserves the legacy "gemini" label for callers that don't yet
+ *  set these. */
+interface ProviderTagged {
+  readonly provider?: string;
+  readonly model?: string;
+}
+
+const DEFAULT_PROVIDER = "gemini";
+const DEFAULT_MODEL = "gemini-2.5-flash-lite";
 
 /**
  * Wrap a provider with cache + usage logging. The wrapper intercepts the
@@ -119,19 +127,24 @@ const MODEL_FLASH_LITE = "gemini-2.5-flash-lite";
  * different optimization).
  */
 export function wrapWithCacheAndLog(inner: AIService): AIService {
+  const tagged = inner as AIService & ProviderTagged;
+  const provider = tagged.provider ?? DEFAULT_PROVIDER;
+  const model = tagged.model ?? DEFAULT_MODEL;
+
   const wrapped: AIService = {
     async analyzeSearchQuery(query: string): Promise<SearchAnalysis> {
       const trimmed = query.trim();
       if (!trimmed) return inner.analyzeSearchQuery(query);
 
-      const key = cacheKey(PROVIDER, MODEL_FLASH_LITE, "search", trimmed);
+      const key = cacheKey(provider, model, "search", trimmed);
       const t0 = Date.now();
 
       const cached = await readCache(key);
       if (cached) {
         void logUsage({
           task: "search",
-          model: MODEL_FLASH_LITE,
+          provider,
+          model,
           query_text: trimmed,
           latency_ms: Date.now() - t0,
           cache_hit: true,
@@ -145,7 +158,8 @@ export function wrapWithCacheAndLog(inner: AIService): AIService {
       void writeCache(key, "search", trimmed, result);
       void logUsage({
         task: "search",
-        model: MODEL_FLASH_LITE,
+        provider,
+        model,
         query_text: trimmed,
         latency_ms: elapsed,
         cache_hit: false,
@@ -160,14 +174,15 @@ export function wrapWithCacheAndLog(inner: AIService): AIService {
       // resubmits same draft).
       if (!trimmed || trimmed.length < 15) return inner.analyzeSubmission(text);
 
-      const key = cacheKey(PROVIDER, MODEL_FLASH_LITE, "submission", trimmed);
+      const key = cacheKey(provider, model, "submission", trimmed);
       const t0 = Date.now();
 
       const cached = await readCache(key);
       if (cached) {
         void logUsage({
           task: "submission",
-          model: MODEL_FLASH_LITE,
+          provider,
+          model,
           query_text: trimmed,
           latency_ms: Date.now() - t0,
           cache_hit: true,
@@ -181,7 +196,8 @@ export function wrapWithCacheAndLog(inner: AIService): AIService {
       void writeCache(key, "submission", trimmed, result);
       void logUsage({
         task: "submission",
-        model: MODEL_FLASH_LITE,
+        provider,
+        model,
         query_text: trimmed,
         latency_ms: elapsed,
         cache_hit: false,

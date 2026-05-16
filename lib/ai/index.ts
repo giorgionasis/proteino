@@ -9,7 +9,7 @@ export interface AIService {
    *  (~60+ chars) and the user has paused. Null when no useful tip
    *  exists or the model is unavailable — caller falls back to the
    *  regex-based tip from lib/ai/quality.ts. */
-  getSemanticQualityTip?(text: string): Promise<string | null>;
+  getSemanticQualityTip?(text: string, category?: string | null): Promise<string | null>;
   /** Conversational follow-up for empty search results. Given the user's
    *  query and any extracted intent, return a short, actionable
    *  Greek question that helps them narrow down. Null = no useful
@@ -30,28 +30,52 @@ let _instance: AIService | null = null;
 /**
  * Service factory. Picks the implementation based on env var presence:
  *
- *   GEMINI_API_KEY    → GeminiAIService (Gemini 2.5 Flash)
- *   ANTHROPIC_API_KEY → AnthropicAIService (Claude Haiku 4.5) — TODO
- *   else              → MockAIService
+ *   AI_GATEWAY_API_KEY → GeminiAIService routed through Vercel AI
+ *                        Gateway, with Haiku 4.5 spliced in for the
+ *                        Greek-prose surfaces (conversationalSearchFallback,
+ *                        and Phase B rerank when wired).
+ *   GEMINI_API_KEY     → Legacy direct-to-Google fallback for local
+ *                        dev when the Gateway key isn't provisioned.
+ *   else               → MockAIService
  *
  * Singleton — cached after first call. To swap providers in dev,
  * change the env var and restart the dev server.
  *
- * Server-side only check. The Gemini key must never reach the client
- * (using NEXT_PUBLIC_ prefix would expose it).
+ * Server-side only check. Neither key is NEXT_PUBLIC_, so the
+ * client-side branch always returns Mock; client paths that need
+ * Gateway-backed calls hit the dedicated /api/ai/* routes (which run
+ * server-side and stream the response back).
  */
 export function getAIService(): AIService {
   if (_instance) return _instance;
 
-  const geminiKey = typeof process !== "undefined" ? process.env.GEMINI_API_KEY : undefined;
+  const env = typeof process !== "undefined" ? process.env : ({} as NodeJS.ProcessEnv);
+  const gatewayKey = env.AI_GATEWAY_API_KEY;
+  const geminiKey = env.GEMINI_API_KEY;
+
+  if (gatewayKey) {
+    // Production path — Vercel AI Gateway routes Gemini calls, and
+    // Haiku is spliced in for the Greek-prose surfaces (conversational
+    // search fallback, Phase B rerank). Cost + observability flow
+    // through a single pane.
+    const { GeminiAIService } = require("./gemini") as typeof import("./gemini");
+    const { haikuConversationalFallback } = require("./haiku") as typeof import("./haiku");
+    const { wrapWithCacheAndLog } = require("./cache-and-log") as typeof import("./cache-and-log");
+    const base = new GeminiAIService();
+    base.conversationalSearchFallback = (q: string, hint?: string) =>
+      haikuConversationalFallback(q, hint);
+    _instance = wrapWithCacheAndLog(base);
+    return _instance!;
+  }
 
   if (geminiKey) {
-    // Lazy-load to avoid pulling the Gemini SDK into client bundles.
-    // (When called on the client, geminiKey is undefined, so this branch
-    // is only reachable server-side.)
-    const { GeminiAIService } = require("./gemini") as typeof import("./gemini");
+    // Local-dev fallback — direct-to-Google via @google/generative-ai.
+    // Skips Gateway entirely. No Haiku splice; conversationalSearchFallback
+    // stays on direct Gemini Flash-Lite. Suitable for `next dev` without
+    // a provisioned Gateway key.
+    const { GeminiDirectAIService } = require("./gemini-direct") as typeof import("./gemini-direct");
     const { wrapWithCacheAndLog } = require("./cache-and-log") as typeof import("./cache-and-log");
-    _instance = wrapWithCacheAndLog(new GeminiAIService(geminiKey));
+    _instance = wrapWithCacheAndLog(new GeminiDirectAIService(geminiKey));
     return _instance!;
   }
 
