@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
  * Body: { session_id: uuid, final_state: text }
  */
 export async function POST(req: NextRequest) {
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return new NextResponse(null, { status: 401 });
 

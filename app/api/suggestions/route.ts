@@ -288,7 +288,7 @@ interface SubmitBody {
  *   service role; we already validated auth at the top.
  */
 export async function POST(req: NextRequest) {
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

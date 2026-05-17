@@ -15,7 +15,7 @@ import type { FunnelBatchBody } from "@/lib/funnel/types";
  * auth failure returns 401 so the tracker can stop trying.
  */
 export async function POST(req: NextRequest) {
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return new NextResponse(null, { status: 401 });
 

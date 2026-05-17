@@ -8,7 +8,8 @@ export default async function YouPage() {
 
   if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
-      const { data: { session } } = await createClient().auth.getSession();
+      const sb = await createClient();
+      const { data: { session } } = await sb.auth.getSession();
       if (session?.user) {
         const u = session.user;
         const admin = createAdminClient();

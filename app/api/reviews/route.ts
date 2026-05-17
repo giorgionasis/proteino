@@ -23,7 +23,7 @@ import type { ResolvedMoment } from "@/lib/moments";
  * the detail page. Re-rating an item does NOT fire a milestone.
  */
 export async function POST(req: NextRequest) {
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
 
 /** GET /api/reviews?item_id=… — returns the current user's review for prefill, or null. */
 export async function GET(req: NextRequest) {
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ review: null });
 
@@ -178,7 +178,7 @@ export async function GET(req: NextRequest) {
 
 /** DELETE /api/reviews?id=… — own review only. Recomputes aggregate. */
 export async function DELETE(req: NextRequest) {
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

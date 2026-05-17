@@ -7,12 +7,13 @@ import { ReviewCard } from "@/components/detail/ReviewCard";
 import { badgeLabelForSuggestions } from "@/lib/icons";
 
 interface Props {
-  params: { category: string; id: string };
+  params: Promise<{ category: string; id: string }>;
 }
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({ params }: Props) {
+export async function generateMetadata(props: Props) {
+  const params = await props.params;
   const sb = createAdminClient();
   const slug = `${params.category}/${params.id}`;
   const { data: item } = (await sb
@@ -51,7 +52,8 @@ function StarIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-export default async function ItemReviewsPage({ params }: Props) {
+export default async function ItemReviewsPage(props: Props) {
+  const params = await props.params;
   const cat = CATEGORIES.find((c) => c.slug === params.category);
   if (!cat) notFound();
 

@@ -10,10 +10,11 @@ import { NextRequest, NextResponse } from "next/server";
  */
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export async function GET(_req: NextRequest, { params }: RouteParams) {
+export async function GET(_req: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const sb = createAdminClient();
   const { data, error } = await sb
     .from("moments")
@@ -33,7 +34,8 @@ const EDITABLE_FIELDS = new Set([
   "is_active", "valid_from", "valid_until",
 ]);
 
-export async function PATCH(req: NextRequest, { params }: RouteParams) {
+export async function PATCH(req: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const body = await req.json().catch(() => ({}));
   const patch: Record<string, unknown> = {};
   for (const k of Object.keys(body)) {
@@ -58,7 +60,8 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   return NextResponse.json(data);
 }
 
-export async function DELETE(_req: NextRequest, { params }: RouteParams) {
+export async function DELETE(_req: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const sb = createAdminClient();
   const { error } = await sb.from("moments").delete().eq("id", params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

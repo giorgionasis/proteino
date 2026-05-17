@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminOverviewPage() {
   const sb = createAdminClient();
-  const sbAuth = createClient();
+  const sbAuth = await createClient();
   const now = Date.now();
   const sevenDaysAgo = new Date(now - 7 * DAY_MS).toISOString();
   const fourteenDaysAgo = new Date(now - SPARKLINE_DAYS * DAY_MS).toISOString();

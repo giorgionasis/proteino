@@ -27,11 +27,9 @@ const MIN_NOTE_LEN = 5;
  * Targets: comments + suggestions. Both have hidden_at/hidden_reason/hidden_by
  * columns (suggestions added in migration 015; comments from migration 003).
  */
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const sb = createClient();
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

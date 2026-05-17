@@ -2,7 +2,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateCategory } from "@/lib/revalidate";
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const sb = createAdminClient();
   const { data, error } = await sb
     .from("activities")
@@ -13,7 +14,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   return NextResponse.json(data);
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const body = await req.json();
   const patch: Record<string, any> = {};
   const fields = [
@@ -41,7 +43,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const sb = createAdminClient();
   const { error } = await sb.from("activities").delete().eq("id", params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

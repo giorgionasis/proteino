@@ -9,8 +9,9 @@ import { NextRequest, NextResponse } from "next/server";
  * `reflection` and `rating`. Other fields (item, content_hash, dates) are
  * immutable.
  */
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const sb = createClient();
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -62,8 +63,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
  * Comments referencing this suggestion's id will FK-cascade per schema; we
  * don't delete them explicitly here.
  */
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const sb = createClient();
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

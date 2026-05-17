@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ sections: [] });
   }
 
-  const sb = createClient();
+  const sb = await createClient();
 
   // Collect the IDs of items the user has already suggested. Excluded
   // from the reward feed so the user isn't shown their own work.

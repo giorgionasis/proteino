@@ -30,7 +30,7 @@ const MAX_DESCRIPTION_LEN = 500;
  * Service-role client used so auth.uid mismatches with RLS don't block.
  */
 export async function POST(req: NextRequest) {
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

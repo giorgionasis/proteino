@@ -1,9 +1,13 @@
+/* ── Google Fonts — Open Sans ───────────────────────────────── */
+/* @import must precede all other rules per CSS spec. After PostCSS
+ * expands the @tailwind directives, an @import placed below them ends
+ * up far inside the generated stylesheet — webpack tolerated this,
+ * Turbopack does not. Keep at the very top. */
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* ── Google Fonts — Open Sans ───────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700;800;900&display=swap');
 
 /* ── CSS Variables ──────────────────────────────────────────── */
 :root {

@@ -9,12 +9,13 @@ import { NextRequest, NextResponse } from "next/server";
  * Toggles `reviews.is_hidden` + sets hidden_at / hidden_reason / hidden_by.
  * Service-role write; auth gate is admin role on `public.users`.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { id } = params;
   if (!id) return NextResponse.json({ error: "Missing review id" }, { status: 400 });
 
   // Auth gate — must be admin.
-  const sbAuth = createClient();
+  const sbAuth = await createClient();
   const {
     data: { user },
   } = await sbAuth.auth.getUser();

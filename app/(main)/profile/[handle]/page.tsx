@@ -6,15 +6,17 @@ import { UserProfile } from "@/components/profile/UserProfile";
 import { UserProfileViewer } from "@/components/profile/UserProfileViewer";
 
 interface Props {
-  params: { handle: string };
+  params: Promise<{ handle: string }>;
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
   return { title: `@${params.handle} — Proteino` };
 }
 
-export default async function ProfilePage({ params }: Props) {
-  const authClient = createClient();
+export default async function ProfilePage(props: Props) {
+  const params = await props.params;
+  const authClient = await createClient();
   const db = createAdminClient();
 
   let ownerHandle: string | null = null;

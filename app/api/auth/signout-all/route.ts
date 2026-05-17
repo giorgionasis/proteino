@@ -12,7 +12,7 @@ import { NextResponse } from "next/server";
  * Use case: "Αποσύνδεση από όλες τις συσκευές" on the security page.
  */
 export async function POST() {
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

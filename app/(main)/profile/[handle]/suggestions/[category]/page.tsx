@@ -11,15 +11,16 @@ function stripPrefix(slug: string): string {
   return i >= 0 ? slug.slice(i + 1) : slug;
 }
 
-interface Props { params: { handle: string; category: string } }
+interface Props { params: Promise<{ handle: string; category: string }> }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: `Προτάσεις — Proteino` };
 }
 
-export default async function CategoryPage({ params }: Props) {
+export default async function CategoryPage(props: Props) {
+  const params = await props.params;
   if (!CATEGORY_SLUGS.includes(params.category as CategorySlug)) notFound();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: { user: viewer } } = await supabase.auth.getUser();
 

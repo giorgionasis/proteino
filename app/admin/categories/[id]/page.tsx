@@ -16,7 +16,8 @@ const CATEGORY_NAMES: Record<string, string> = {
 
 const VALID_CATEGORIES = Object.keys(CATEGORY_NAMES);
 
-export default async function CategoryDetailPage({ params }: { params: { id: string } }) {
+export default async function CategoryDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!VALID_CATEGORIES.includes(params.id)) notFound();
 
   const supabase = createAdminClient();

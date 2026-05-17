@@ -25,7 +25,7 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import type { CategorySlug } from "@/types";
 
 interface Props {
-  params: { category: string; id: string };
+  params: Promise<{ category: string; id: string }>;
 }
 
 export type ItemDetailData = {
@@ -166,7 +166,7 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
   // thumbs render in the active state on first paint (no client-side flash).
   let myVoteByReview = new Map<string, 1 | -1>();
   try {
-    const sbAuth = createClient();
+    const sbAuth = await createClient();
     const { data: { user } } = await sbAuth.auth.getUser();
     if (user && reviewsRaw.length > 0) {
       const reviewIds = reviewsRaw.map((r: any) => r.id);
@@ -232,7 +232,7 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     // IMPORTANT: use the auth client (cookie-aware) to identify the user.
     // The admin client (`sb`) has no session attached so its `auth.getUser()`
     // returns null and breaks every user-context branch on this page.
-    const sbAuth = createClient();
+    const sbAuth = await createClient();
     const { data: { user } } = await sbAuth.auth.getUser();
     if (user) {
       currentUserId = user.id;
@@ -361,7 +361,8 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
   };
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
   const data = await fetchItemData(params.id, params.category);
   if (!data) return { title: "Proteino" };
 
@@ -411,7 +412,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function ItemDetailPage({ params }: Props) {
+export default async function ItemDetailPage(props: Props) {
+  const params = await props.params;
   const validCategories = ["movies", "series", "books", "food", "bars", "hotels", "theater", "events", "recipes"];
   if (!validCategories.includes(params.category)) notFound();
 

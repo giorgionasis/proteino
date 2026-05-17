@@ -23,7 +23,7 @@ const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
  * Body: multipart/form-data with `file=<File>`. Returns `{ url }`.
  */
 export async function POST(req: NextRequest) {
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });

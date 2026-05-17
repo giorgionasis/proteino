@@ -18,7 +18,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   let needsOnboarding = false;
   if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
-      const sb = createClient();
+      const sb = await createClient();
       const { data: { session } } = await sb.auth.getSession();
       const u = session?.user;
       isRegistered = !!u;

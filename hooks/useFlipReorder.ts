@@ -29,7 +29,7 @@ import { useLayoutEffect, useRef } from "react";
  * reorder still happens, just without the slide.
  */
 export function useFlipReorder(
-  containerRef: React.RefObject<HTMLElement>,
+  containerRef: React.RefObject<HTMLElement | null>,
   attrName: string = "data-flip-id",
   deps: unknown[],
   options: { durationMs?: number; easing?: string } = {},

@@ -21,7 +21,7 @@ export async function PUT(req: NextRequest) {
   let mergedItemData = itemData ? { ...itemData } : null;
   if (mergedItemData && "admin_reviewed_at" in mergedItemData) {
     if (mergedItemData.admin_reviewed_at) {
-      const cookieSb = createClient();
+      const cookieSb = await createClient();
       const { data: { user } } = await cookieSb.auth.getUser();
       mergedItemData.admin_reviewed_by = user?.id ?? null;
     } else {

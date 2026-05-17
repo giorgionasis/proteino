@@ -29,7 +29,7 @@ export const revalidate = 60;
 type CountResult = { count: number | null };
 
 export async function GET(req: NextRequest) {
-  const sb  = createClient();
+  const sb  = await createClient();
   const url = new URL(req.url);
   const raw = url.searchParams.get("categories") ?? "";
   const chosen = raw

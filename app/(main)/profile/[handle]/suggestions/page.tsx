@@ -5,14 +5,16 @@ import { CATEGORIES } from "@/constants/categories";
 import { SuggestionsCategoryList } from "@/components/profile/suggestions/SuggestionsCategoryList";
 import { safeImageUrl } from "@/lib/image-url";
 
-interface Props { params: { handle: string } }
+interface Props { params: Promise<{ handle: string }> }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
   return { title: `Προτάσεις @${params.handle} — Proteino` };
 }
 
-export default async function SuggestionsPage({ params }: Props) {
-  const supabase = createClient();
+export default async function SuggestionsPage(props: Props) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const { data: user } = await supabase
     .from("users")

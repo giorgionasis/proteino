@@ -3,7 +3,7 @@ import { createClient }      from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET() {
-  const auth = createClient();
+  const auth = await createClient();
   const { data: { session } } = await auth.auth.getSession();
 
   if (!session?.user) {
@@ -78,7 +78,7 @@ export async function GET() {
 
 // PATCH: fix email mismatch and upgrade avatar URL
 export async function PATCH() {
-  const auth = createClient();
+  const auth = await createClient();
   const { data: { session } } = await auth.auth.getSession();
 
   if (!session?.user) {

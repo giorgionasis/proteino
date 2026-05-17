@@ -25,7 +25,7 @@ interface Options {
   onPublishToggle?: (index: number) => void;
   onHide?: (index: number) => void;
   onDelete?: (index: number) => void;
-  searchRef?: RefObject<HTMLInputElement>;
+  searchRef?: RefObject<HTMLInputElement | null>;
   /** Disabled when set true (e.g., a modal is open). */
   disabled?: boolean;
 }

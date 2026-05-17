@@ -16,11 +16,12 @@ import { NextRequest, NextResponse } from "next/server";
  * matching row, then unlink it.
  */
 interface RouteParams {
-  params: { provider: string };
+  params: Promise<{ provider: string }>;
 }
 
-export async function DELETE(_req: NextRequest, { params }: RouteParams) {
-  const sb = createClient();
+export async function DELETE(_req: NextRequest, props: RouteParams) {
+  const params = await props.params;
+  const sb = await createClient();
   const { data: { user }, error: userErr } = await sb.auth.getUser();
   if (userErr || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

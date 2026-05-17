@@ -22,14 +22,15 @@ import { getAwardsTaxonomy } from "@/lib/awards";
 import { resolvePageLayout } from "@/lib/layout/resolver";
 
 interface Props {
-  params: { category: string };
+  params: Promise<{ category: string }>;
 }
 
 export function generateStaticParams() {
   return CATEGORIES.map((c) => ({ category: c.slug }));
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
   const cat = CATEGORIES.find((c) => c.slug === params.category);
   if (!cat) return {};
   return { title: `${cat.labelEl} — Proteino` };
@@ -269,7 +270,8 @@ function computeFilterData(items: CategoryItem[], category: CategorySlug): Filte
   return { tabs, options };
 }
 
-export default async function CategoryPage({ params }: Props) {
+export default async function CategoryPage(props: Props) {
+  const params = await props.params;
   const cat = CATEGORIES.find((c) => c.slug === params.category);
   if (!cat) notFound();
 
@@ -289,7 +291,7 @@ export default async function CategoryPage({ params }: Props) {
   // the venue region-soft-sort below. Reading the cookie here also
   // makes the page dynamic for authed users — fine since the layout
   // resolver and the venue sort both vary per user anyway.
-  const userClient = createClient();
+  const userClient = await createClient();
   const { data: { user: viewer } } = await userClient.auth.getUser();
   const isRegistered = !!viewer;
 

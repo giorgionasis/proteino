@@ -35,7 +35,7 @@ export const metadata: Metadata = { title: "Proteino" };
 
 // ── Data fetching helpers ─────────────────────────────────────────
 
-type SB = ReturnType<typeof createClient>;
+type SB = Awaited<ReturnType<typeof createClient>>;
 
 function stripPrefix(slug: string): string {
   const i = slug.indexOf("/");
@@ -320,7 +320,7 @@ const fetchPublishedSuggestionCount = unstable_cache(
 // ── Page ──────────────────────────────────────────────────────────
 
 export default async function HomePage() {
-  const sb = createClient();
+  const sb = await createClient();
 
   let isRegistered = false;
   let displayName = "";

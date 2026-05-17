@@ -424,7 +424,7 @@ function InfoCell({ label, value, coral }: { label: string; value: string; coral
 
 /** Mirror of FoodDetail's InfoSourcesCell. Same shape on purpose so
  *  the two detail pages render identical ΠΛΗΡΟΦΟΡΙΕΣ blocks. */
-type SourceIconType = (props: { size?: number; strokeWidth?: number }) => JSX.Element;
+type SourceIconType = (props: { size?: number; strokeWidth?: number }) => React.JSX.Element;
 type InfoSource = { key: "website" | "instagram" | "facebook"; label: string; url: string; Icon: SourceIconType };
 
 function WebsiteIcon({ size = 18, strokeWidth = 2 }: { size?: number; strokeWidth?: number }) {

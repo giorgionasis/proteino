@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
  * storage layer; we mirror it here for a friendlier error message.
  */
 export async function POST(req: NextRequest) {
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
  * Removes the follow edge. No-op if not following.
  */
 export async function DELETE(req: NextRequest) {
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -66,7 +66,7 @@ export async function DELETE(req: NextRequest) {
  * { following: false } for guests (no auth) — keeps the client code simple.
  */
 export async function GET(req: NextRequest) {
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ following: false });
 

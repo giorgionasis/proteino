@@ -26,7 +26,7 @@ function bookmarkContextRange(): string {
 // Idempotent: re-bookmarking is a no-op. Returns enriched context
 // (categoryCount + todayCount) for the post-save toast.
 export async function POST(req: NextRequest) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -179,7 +179,7 @@ export async function POST(req: NextRequest) {
 // Move an existing bookmark between wishlist and done. Materialises
 // the row if it doesn't exist (category required in that case).
 export async function PATCH(req: NextRequest) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -246,7 +246,7 @@ export async function PATCH(req: NextRequest) {
 
 // DELETE /api/bookmarks?item_id=...
 export async function DELETE(req: NextRequest) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -273,7 +273,7 @@ export async function DELETE(req: NextRequest) {
 // before migration 023 is applied. Missing-column rows surface as
 // status='wishlist' on the client.
 export async function GET(req: NextRequest) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ids: [], items: [] });
 

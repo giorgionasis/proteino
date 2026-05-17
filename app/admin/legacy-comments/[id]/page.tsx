@@ -2,7 +2,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ReviewEditor } from "@/components/admin/ReviewEditor";
 import { notFound } from "next/navigation";
 
-export default async function ReviewDetailPage({ params }: { params: { id: string } }) {
+export default async function ReviewDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const supabase = createAdminClient();
 
   const { data, error } = await supabase

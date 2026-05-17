@@ -15,7 +15,7 @@ export default async function EditProfilePage({ params }: Props) {
     );
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user) redirect("/login");
 

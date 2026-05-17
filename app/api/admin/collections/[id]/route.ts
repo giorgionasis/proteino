@@ -2,7 +2,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateFrontend } from "@/lib/revalidate";
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("collections")
@@ -14,7 +15,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   return NextResponse.json(data);
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const body = await req.json();
   const supabase = createAdminClient();
 
@@ -113,7 +115,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json(full);
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const supabase = createAdminClient();
   // Placements cascade via FK ON DELETE CASCADE
   const { error } = await supabase.from("collections").delete().eq("id", params.id);

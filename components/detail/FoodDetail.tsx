@@ -414,7 +414,7 @@ function InfoCell({ label, value, coral }: { label: string; value: string; coral
  *  Each populated key in `information` becomes its own row (icon + label)
  *  so a venue with both a website and an Instagram shows two stacked
  *  rows instead of just one. Order: website → instagram → facebook. */
-type SourceIconType = (props: { size?: number; strokeWidth?: number }) => JSX.Element;
+type SourceIconType = (props: { size?: number; strokeWidth?: number }) => React.JSX.Element;
 type InfoSource = { key: "website" | "instagram" | "facebook"; label: string; url: string; Icon: SourceIconType };
 
 function WebsiteIcon({ size = 18, strokeWidth = 2 }: { size?: number; strokeWidth?: number }) {

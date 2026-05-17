@@ -1369,7 +1369,7 @@ export async function GET(req: NextRequest) {
   // exposure + schema-create perms made the analytics path bumpy).
   if (ranked.length === 0) {
     try {
-      const sb = createClient();
+      const sb = await createClient();
       const { data: { user } } = await sb.auth.getUser();
       const normalized = q
         .toLowerCase()

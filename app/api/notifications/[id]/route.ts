@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 // PATCH /api/notifications/[id]  body: { is_read: boolean }
 // Marks a notification as read/unread for the current user.
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = createClient();
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

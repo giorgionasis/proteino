@@ -2,7 +2,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SuggestionEditor } from "@/components/admin/SuggestionEditor";
 import { notFound } from "next/navigation";
 
-export default async function SuggestionDetailPage({ params }: { params: { id: string } }) {
+export default async function SuggestionDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const supabase = createAdminClient();
 
   // Three-tier select to handle optional columns from later migrations:

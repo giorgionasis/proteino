@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Determine if the current viewer is the original suggester
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   const ownSuggestion = !!user && (sug as any).user_id === user.id;
 

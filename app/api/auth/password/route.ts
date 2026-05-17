@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
  * consistent across surfaces.
  */
 export async function PATCH(req: NextRequest) {
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user || !user.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

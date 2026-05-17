@@ -4,9 +4,10 @@ import { BookmarksCategoryPage, type BookmarkedItem } from "@/components/profile
 import { CATEGORIES } from "@/constants/categories";
 import { createClient } from "@/lib/supabase/server";
 
-interface Props { params: { handle: string } }
+interface Props { params: Promise<{ handle: string }> }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
   return { title: `Αγαπημένα @${params.handle} — Proteino` };
 }
 
@@ -17,8 +18,9 @@ function stripPrefix(slug: string): string {
   return i >= 0 ? slug.slice(i + 1) : slug;
 }
 
-export default async function BookmarksPage({ params }: Props) {
-  const sb = createClient();
+export default async function BookmarksPage(props: Props) {
+  const params = await props.params;
+  const sb = await createClient();
 
   const [{ data: { user: viewer } }, profileRes] = await Promise.all([
     sb.auth.getUser(),

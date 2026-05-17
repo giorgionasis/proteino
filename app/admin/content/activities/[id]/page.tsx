@@ -4,7 +4,8 @@ import { ActivityEditor, type ActivityFormData } from "@/components/admin/Activi
 
 export const dynamic = "force-dynamic";
 
-export default async function EditActivityPage({ params }: { params: { id: string } }) {
+export default async function EditActivityPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const sb = createAdminClient();
   const { data, error } = await sb
     .from("activities")

@@ -30,11 +30,13 @@ import type { CategoryItem } from "@/components/category/CategoryCard";
 export const dynamic = "force-dynamic";
 
 interface Props {
-  params: { slug: string };
-  searchParams: { audience?: string; _?: string };
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ audience?: string; _?: string }>;
 }
 
-export default async function PreviewCategoryPage({ params, searchParams }: Props) {
+export default async function PreviewCategoryPage(props: Props) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const cat = CATEGORIES.find((c) => c.slug === params.slug);
   if (!cat) notFound();
 

@@ -33,7 +33,7 @@ interface LeaderboardRow {
 }
 
 export async function GET(req: NextRequest) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const url      = new URL(req.url);
   const period   = url.searchParams.get("period")   ?? "all";
   const category = url.searchParams.get("category") ?? "all";

@@ -4,12 +4,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { CollectionDetail, type CollectionDetailItem } from "@/components/collections/CollectionDetail";
 
 interface Props {
-  params: { alias: string };
+  params: Promise<{ alias: string }>;
 }
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
   const sb = createAdminClient();
   const { data } = await sb
     .from("collections")
@@ -28,7 +29,8 @@ function stripPrefix(slug: string): string {
   return i >= 0 ? slug.slice(i + 1) : slug;
 }
 
-export default async function CollectionPage({ params }: Props) {
+export default async function CollectionPage(props: Props) {
+  const params = await props.params;
   const sb = createAdminClient();
   const now = new Date().toISOString();
 

@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   if (!category) return NextResponse.json({ error: "category required" }, { status: 400 });
 
   // Resolve admin user id from the session
-  const sb = createClient();
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 

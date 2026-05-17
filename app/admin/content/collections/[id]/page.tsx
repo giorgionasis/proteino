@@ -4,7 +4,8 @@ import { CollectionEditor, type CollectionFormData, type Placement } from "@/com
 
 export const dynamic = "force-dynamic";
 
-export default async function EditCollectionPage({ params }: { params: { id: string } }) {
+export default async function EditCollectionPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const sb = createAdminClient();
   const { data, error } = await sb
     .from("collections")

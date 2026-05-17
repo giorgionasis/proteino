@@ -15,7 +15,7 @@ export default async function LoginPage() {
   // reach the login form to re-authenticate.
   if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
-      const sb = createClient();
+      const sb = await createClient();
       const { data: { session } } = await sb.auth.getSession();
       if (session?.user) redirect("/");
     } catch { /* network error — render form so the user isn't blocked */ }

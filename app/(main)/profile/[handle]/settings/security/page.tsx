@@ -13,8 +13,9 @@ export const dynamic = "force-dynamic";
  * else's settings URL) bounce back to their own profile — nobody
  * should be able to see another user's security panel.
  */
-export default async function SecurityPage({ params }: { params: { handle: string } }) {
-  const sb = createClient();
+export default async function SecurityPage(props: { params: Promise<{ handle: string }> }) {
+  const params = await props.params;
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) redirect("/login");
 

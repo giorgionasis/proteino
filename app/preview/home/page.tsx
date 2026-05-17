@@ -22,10 +22,11 @@ import type { PortraitItem } from "@/components/recommendation/CarouselPortrait"
 export const dynamic = "force-dynamic";
 
 interface Props {
-  searchParams: { audience?: string; _?: string };
+  searchParams: Promise<{ audience?: string; _?: string }>;
 }
 
-export default async function PreviewHomePage({ searchParams }: Props) {
+export default async function PreviewHomePage(props: Props) {
+  const searchParams = await props.searchParams;
   const rawAudience = searchParams.audience;
   const viewerAudience: "registered" | "guest" | null =
     rawAudience === "guest" ? "guest" :

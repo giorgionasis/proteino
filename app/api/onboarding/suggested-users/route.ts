@@ -74,7 +74,7 @@ function buildTaste(byCat: Record<string, number>, fallbackCount: number): strin
 }
 
 export async function GET(req: NextRequest) {
-  const sb  = createClient();
+  const sb  = await createClient();
   const url = new URL(req.url);
   const raw = url.searchParams.get("categories") ?? "";
   const chosen = raw

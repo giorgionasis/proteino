@@ -25,7 +25,8 @@ const ITEM_TABLES_WITH_REGION = [
   "item_events",
 ] as const;
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const body = await req.json().catch(() => ({}));
   const patch: Record<string, unknown> = {};
 
@@ -58,7 +59,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json(data);
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const sb = createAdminClient();
 
   // Block if children exist.

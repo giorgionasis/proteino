@@ -15,8 +15,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * The DB trigger `trg_sync_review_votes` keeps reviews.vote_up/vote_down in
  * sync after each insert/update/delete — we don't recompute here.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const sb = createClient();
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
