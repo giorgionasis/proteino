@@ -123,12 +123,18 @@ interface OverlayHeaderProps {
 }
 
 export function OverlayHeader({ label, icon, onClose, className }: OverlayHeaderProps) {
+  // Slim mobile-friendly variant — dropped the bottom border + the
+  // zinc-100 background circle around the X to claw back vertical
+  // pixels above the iOS keyboard. Header height down from 56px to
+  // 44px (~22% saved). The X button is now a naked icon with a
+  // hit-target via padding (still 36px tap area for accessibility)
+  // but no visible chrome.
   return (
     <div
       className={cn(
         "flex items-center justify-between",
-        "h-14 px-5",
-        "border-b border-zinc-200 bg-white",
+        "h-11 px-5",
+        "bg-white",
         className,
       )}
     >
@@ -141,9 +147,9 @@ export function OverlayHeader({ label, icon, onClose, className }: OverlayHeader
       <button
         onClick={onClose}
         aria-label="Κλείσιμο"
-        className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors"
+        className="-mr-2 p-2 flex items-center justify-center text-zinc-600 active:text-zinc-900 transition-colors"
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-zinc-700">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
           <path d="M18 6L6 18M6 6l12 12" />
         </svg>
       </button>

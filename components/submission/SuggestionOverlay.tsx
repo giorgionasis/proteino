@@ -8,6 +8,7 @@ import { AchievementProgress } from "@/components/submission/AchievementProgress
 import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
 import { FollowButton } from "@/components/ui/FollowButton";
 import { useFollow } from "@/hooks/useFollow";
+import { useKeyboardOpen } from "@/hooks/useKeyboardOpen";
 import { cn } from "@/lib/utils/cn";
 import Link from "next/link";
 
@@ -1188,6 +1189,11 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
   } = useSubmission();
   const [progress, setProgress] = useState(0);
   const [msgIndex, setMsgIndex] = useState(0);
+  // Mobile keyboard awareness — when keyboard pushes the viewport
+  // up, the full IntelligencePanel ends up under it. We swap to a
+  // slim 1-line tip bar fixed above the keyboard for the typing
+  // session, then back to the full panel when keyboard closes.
+  const { open: keyboardOpen, offsetPx: keyboardOffset } = useKeyboardOpen();
 
   // Local quality coaching (always fresh — runs in the hook on every keystroke).
   const qualityTip = quality?.tip ?? null;
@@ -1443,7 +1449,11 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
     <div className="flex flex-col h-full min-h-screen bg-white">
       {/* Header */}
       {isLocked ? (
-        <div className="flex items-center justify-between h-14 px-5 border-b border-zinc-200 bg-white">
+        // Slim variant matches OverlayHeader's mobile-friendly chrome —
+        // no bottom border, no zinc-100 circle around the X. Same 44px
+        // height as the unlocked header so the layout doesn't jump on
+        // lock/unlock.
+        <div className="flex items-center justify-between h-11 px-5 bg-white">
           <div className="flex items-center gap-3">
             <span className="inline-flex items-center px-3 py-1 rounded-full border border-coral-600 text-coral-600 text-xs font-bold tracking-widest uppercase">
               Locked
@@ -1458,8 +1468,8 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
             </button>
           </div>
           <button onClick={onClose} aria-label="Κλείσιμο"
-            className="w-9 h-9 flex items-center justify-center rounded-full bg-zinc-100 active:bg-zinc-200 transition-colors">
-            <X size={16} strokeWidth={2.5} className="text-zinc-700" />
+            className="-mr-2 p-2 flex items-center justify-center text-zinc-600 active:text-zinc-900 transition-colors">
+            <X size={20} strokeWidth={2.5} />
           </button>
         </div>
       ) : (
@@ -1485,16 +1495,22 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
 
         {hookState === "empty" && <InputModes />}
 
-        <IntelligencePanel
-          progress={progress}
-          message={panelMessage}
-          lockedTitle={panelLockedTitle}
-          lockedCategory={panelLockedCategory}
-          qualityLabel={qualityLabel}
-          qualityBadge={qualityBadge}
-          coachingStatus={coachingStatus}
-          coachingReady={coachingReady}
-        />
+        {/* Full IntelligencePanel — shown when keyboard is closed
+            (idle inspection mode). When the keyboard is up we hide
+            this block and surface a slim tip bar fixed above the
+            keyboard instead (see <SlimTipBar /> below). */}
+        {!keyboardOpen && (
+          <IntelligencePanel
+            progress={progress}
+            message={panelMessage}
+            lockedTitle={panelLockedTitle}
+            lockedCategory={panelLockedCategory}
+            qualityLabel={qualityLabel}
+            qualityBadge={qualityBadge}
+            coachingStatus={coachingStatus}
+            coachingReady={coachingReady}
+          />
+        )}
 
         {/* Medium tier: AI picked something but isn't 100% sure. Don't lock —
             ask the user to confirm via Ναι/Όχι pills. Όχι demotes to low so
@@ -1534,6 +1550,51 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
           Verify with AI ›
         </button>
       </div>
+
+      {/* Slim tip bar — fixed above the keyboard when it's open.
+          Replaces the full IntelligencePanel during typing so the
+          coaching tip is always visible on small phones. Translates
+          itself up by the keyboard's height (from visualViewport) so
+          it sits right on top of the keys, not behind them. */}
+      {keyboardOpen && qualityTip && (
+        <SlimTipBar
+          tip={qualityTip}
+          thinking={coachingStatus === "thinking"}
+          keyboardOffset={keyboardOffset}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Compact 1-line replacement for IntelligencePanel that sits right
+ *  above the soft keyboard. Renders only when keyboardOpen is true
+ *  AND a tip exists — otherwise no chrome at all (don't waste pixels
+ *  on a placeholder during the first few keystrokes). */
+function SlimTipBar({
+  tip,
+  thinking,
+  keyboardOffset,
+}: {
+  tip: string;
+  thinking: boolean;
+  keyboardOffset: number;
+}) {
+  return (
+    <div
+      className="fixed left-0 right-0 z-50 bg-zinc-900 text-white px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.15)] flex items-center gap-2.5"
+      style={{ bottom: keyboardOffset }}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="text-[10px] font-bold text-coral-500 tracking-[0.2em] uppercase shrink-0">AI</span>
+      <p className="flex-1 text-sm font-medium leading-snug">{tip}</p>
+      {thinking && (
+        <span
+          className="w-1.5 h-1.5 rounded-full bg-coral-400 animate-pulse shrink-0"
+          aria-label="Σκέφτεται"
+        />
+      )}
     </div>
   );
 }
