@@ -15,6 +15,10 @@ export interface GalleryImage {
   url: string;
   alt?: string;
   tab?: string;
+  /** When true, this image overrides the pipeline-managed cover photo
+   *  on the detail page. Only one image can be the default at a time
+   *  (setDefaultAt enforces this). Persists to items.images.gallery. */
+  isDefault?: boolean;
 }
 
 interface Props {
@@ -63,6 +67,23 @@ export function ImageGallery({ prefix, tabs, images, onChange }: Props) {
     onChange([...reorderedTab, ...otherImages]);
   }
 
+  /** Set the given image as the detail-page cover. Clears the flag on
+   *  every other image since only one default is allowed. Clicking the
+   *  current default again toggles it off (back to pipeline cover). */
+  function setDefaultAt(globalIdx: number) {
+    const wasDefault = images[globalIdx]?.isDefault === true;
+    const next = images.map((img, i) => {
+      const isDefault = !wasDefault && i === globalIdx;
+      if (isDefault) return { ...img, isDefault: true };
+      if (img.isDefault) {
+        const { isDefault: _, ...rest } = img;
+        return rest;
+      }
+      return img;
+    });
+    onChange(next);
+  }
+
   return (
     <div>
       {tabs.length > 1 && (
@@ -91,9 +112,9 @@ export function ImageGallery({ prefix, tabs, images, onChange }: Props) {
           <div key={`${idx}-${img.url}`} className="border border-zinc-200 rounded-lg p-2">
             <div className="relative aspect-[4/3] bg-zinc-100 rounded overflow-hidden mb-2">
               <img src={img.url} alt={img.alt ?? ""} className="w-full h-full object-cover" />
-              {i === 0 && tabs.length === 1 && (
-                <span className="absolute top-1 left-1 bg-zinc-900/85 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
-                  PRIMARY
+              {img.isDefault && (
+                <span className="absolute top-1 left-1 bg-coral-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                  COVER
                 </span>
               )}
             </div>
@@ -113,7 +134,20 @@ export function ImageGallery({ prefix, tabs, images, onChange }: Props) {
                 <button onClick={() => moveWithinTab(i, -1)} disabled={i === 0} className="px-1.5 py-0.5 text-zinc-500 hover:bg-zinc-100 rounded disabled:opacity-30">▲</button>
                 <button onClick={() => moveWithinTab(i, +1)} disabled={i === tabImages.length - 1} className="px-1.5 py-0.5 text-zinc-500 hover:bg-zinc-100 rounded disabled:opacity-30">▼</button>
               </div>
-              <button onClick={() => removeAt(idx)} className="text-red-500 hover:text-red-700">Αφαίρεση</button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setDefaultAt(idx)}
+                  className={
+                    img.isDefault
+                      ? "text-coral-600 hover:text-coral-700 font-semibold"
+                      : "text-zinc-500 hover:text-zinc-700"
+                  }
+                  title={img.isDefault ? "Καθαρισμός default — επιστροφή στο cover του pipeline" : "Όρισε ως default cover"}
+                >
+                  {img.isDefault ? "✓ Cover" : "Set cover"}
+                </button>
+                <button onClick={() => removeAt(idx)} className="text-red-500 hover:text-red-700">Αφαίρεση</button>
+              </div>
             </div>
           </div>
         ))}

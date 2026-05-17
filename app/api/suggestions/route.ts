@@ -459,7 +459,13 @@ export async function POST(req: NextRequest) {
         avg_rating: rating ?? 0,
         rating_count: rating !== null ? 1 : 0,
         suggestion_count: 1,
-        images: coverUrl ? [{ url: coverUrl }] : [],
+        // images is owned by the image pipeline (processAndStoreItemImage
+        // writes the dual-shape JSONB with poster/backdrop/og variants).
+        // Don't seed an array here — it collides with the pipeline's
+        // object shape and gets wiped on first pipeline run anyway.
+        // Admin gallery photos land under images.gallery, set later
+        // via the editor (see mergeGalleryIntoImages).
+        images: {},
         metadata: {
           tags: [],
           ...(md.tmdb_id ? { tmdb_id: md.tmdb_id } : {}),

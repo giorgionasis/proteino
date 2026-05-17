@@ -26,6 +26,7 @@ import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
 import { PlatformLinksCard } from "@/components/detail/PlatformLinksCard";
 import { Icon } from "@/components/ui/Icon";
 import { ICON_PATHS } from "@/lib/icons";
+import { extractGalleryImages, pickCoverUrl } from "@/lib/images/gallery";
 import { OutlinedPill } from "@/components/ui/OutlinedPill";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
@@ -91,7 +92,8 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
   const lng = typeof ext.lng === "number" ? ext.lng : null;
   const avgRating = item.avg_rating ?? 0;
   const ratingCount = item.rating_count ?? 0;
-  const coverUrl = item.cover_url;
+  const coverUrl = pickCoverUrl((item as any).images, item.cover_url);
+  const galleryImages = extractGalleryImages((item as any).images);
   const mapUrl =
     lat != null && lng != null
       ? `https://www.google.com/maps?q=${lat},${lng}`
@@ -148,6 +150,9 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
         }
       />
 
+      {/* Νέα πρόταση banner — full-width centered, above the hero. */}
+      {!item.admin_reviewed_at && <AdminReviewBanner />}
+
       {/* Hero */}
       <div className="px-6 pt-6">
         <div data-orbit-source className="relative w-full h-[228px] rounded-[12px] overflow-hidden bg-zinc-200">
@@ -156,24 +161,14 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
       </div>
 
       {/* Title + rating */}
-      <div className="px-6 pt-5 space-y-2">
+      <div className="px-6 pt-6 space-y-5">
         <h1 className="font-bold text-[#27272A]" style={{ fontSize: 26, lineHeight: "130%" }}>{title}</h1>
         <RatingLine rating={avgRating} count={ratingCount} />
       </div>
 
-      {/* Photo gallery */}
-      {Array.isArray((item as any).images) && (item as any).images.length > 0 && (
-        <div className="mt-6">
-          <ItemGalleryViewer
-            images={(item as any).images as GalleryImage[]}
-            tabs={["Εξωτερικά", "Εσωτερικά", "Πιάτα"]}
-          />
-        </div>
-      )}
-
       {/* Featured suggestion */}
       {featured && (
-        <div className="mx-6 mt-6 space-y-4">
+        <div className="mx-6 mt-11 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <UserAvatarWithPopup user={featured.user} size={45} />
@@ -190,7 +185,7 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
 
       {/* Amenities row — under user reflection */}
       {activeAmenities.length > 0 && (
-        <div className="mt-6 space-y-6">
+        <div className="mt-12 space-y-6">
           <InfoDivider />
           <div
             className={cn(
@@ -224,7 +219,7 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
 
       {/* External ratings */}
       {(google !== "-" || tripadvisor !== "-") && (
-        <div className="mx-6 mt-6 rounded-[12px] px-5 pt-8 pb-[18px] space-y-[18px]" style={{ backgroundColor: "#F2F2F7" }}>
+        <div className="mx-6 mt-12 rounded-[12px] px-5 pt-8 pb-[18px] space-y-[18px]" style={{ backgroundColor: "#F2F2F7" }}>
           <p className="text-[16px] font-bold text-zinc-800">Βαθμολογίες</p>
           <div className="space-y-1.5">
             {[
@@ -246,7 +241,7 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
       )}
 
       {/* Metadata — hide rows where everything is empty. */}
-      <div className="mt-8">
+      <div className="mt-12">
         {(category !== "-" || cuisine !== "-") && (
           <>
             <InfoDivider />
@@ -286,9 +281,21 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
         )}
       </div>
 
+      {/* Photo gallery — admin-uploaded photos via images.gallery.
+          Sits AFTER the InfoCell metadata table so users skim basic
+          info first, then browse photos. */}
+      {galleryImages.length > 0 && (
+        <div className="mt-12">
+          <ItemGalleryViewer
+            images={galleryImages as GalleryImage[]}
+            tabs={["Εξωτερικά", "Εσωτερικά", "Πιάτα"]}
+          />
+        </div>
+      )}
+
       {/* Delivery — only show rows for platforms that actually have a link */}
       {(deliveryLinks.efood || deliveryLinks.box || deliveryLinks.wolt) && (
-        <div className="mx-6 mt-6">
+        <div className="mx-6 mt-12">
           <PlatformLinksCard
             title="Delivery"
             ctaLabel="Παραγγελία"
@@ -308,7 +315,7 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
       )}
 
       {/* Bookmark status chips — always visible, save affordance + state setter. */}
-      <div className="px-6 mt-8">
+      <div className="px-6 mt-12">
         {!mySuggestion && <BookmarkStatusChips category="food" bookmark={bookmark} onToast={showToast} />}
       </div>
 
@@ -361,6 +368,25 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
 }
 
 // ── Shared sub-components ──────────────────────────────────────────────────────
+
+/** Mirrors BarsDetail's AdminReviewBanner — solid cream above, soft
+ *  fade strip below. Keep in sync across venue pages. */
+function AdminReviewBanner() {
+  return (
+    <>
+      <div className="w-full py-2.5 px-4" style={{ backgroundColor: "rgb(255, 250, 231)" }}>
+        <p className="text-center text-[13px] font-semibold" style={{ color: "rgb(81, 44, 21)" }}>
+          🌱 Νέα πρόταση — σε επιθεώρηση
+        </p>
+      </div>
+      <div
+        className="w-full h-3"
+        style={{ background: "linear-gradient(to bottom, rgb(255, 250, 231), transparent)" }}
+        aria-hidden
+      />
+    </>
+  );
+}
 
 function RatingLine({ rating, count }: { rating: number; count: number }) {
   return (
@@ -476,7 +502,7 @@ function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, comm
   const reviewsCarouselRef = useRef<HTMLDivElement>(null);
   useFlipReorder(reviewsCarouselRef, "data-review-id", [reviews.map((r) => r.id).join(",")]);
   return (
-    <div className="mt-8 py-8 flex flex-col items-center gap-[42px]" style={{ background: "linear-gradient(180deg,#fff 0%,#F2F2F7 10%,#F7F7FA 91%,#fff 100%)" }}>
+    <div className="mt-12 py-8 flex flex-col items-center gap-[42px]" style={{ background: "linear-gradient(180deg,#fff 0%,#F2F2F7 10%,#F7F7FA 91%,#fff 100%)" }}>
       <div className="w-[342px] flex flex-col gap-12">
         <div className="flex flex-col items-center gap-6">
           <div className="flex items-center gap-2">

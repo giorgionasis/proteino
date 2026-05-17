@@ -20,7 +20,7 @@ export default async function SuggestionDetailPage({ params }: { params: { id: s
       users!suggestions_user_id_fkey(id, display_name),
       items!inner(
         id, title, original_title, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, images,
-        avg_rating, rating_count, suggestion_count, description_seo, metadata
+        avg_rating, rating_count, suggestion_count, description_seo, metadata, admin_reviewed_at
       )
     `;
   const tier2 = `
@@ -29,7 +29,7 @@ export default async function SuggestionDetailPage({ params }: { params: { id: s
       users!suggestions_user_id_fkey(id, display_name),
       items!inner(
         id, title, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, images,
-        avg_rating, rating_count, suggestion_count, description_seo, metadata
+        avg_rating, rating_count, suggestion_count, description_seo, metadata, admin_reviewed_at
       )
     `;
   const tier3 = `
@@ -142,6 +142,7 @@ export default async function SuggestionDetailPage({ params }: { params: { id: s
         suggestionCount: item.suggestion_count,
         descriptionSeo: item.description_seo,
         metadata: item.metadata,
+        adminReviewedAt: item.admin_reviewed_at ?? null,
       }}
       extData={extData ?? {}}
       subcategories={subcategories ?? []}

@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateItem } from "@/lib/revalidate";
 
@@ -13,10 +14,24 @@ export async function PUT(req: NextRequest) {
   const supabase = createAdminClient();
   const errors: string[] = [];
 
+  // Auto-stamp admin_reviewed_by when admin_reviewed_at is being set.
+  // Clear admin_reviewed_by when admin_reviewed_at is being nulled
+  // (un-review toggle). Lookup uses the cookie-aware client so we get
+  // the actual admin user id from the session.
+  let mergedItemData = itemData ? { ...itemData } : null;
+  if (mergedItemData && "admin_reviewed_at" in mergedItemData) {
+    if (mergedItemData.admin_reviewed_at) {
+      const cookieSb = createClient();
+      const { data: { user } } = await cookieSb.auth.getUser();
+      mergedItemData.admin_reviewed_by = user?.id ?? null;
+    } else {
+      mergedItemData.admin_reviewed_by = null;
+    }
+  }
+
   // Merge metadataPatch into existing item.metadata before issuing the
   // items.update — admins editing one metadata field shouldn't blow
   // away other keys (poster URLs, tags, rating_distribution, etc).
-  let mergedItemData = itemData;
   if (metadataPatch && typeof metadataPatch === "object") {
     const { data: existing } = await supabase
       .from("items")
@@ -25,7 +40,7 @@ export async function PUT(req: NextRequest) {
       .maybeSingle();
     const currentMeta = (existing as any)?.metadata ?? {};
     mergedItemData = {
-      ...(itemData ?? {}),
+      ...(mergedItemData ?? {}),
       metadata: { ...currentMeta, ...metadataPatch },
     };
   }

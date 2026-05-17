@@ -36,9 +36,9 @@ export function ItemGalleryViewer({ images, tabs }: Props) {
     : usable;
 
   return (
-    <section className="space-y-3">
+    <section className="space-y-5">
       {showTabs && (
-        <div className="flex gap-1.5 overflow-x-auto px-6 no-scrollbar">
+        <div className="flex gap-2 overflow-x-auto px-6 no-scrollbar">
           {tabs!.map((t) => {
             const count = usable.filter((img) => (img.tab ?? tabs![0]) === t).length;
             const active = activeTab === t;
@@ -46,14 +46,15 @@ export function ItemGalleryViewer({ images, tabs }: Props) {
               <button
                 key={t}
                 onClick={() => setActiveTab(t)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
+                style={{ width: 125, height: 45 }}
+                className={`flex items-center justify-center rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
                   active
                     ? "bg-zinc-900 text-white"
                     : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
                 }`}
                 disabled={count === 0}
               >
-                {t} <span className="opacity-70">({count})</span>
+                {t} <span className="ml-1 opacity-70">({count})</span>
               </button>
             );
           })}
@@ -65,7 +66,7 @@ export function ItemGalleryViewer({ images, tabs }: Props) {
           <button
             key={`${img.url}-${i}`}
             onClick={() => setLightboxIdx(usable.indexOf(img))}
-            className="flex-none w-[160px] h-[200px] rounded-xl overflow-hidden bg-zinc-100 active:opacity-80 transition-opacity"
+            className="flex-none w-[240px] h-[160px] rounded-xl overflow-hidden bg-zinc-100 active:opacity-80 transition-opacity"
           >
             <img
               src={img.url}

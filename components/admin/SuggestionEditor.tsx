@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CATEGORIES } from "@/constants/categories";
 import { ImageUploader } from "./ImageUploader";
 import { ImageGallery, type GalleryImage } from "./ImageGallery";
+import { extractGalleryImages, mergeGalleryIntoImages, pickCoverUrl } from "@/lib/images/gallery";
 import { MapPicker } from "./MapPicker";
 import { OpenAsUserButton } from "./OpenAsUserButton";
 import { IconToggleGrid } from "./IconToggleGrid";
@@ -51,6 +52,10 @@ interface ItemProps {
   suggestionCount: number;
   descriptionSeo: string | null;
   metadata: any;
+  /** Timestamp when the admin marked attributes/images/subcategory
+   *  as final-reviewed. Null = pending → the public detail page
+   *  shows a "Νέα πρόταση — σε επιθεώρηση" chip until set. */
+  adminReviewedAt: string | null;
 }
 
 type ExtraOptions = Record<string, { value: string; label: string }[]>;
@@ -129,6 +134,10 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
   const [category, setCategory] = useState(item.category);
   const [subcategoryId, setSubcategoryId] = useState(item.subcategoryId ?? "");
   const [isPublished, setIsPublished] = useState(suggestion.isPublished);
+  // Final-review state — null until admin clicks "Mark as reviewed".
+  // Toggling sends `admin_reviewed_at` in itemData; the route also
+  // auto-stamps admin_reviewed_by from the session.
+  const [adminReviewedAt, setAdminReviewedAt] = useState<string | null>(item.adminReviewedAt ?? null);
   const [descriptionSeo, setDescriptionSeo] = useState(item.descriptionSeo ?? "");
   const [reflection, setReflection] = useState(suggestion.reflection ?? "");
   const [mediaTab, setMediaTab] = useState(0);
@@ -139,8 +148,13 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
   // Media state — initialize from props
   const [posterUrl, setPosterUrl] = useState(item.posterUrl ?? "");
   const [backdropUrl, setBackdropUrl] = useState(item.backdropUrl ?? "");
+  // Gallery state is derived from the dual-shape items.images JSONB.
+  // Legacy items stored arrays at root; new items store under .gallery
+  // alongside the pipeline-managed .poster / .backdrop / .og keys.
+  // extractGalleryImages handles both. On save we merge back via
+  // mergeGalleryIntoImages so pipeline keys never get clobbered.
   const [galleryImages, setGalleryImages] = useState<GalleryImage[]>(
-    Array.isArray(item.images) ? item.images : []
+    extractGalleryImages(item.images)
   );
   const initialTrailer = parseTrailer(extData?.trailer_url);
   const [trailerYoutube, setTrailerYoutube] = useState(initialTrailer.youtube);
@@ -188,9 +202,10 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
     isPublished: suggestion.isPublished,
     posterUrl: item.posterUrl ?? "",
     backdropUrl: item.backdropUrl ?? "",
-    galleryImages: JSON.stringify(Array.isArray(item.images) ? item.images : []),
+    galleryImages: JSON.stringify(extractGalleryImages(item.images)),
     trailerYoutube: parseTrailer(extData?.trailer_url).youtube,
     trailerVimeo: parseTrailer(extData?.trailer_url).vimeo,
+    adminReviewedAt: item.adminReviewedAt ?? null,
   });
 
   const dirty =
@@ -206,7 +221,8 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
     backdropUrl !== initialSnapshot.current.backdropUrl ||
     JSON.stringify(galleryImages) !== initialSnapshot.current.galleryImages ||
     trailerYoutube !== initialSnapshot.current.trailerYoutube ||
-    trailerVimeo !== initialSnapshot.current.trailerVimeo;
+    trailerVimeo !== initialSnapshot.current.trailerVimeo ||
+    adminReviewedAt !== initialSnapshot.current.adminReviewedAt;
 
   const { confirmIfDirty } = useUnsavedGuard(dirty);
 
@@ -232,12 +248,18 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
 
     // cover_url is the legacy "main" field. Mirror it from the orientation
     // appropriate to this category so existing reads keep working.
-    // For gallery categories (food/bars/hotels), the first gallery image wins.
+    // For gallery categories (food/bars/hotels), the admin-flagged default
+    // gallery image wins; otherwise first gallery image, then pipeline cover.
     const isPortrait = PORTRAIT_CATEGORIES.has(category);
+    const galleryDefault = galleryImages.find((g) => g.isDefault)?.url ?? "";
     const galleryFirst = galleryImages[0]?.url ?? "";
     const cover = isPortrait
-      ? (posterUrl.trim() || backdropUrl.trim() || galleryFirst)
-      : (galleryFirst || backdropUrl.trim() || posterUrl.trim());
+      ? (posterUrl.trim() || backdropUrl.trim() || galleryDefault || galleryFirst)
+      : (galleryDefault || galleryFirst || backdropUrl.trim() || posterUrl.trim());
+
+    // Merge gallery array into the dual-shape images JSONB so pipeline-
+    // managed poster/backdrop/og keys survive admin saves.
+    const mergedImages = mergeGalleryIntoImages(item.images, galleryImages);
 
     const res = await fetch("/api/admin/suggestions", {
       method: "PUT",
@@ -256,7 +278,8 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
           poster_url: posterUrl.trim() || null,
           backdrop_url: backdropUrl.trim() || null,
           cover_url: cover || null,
-          images: galleryImages,
+          images: mergedImages,
+          admin_reviewed_at: adminReviewedAt,
         },
         suggestionData: {
           is_published: isPublished,
@@ -280,11 +303,12 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
         posterUrl, backdropUrl,
         galleryImages: JSON.stringify(galleryImages),
         trailerYoutube, trailerVimeo,
+        adminReviewedAt,
       };
       setTimeout(() => setSaveStatus("idle"), 3000);
     }
     return res.ok;
-  }, [title, originalTitle, slug, category, subcategoryId, descriptionSeo, isPublished, reflection, item.id, suggestion.id, suggestion.publishedAt, posterUrl, backdropUrl, galleryImages, trailerYoutube, trailerVimeo]);
+  }, [title, originalTitle, slug, category, subcategoryId, descriptionSeo, isPublished, reflection, item.id, suggestion.id, suggestion.publishedAt, posterUrl, backdropUrl, galleryImages, trailerYoutube, trailerVimeo, adminReviewedAt, item.images]);
 
   const saveAndNext = useCallback(async () => {
     const ok = await save();
@@ -485,6 +509,26 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
                   <button onClick={() => setIsPublished(true)} className={`px-5 py-2 text-sm font-semibold transition-colors ${isPublished ? "bg-emerald-600 text-white" : "bg-white text-zinc-500 hover:bg-zinc-50"}`}>YES</button>
                   <button onClick={() => setIsPublished(false)} className={`px-5 py-2 text-sm font-semibold transition-colors ${!isPublished ? "bg-zinc-900 text-white" : "bg-white text-zinc-500 hover:bg-zinc-50"}`}>NO</button>
                 </div>
+              </div>
+              <div>
+                {/* Final-review toggle — when stamped, the public detail
+                    page hides the "Νέα πρόταση — σε επιθεώρηση" chip.
+                    Click again to un-review (e.g. after editing
+                    fields). Auto-fills admin_reviewed_by from session. */}
+                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Final review</label>
+                <button
+                  onClick={() => setAdminReviewedAt(adminReviewedAt ? null : new Date().toISOString())}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                    adminReviewedAt
+                      ? "border-emerald-600 bg-emerald-50 text-emerald-700"
+                      : "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                  }`}
+                  title={adminReviewedAt
+                    ? `Reviewed ${formatDate(adminReviewedAt)}. Click to un-review.`
+                    : "Confirm attributes/images/subcategory are correct, then click to mark as reviewed."}
+                >
+                  {adminReviewedAt ? "✓ Reviewed" : "⏳ Mark as reviewed"}
+                </button>
               </div>
               <div className="flex-1">
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Author</label>

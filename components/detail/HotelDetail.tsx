@@ -11,6 +11,7 @@ import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { InnerHeader } from "@/components/layout/Header";
 import { formatDistance } from "@/lib/activities";
 import { ItemGalleryViewer, type GalleryImage } from "@/components/detail/ItemGalleryViewer";
+import { extractGalleryImages, pickCoverUrl } from "@/lib/images/gallery";
 import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
 import { RateThisItem } from "@/components/detail/RateThisItem";
 import { mergeLiveReview } from "@/lib/reviews/merge-live";
@@ -100,7 +101,8 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
   const lng = typeof ext.lng === "number" ? ext.lng : null;
   const avgRating = item.avg_rating ?? 0;
   const ratingCount = item.rating_count ?? 0;
-  const coverUrl = item.cover_url;
+  const coverUrl = pickCoverUrl((item as any).images, item.cover_url);
+  const galleryImages = extractGalleryImages((item as any).images);
   const priceRange = ext.price_range ?? "";
   const mapUrl =
     lat != null && lng != null
@@ -199,6 +201,22 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
         }
       />
 
+      {/* Νέα πρόταση banner — solid cream + soft fade below. */}
+      {!item.admin_reviewed_at && (
+        <>
+          <div className="w-full py-2.5 px-4" style={{ backgroundColor: "rgb(255, 250, 231)" }}>
+            <p className="text-center text-[13px] font-semibold" style={{ color: "rgb(81, 44, 21)" }}>
+              🌱 Νέα πρόταση — σε επιθεώρηση
+            </p>
+          </div>
+          <div
+            className="w-full h-3"
+            style={{ background: "linear-gradient(to bottom, rgb(255, 250, 231), transparent)" }}
+            aria-hidden
+          />
+        </>
+      )}
+
       {/* Hero */}
       <div className="px-6 pt-6">
         <div data-orbit-source className="relative w-full h-[228px] rounded-[12px] overflow-hidden bg-zinc-200">
@@ -212,11 +230,11 @@ export function HotelDetail({ data }: { data: ItemDetailData }) {
         <RatingLine rating={avgRating} count={ratingCount} />
       </div>
 
-      {/* Gallery */}
-      {Array.isArray((item as any).images) && (item as any).images.length > 0 && (
+      {/* Gallery — admin-uploaded photos via images.gallery. */}
+      {galleryImages.length > 0 && (
         <div className="mt-6">
           <ItemGalleryViewer
-            images={(item as any).images as GalleryImage[]}
+            images={galleryImages as GalleryImage[]}
             tabs={["Δωμάτια", "Κοινόχρηστοι", "Εξωτερικά"]}
           />
         </div>

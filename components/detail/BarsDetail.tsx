@@ -25,6 +25,7 @@ import { ReviewCard } from "@/components/detail/ReviewCard";
 import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
 import { Icon } from "@/components/ui/Icon";
 import { ICON_PATHS } from "@/lib/icons";
+import { extractGalleryImages, pickCoverUrl } from "@/lib/images/gallery";
 import { PlatformLinksCard } from "@/components/detail/PlatformLinksCard";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { AMENITY_ICON_MAP, AMENITY_LABELS, getActiveAmenities, badgeLabelForSuggestions } from "@/lib/icons";
@@ -98,7 +99,10 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
   const lng = typeof ext.lng === "number" ? ext.lng : null;
   const avgRating = item.avg_rating ?? 0;
   const ratingCount = item.rating_count ?? 0;
-  const coverUrl = item.cover_url;
+  // Cover preference: admin-flagged gallery default > pipeline poster >
+  // legacy items.cover_url. lib/images/gallery.ts encapsulates this.
+  const coverUrl = pickCoverUrl((item as any).images, item.cover_url);
+  const galleryImages = extractGalleryImages((item as any).images);
   const mapUrl =
     lat != null && lng != null
       ? `https://www.google.com/maps?q=${lat},${lng}`
@@ -156,6 +160,11 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
         }
       />
 
+      {/* "Νέα πρόταση — σε επιθεώρηση" banner — sits ABOVE the hero,
+          full-width amber strip with text centered. Hides once admin
+          stamps items.admin_reviewed_at. */}
+      {!item.admin_reviewed_at && <AdminReviewBanner />}
+
       {/* Hero */}
       <div className="px-6 pt-6">
         <div data-orbit-source className="relative w-full h-[228px] rounded-[12px] overflow-hidden bg-zinc-200">
@@ -163,25 +172,16 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
         </div>
       </div>
 
-      {/* Title + rating */}
-      <div className="px-6 pt-5 space-y-2">
+      {/* Title + rating — hero→title 24px (pt-6), title→rating 20px (space-y-5) */}
+      <div className="px-6 pt-6 space-y-5">
         <h1 className="font-bold text-[#27272A]" style={{ fontSize: 26, lineHeight: "130%" }}>{title}</h1>
         <RatingLine rating={avgRating} count={ratingCount} />
       </div>
 
-      {/* Photo gallery */}
-      {Array.isArray((item as any).images) && (item as any).images.length > 0 && (
-        <div className="mt-6">
-          <ItemGalleryViewer
-            images={(item as any).images as GalleryImage[]}
-            tabs={["Εξωτερικά", "Εσωτερικά"]}
-          />
-        </div>
-      )}
-
-      {/* Featured suggestion */}
+      {/* Featured suggestion — rating→suggester 44px (mt-11),
+          avatar-row→reflection 16px (space-y-4). */}
       {featured && (
-        <div className="mx-6 mt-6 space-y-4">
+        <div className="mx-6 mt-11 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <UserAvatarWithPopup user={featured.user} size={45} />
@@ -202,7 +202,7 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
           resolve to an icon. Keys without registered icons are
           silently skipped so the row never breaks. */}
       {activeAmenities.length > 0 && (
-        <div className="mt-6 space-y-6">
+        <div className="mt-12 space-y-6">
           <InfoDivider />
           <div
             className={cn(
@@ -247,7 +247,7 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
       {/* Metadata — InfoCell pattern identical to FoodDetail. Rows hide
           when their values are all empty so the layout doesn't render
           empty bars. */}
-      <div className="mt-8">
+      <div className="mt-12">
         {(category !== "-" || price !== "-") && (
           <>
             <InfoDivider />
@@ -287,12 +287,25 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
         )}
       </div>
 
+      {/* Photo gallery — admin-uploaded photos via images.gallery.
+          Sits AFTER the InfoCell metadata table (per product decision):
+          users skim the basic info first, then browse photos before
+          committing to "Want to go". */}
+      {galleryImages.length > 0 && (
+        <div className="mt-12">
+          <ItemGalleryViewer
+            images={galleryImages as GalleryImage[]}
+            tabs={["Εξωτερικά", "Εσωτερικά"]}
+          />
+        </div>
+      )}
+
       {/* Delivery — only show rows for platforms that actually have a link.
           Bars/cafes store these under information.delivery_links (no
           dedicated column on item_bars; admin manages via the Delivery
           section in the editor). */}
       {(deliveryLinks.efood || deliveryLinks.box || deliveryLinks.wolt) && (
-        <div className="mx-6 mt-6">
+        <div className="mx-6 mt-12">
           <PlatformLinksCard
             title="Delivery"
             ctaLabel="Παραγγελία"
@@ -312,7 +325,7 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
       )}
 
       {/* Bookmark status chips — always visible, save affordance + state setter. */}
-      <div className="px-6 mt-8">
+      <div className="px-6 mt-12">
         {!mySuggestion && <BookmarkStatusChips category="bars" bookmark={bookmark} onToast={showToast} />}
       </div>
 
@@ -365,6 +378,27 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
 }
 
 // ── Shared sub-components ──────────────────────────────────────────────────────
+
+/** Centred amber banner shown above the hero when items.admin_reviewed_at
+ *  is null. Solid cream background for the text, soft gradient fade
+ *  below in place of a hard border line. Disappears once admin
+ *  clicks "Mark as reviewed" in the editor. */
+function AdminReviewBanner() {
+  return (
+    <>
+      <div className="w-full py-2.5 px-4" style={{ backgroundColor: "rgb(255, 250, 231)" }}>
+        <p className="text-center text-[13px] font-semibold" style={{ color: "rgb(81, 44, 21)" }}>
+          🌱 Νέα πρόταση — σε επιθεώρηση
+        </p>
+      </div>
+      <div
+        className="w-full h-3"
+        style={{ background: "linear-gradient(to bottom, rgb(255, 250, 231), transparent)" }}
+        aria-hidden
+      />
+    </>
+  );
+}
 
 function RatingLine({ rating, count }: { rating: number; count: number }) {
   return (
@@ -478,7 +512,7 @@ function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, comm
   const reviewsCarouselRef = useRef<HTMLDivElement>(null);
   useFlipReorder(reviewsCarouselRef, "data-review-id", [reviews.map((r) => r.id).join(",")]);
   return (
-    <div className="mt-8 py-8 flex flex-col items-center gap-[42px]" style={{ background: "linear-gradient(180deg,#fff 0%,#F2F2F7 10%,#F7F7FA 91%,#fff 100%)" }}>
+    <div className="mt-12 py-8 flex flex-col items-center gap-[42px]" style={{ background: "linear-gradient(180deg,#fff 0%,#F2F2F7 10%,#F7F7FA 91%,#fff 100%)" }}>
       <div className="w-[342px] flex flex-col gap-12">
         <div className="flex flex-col items-center gap-6">
           <div className="flex items-center gap-2">
