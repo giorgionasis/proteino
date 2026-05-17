@@ -59,10 +59,16 @@ export async function GET(req: NextRequest) {
   const itemId = (item as any).id;
   const itemSlug = (item as any).slug;
 
+  // Only PUBLISHED suggestions count as duplicates. Admin can unpublish
+  // a suggestion (suggestions.is_published = false) to let the same
+  // user — or any user — submit a fresh one for the same item. Without
+  // this filter, the previously-submitted-but-unpublished suggestion
+  // would block resubmission forever.
   const { data: sug } = await admin
     .from("suggestions")
     .select("id, user_id, users!suggestions_user_id_fkey(id, handle, display_name, avatar_url)")
     .eq("item_id", itemId)
+    .eq("is_published", true)
     .limit(1)
     .maybeSingle();
 

@@ -330,10 +330,14 @@ export async function POST(req: NextRequest) {
     itemSlug = (existingItem as any).slug;
 
     // 2. Duplicate check — has anyone already suggested this item?
+    // Only PUBLISHED suggestions block resubmission — admin can
+    // unpublish via the editor to free the user up. See sibling logic
+    // in /api/suggestions/check/route.ts.
     const { data: dup } = await admin
       .from("suggestions")
       .select("id, user_id, users!suggestions_user_id_fkey(id, handle, display_name, avatar_url)")
       .eq("item_id", itemId)
+      .eq("is_published", true)
       .limit(1)
       .maybeSingle();
 
