@@ -83,6 +83,7 @@ function IntelligencePanel({
   qualityBadge,
   coachingStatus,
   coachingReady,
+  compact = false,
 }: {
   progress:       number;
   message:        string;
@@ -98,57 +99,81 @@ function IntelligencePanel({
   /** Gemini judged the writing as rich + personal — show celebration
    *  state above the tip. */
   coachingReady:  boolean;
+  /** Dense mode for when the mobile keyboard is open. Drops the big
+   *  LOCKED card (→ 1-line chip), the progress bar, the ready
+   *  banner, and tightens padding — saves ~90px while keeping the
+   *  match info + tip text visible. Toggled via useKeyboardOpen
+   *  upstream. */
+  compact?: boolean;
 }) {
   return (
-    <div className="bg-zinc-900 rounded-card p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold text-coral-600 tracking-[0.2em] uppercase">
+    <div className={cn("bg-zinc-900 rounded-card", compact ? "p-3 space-y-2" : "p-4 space-y-3")}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-bold text-coral-600 tracking-[0.2em] uppercase shrink-0">
           Proteino Intelligence
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {coachingStatus === "thinking" && (
-            <span className="flex items-center gap-1 text-[10px] font-medium text-coral-400 tracking-widest uppercase">
+            <span className="flex items-center gap-1 text-[10px] font-medium text-coral-400 tracking-widest uppercase shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-coral-400 animate-pulse" />
               Σκέφτεται
             </span>
           )}
           {qualityBadge ? (
-            <span className={cn("text-[10px] font-bold tracking-widest uppercase", qualityLabel ? QUALITY_COLOR[qualityLabel] : "text-zinc-400")}>
+            <span className={cn("text-[10px] font-bold tracking-widest uppercase truncate", qualityLabel ? QUALITY_COLOR[qualityLabel] : "text-zinc-400")}>
               {qualityBadge}
             </span>
           ) : (
-            <span className="text-xs text-zinc-500 tabular-nums">{progress}%</span>
+            !compact && <span className="text-xs text-zinc-500 tabular-nums">{progress}%</span>
           )}
         </div>
       </div>
 
-      {/* Locked match banner — prominent, unambiguous. Shown above the
-          coaching message so the user can't miss what AI committed to.
-          Enters with `animate-pop-in` (scale-up + fade) and the
-          ✓ Κλειδωμένο badge slides in from the right just after for a
-          two-beat reward feel. The whole card is keyed off `lockedTitle`
-          so a different match restarts the entrance. */}
+      {/* LOCKED — two density modes:
+            Full: green-tinted card with "✓ Κλειδωμένο · CATEGORY" header
+                  + bold title (180px-ish total)
+            Compact: single-line coral chip "✓ Etouto Ath1 · BARS" (28px)
+          Same info, ~80% less vertical space. */}
       {lockedTitle && (
-        <div
-          key={lockedTitle}
-          className="rounded-card px-3 py-2.5 border border-coral-600/40 animate-in zoom-in-95 fade-in duration-300 ease-pop"
-          style={{ background: "linear-gradient(135deg, rgba(254,111,94,0.18), rgba(255,153,128,0.10))" }}
-        >
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-coral-600 tracking-widest uppercase shrink-0 animate-in slide-in-from-right-3 fade-in duration-300 ease-spring delay-150">
-              ✓ Κλειδωμένο
-            </span>
+        compact ? (
+          <div
+            key={lockedTitle}
+            className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-coral-600/40 max-w-full animate-in zoom-in-95 fade-in duration-300 ease-pop"
+            style={{ background: "linear-gradient(135deg, rgba(254,111,94,0.18), rgba(255,153,128,0.10))" }}
+          >
+            <span className="text-[10px] font-bold text-coral-600 shrink-0">✓</span>
+            <span className="text-[12px] font-bold text-white truncate">{lockedTitle}</span>
             {lockedCategory && (
-              <span className="text-[10px] font-medium text-zinc-400 tracking-widest uppercase">
+              <span className="text-[10px] font-medium text-zinc-400 tracking-widest uppercase shrink-0">
                 · {lockedCategory}
               </span>
             )}
           </div>
-          <p className="text-sm font-bold text-white leading-snug mt-0.5">{lockedTitle}</p>
-        </div>
+        ) : (
+          <div
+            key={lockedTitle}
+            className="rounded-card px-3 py-2.5 border border-coral-600/40 animate-in zoom-in-95 fade-in duration-300 ease-pop"
+            style={{ background: "linear-gradient(135deg, rgba(254,111,94,0.18), rgba(255,153,128,0.10))" }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-coral-600 tracking-widest uppercase shrink-0 animate-in slide-in-from-right-3 fade-in duration-300 ease-spring delay-150">
+                ✓ Κλειδωμένο
+              </span>
+              {lockedCategory && (
+                <span className="text-[10px] font-medium text-zinc-400 tracking-widest uppercase">
+                  · {lockedCategory}
+                </span>
+              )}
+            </div>
+            <p className="text-sm font-bold text-white leading-snug mt-0.5">{lockedTitle}</p>
+          </div>
+        )
       )}
 
-      {coachingReady && (
+      {/* Ready banner — only in full mode. In compact, the ready
+          signal lives in the badge color upgrade (excellent → green
+          badge in the top-right). Saves another ~60px on small screens. */}
+      {coachingReady && !compact && (
         <div
           className="rounded-card px-3 py-2.5 border border-success/40 animate-in zoom-in-95 fade-in duration-300 ease-pop"
           style={{ background: "linear-gradient(135deg, rgba(29,158,117,0.18), rgba(29,158,117,0.08))" }}
@@ -174,12 +199,17 @@ function IntelligencePanel({
         {message}
       </p>
 
-      <div className="h-[3px] bg-zinc-700 rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full transition-[width] duration-500 ease-out"
-          style={{ width: `${progress}%`, background: "linear-gradient(to right, #FE6F5E, #FF9980)" }}
-        />
-      </div>
+      {/* Progress bar — full mode only. The badge label already
+          communicates quality tier; the bar is decorative on small
+          screens and not worth ~12px during typing. */}
+      {!compact && (
+        <div className="h-[3px] bg-zinc-700 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-[width] duration-500 ease-out"
+            style={{ width: `${progress}%`, background: "linear-gradient(to right, #FE6F5E, #FF9980)" }}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1193,7 +1223,7 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
   // up, the full IntelligencePanel ends up under it. We swap to a
   // slim 1-line tip bar fixed above the keyboard for the typing
   // session, then back to the full panel when keyboard closes.
-  const { open: keyboardOpen, offsetPx: keyboardOffset } = useKeyboardOpen();
+  const { open: keyboardOpen } = useKeyboardOpen();
 
   // Local quality coaching (always fresh — runs in the hook on every keystroke).
   const qualityTip = quality?.tip ?? null;
@@ -1495,22 +1525,22 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
 
         {hookState === "empty" && <InputModes />}
 
-        {/* Full IntelligencePanel — shown when keyboard is closed
-            (idle inspection mode). When the keyboard is up we hide
-            this block and surface a slim tip bar fixed above the
-            keyboard instead (see <SlimTipBar /> below). */}
-        {!keyboardOpen && (
-          <IntelligencePanel
-            progress={progress}
-            message={panelMessage}
-            lockedTitle={panelLockedTitle}
-            lockedCategory={panelLockedCategory}
-            qualityLabel={qualityLabel}
-            qualityBadge={qualityBadge}
-            coachingStatus={coachingStatus}
-            coachingReady={coachingReady}
-          />
-        )}
+        {/* IntelligencePanel — single inline render with density mode
+            toggled by useKeyboardOpen. Compact mode (keyboard up):
+            LOCKED card → 1-line chip, progress bar gone, ready banner
+            gone, tighter padding. ~90px saved vs full. Full mode
+            (keyboard down): unchanged from before. */}
+        <IntelligencePanel
+          progress={progress}
+          message={panelMessage}
+          lockedTitle={panelLockedTitle}
+          lockedCategory={panelLockedCategory}
+          qualityLabel={qualityLabel}
+          qualityBadge={qualityBadge}
+          coachingStatus={coachingStatus}
+          coachingReady={coachingReady}
+          compact={keyboardOpen}
+        />
 
         {/* Medium tier: AI picked something but isn't 100% sure. Don't lock —
             ask the user to confirm via Ναι/Όχι pills. Όχι demotes to low so
@@ -1551,50 +1581,6 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
         </button>
       </div>
 
-      {/* Slim tip bar — fixed above the keyboard when it's open.
-          Replaces the full IntelligencePanel during typing so the
-          coaching tip is always visible on small phones. Translates
-          itself up by the keyboard's height (from visualViewport) so
-          it sits right on top of the keys, not behind them. */}
-      {keyboardOpen && qualityTip && (
-        <SlimTipBar
-          tip={qualityTip}
-          thinking={coachingStatus === "thinking"}
-          keyboardOffset={keyboardOffset}
-        />
-      )}
-    </div>
-  );
-}
-
-/** Compact 1-line replacement for IntelligencePanel that sits right
- *  above the soft keyboard. Renders only when keyboardOpen is true
- *  AND a tip exists — otherwise no chrome at all (don't waste pixels
- *  on a placeholder during the first few keystrokes). */
-function SlimTipBar({
-  tip,
-  thinking,
-  keyboardOffset,
-}: {
-  tip: string;
-  thinking: boolean;
-  keyboardOffset: number;
-}) {
-  return (
-    <div
-      className="fixed left-0 right-0 z-50 bg-zinc-900 text-white px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.15)] flex items-center gap-2.5"
-      style={{ bottom: keyboardOffset }}
-      role="status"
-      aria-live="polite"
-    >
-      <span className="text-[10px] font-bold text-coral-500 tracking-[0.2em] uppercase shrink-0">AI</span>
-      <p className="flex-1 text-sm font-medium leading-snug">{tip}</p>
-      {thinking && (
-        <span
-          className="w-1.5 h-1.5 rounded-full bg-coral-400 animate-pulse shrink-0"
-          aria-label="Σκέφτεται"
-        />
-      )}
     </div>
   );
 }
