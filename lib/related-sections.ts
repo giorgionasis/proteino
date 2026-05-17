@@ -56,7 +56,13 @@ interface RuleRow {
   item_limit: number;
   display_order: number;
   is_active: boolean;
+  /** Set only for `_nearby_radius_` rules. NULL for value-match rules. */
+  radius_km?: number | null;
 }
+
+/** Special field tokens that don't follow the value-match pattern.
+ *  Resolver branches on these before the regular parseFieldPath path. */
+const NEARBY_FIELD = "_nearby_radius_";
 
 interface FetchInput {
   /** Item's UUID — excluded from sibling results. */
@@ -82,10 +88,13 @@ export async function fetchRelatedSections(
   const extTable = EXT_TABLES[category];
   if (!extTable) return [];
 
-  // Pull all active rules for this category, ordered.
+  // Pull all active rules for this category, ordered. `radius_km` is
+  // only set for nearby-radius rules (added by migration 038). Older
+  // environments without the column fall through to the value-match
+  // path because radius_km is just undefined on those rows.
   const { data: rules, error } = await sb
     .from("related_sections_config")
-    .select("id, category, field, title_template, min_items, item_limit, display_order, is_active")
+    .select("id, category, field, title_template, min_items, item_limit, display_order, is_active, radius_km")
     .eq("category", category)
     .eq("is_active", true)
     .order("display_order");
@@ -109,6 +118,24 @@ async function buildSection(
   extension: Record<string, unknown>,
   rule: RuleRow,
 ): Promise<RelatedSection | null> {
+  // Special "nearby venues by lat/lng" branch — doesn't follow the
+  // value-match pattern; uses Haversine distance from the current
+  // item's coordinates. Only meaningful for venue categories (food/
+  // bars/hotels/theater/events) which carry lat/lng on the extension.
+  if (rule.field === NEARBY_FIELD) {
+    const lat = numericOrNull(extension.lat);
+    const lng = numericOrNull(extension.lng);
+    if (lat === null || lng === null) return null;
+    const radiusKm = typeof rule.radius_km === "number" && rule.radius_km > 0 ? rule.radius_km : 1.0;
+    const items = await fetchNearby(sb, extTable, itemId, category, lat, lng, radiusKm, rule.item_limit);
+    if (items.length < rule.min_items) return null;
+    return {
+      ruleId: rule.id,
+      title: rule.title_template.replaceAll("{km}", `${radiusKm}`),
+      items,
+    };
+  }
+
   const parsed = parseFieldPath(rule.field);
   if (!parsed) return null;
 
@@ -129,6 +156,10 @@ async function buildSection(
     title: rule.title_template.replaceAll("{value}", value),
     items,
   };
+}
+
+function numericOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
 /* ─── Field path parser ─────────────────────────────────────────── */
@@ -244,4 +275,109 @@ async function fetchSiblings(
 function stripPrefix(slug: string): string {
   const i = slug.indexOf("/");
   return i >= 0 ? slug.slice(i + 1) : slug;
+}
+
+/* ─── Nearby (lat/lng + radius) sibling query ──────────────────── */
+
+/** Earth radius in km. Haversine formula's constant. */
+const EARTH_RADIUS_KM = 6371;
+
+/** Approximate km per degree of latitude (constant). Longitude
+ *  shrinks with latitude — we adjust by cos(lat) for the bounding
+ *  box. For Greek lat ≈ 38° the per-degree distance is ~88km lng. */
+const KM_PER_DEG_LAT = 111.32;
+
+/**
+ * Find venues within `radiusKm` of (lat, lng), same category, sorted
+ * by ascending distance. Excludes the current item.
+ *
+ * Two-step query for efficiency:
+ *   1. Bounding-box SQL filter (cheap, indexable) — drops the obvious
+ *      far-away rows without computing distances. Box is intentionally
+ *      generous (1.2× radius) so edge cases aren't missed by the
+ *      sin/cos approximation.
+ *   2. Exact Haversine distance in JS — sorts the candidates and
+ *      cuts to limit. With <800 venues in a city the JS side is
+ *      microsecond-scale.
+ *
+ * No PostGIS dependency. Works on stock Supabase Postgres.
+ */
+async function fetchNearby(
+  sb: SupabaseLike,
+  extTable: string,
+  itemId: string,
+  category: CategorySlug,
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  limit: number,
+): Promise<RelatedItem[]> {
+  const latDelta = (radiusKm * 1.2) / KM_PER_DEG_LAT;
+  const lngDelta = (radiusKm * 1.2) / (KM_PER_DEG_LAT * Math.cos(toRad(lat)));
+
+  // Pull candidates within the bounding box. The select aliases the
+  // ext table so we can read lat/lng off the joined row.
+  const select = `id, title, slug, category, cover_url, avg_rating, rating_count, ${extTable}!inner(lat, lng)`;
+  const { data, error } = await sb
+    .from("items")
+    .select(select)
+    .eq("category", category)
+    .eq("is_published", true)
+    .neq("id", itemId)
+    .gte(`${extTable}.lat`, lat - latDelta)
+    .lte(`${extTable}.lat`, lat + latDelta)
+    .gte(`${extTable}.lng`, lng - lngDelta)
+    .lte(`${extTable}.lng`, lng + lngDelta)
+    .limit(200);
+  if (error) {
+    console.error("[related-sections] nearby query failed:", error.message);
+    return [];
+  }
+
+  // Compute exact distance for each candidate, filter to radius, sort.
+  type Row = {
+    id: string; title: string; slug: string; category: string;
+    cover_url: string | null; avg_rating: number | null; rating_count: number | null;
+    [key: string]: any;
+  };
+  type Scored = { raw: Row; distance: number };
+  const rows: Row[] = (data ?? []) as Row[];
+  const scored: Scored[] = rows
+    .map((raw: Row): Scored | null => {
+      const extJoin = raw[extTable];
+      const ext = Array.isArray(extJoin) ? extJoin[0] : extJoin;
+      const elat = numericOrNull(ext?.lat);
+      const elng = numericOrNull(ext?.lng);
+      if (elat === null || elng === null) return null;
+      const distance = haversineKm(lat, lng, elat, elng);
+      if (distance > radiusKm) return null;
+      return { raw, distance };
+    })
+    .filter((x: Scored | null): x is Scored => x !== null)
+    .sort((a: Scored, b: Scored) => a.distance - b.distance)
+    .slice(0, limit);
+
+  return scored.map(({ raw }) => ({
+    id: raw.id,
+    title: raw.title,
+    slug: stripPrefix(raw.slug),
+    category: raw.category,
+    cover_url: safeImageUrl(raw.cover_url),
+    avg_rating: raw.avg_rating ?? 0,
+    rating_count: raw.rating_count ?? 0,
+  }));
+}
+
+function toRad(deg: number): number {
+  return (deg * Math.PI) / 180;
+}
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return EARTH_RADIUS_KM * c;
 }

@@ -29,7 +29,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { category, field, title_template, min_items, item_limit, display_order, is_active } = body as {
+  const { category, field, title_template, min_items, item_limit, display_order, is_active, radius_km } = body as {
     category: string;
     field: string;
     title_template: string;
@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
     item_limit?: number;
     display_order?: number;
     is_active?: boolean;
+    radius_km?: number;
   };
 
   if (!category || !VALID_CATEGORIES.has(category)) {
@@ -50,6 +51,13 @@ export async function POST(req: NextRequest) {
   }
 
   const sb = createAdminClient();
+  // For nearby-radius rules, default to 1km when admin didn't specify.
+  // Other rule types get null (column is nullable).
+  const isNearbyRule = field.trim() === "_nearby_radius_";
+  const resolvedRadius = isNearbyRule
+    ? (typeof radius_km === "number" && radius_km > 0 ? radius_km : 1.0)
+    : null;
+
   const { data, error } = await (sb.from("related_sections_config") as any)
     .insert({
       category,
@@ -59,6 +67,7 @@ export async function POST(req: NextRequest) {
       item_limit: typeof item_limit === "number" && item_limit >= 1 && item_limit <= 20 ? item_limit : 6,
       display_order: typeof display_order === "number" ? display_order : 0,
       is_active: typeof is_active === "boolean" ? is_active : true,
+      radius_km: resolvedRadius,
     })
     .select()
     .single();

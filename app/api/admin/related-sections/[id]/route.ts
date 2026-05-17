@@ -35,6 +35,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (typeof body.is_active === "boolean") {
     patch.is_active = body.is_active;
   }
+  // Nearby rules only — admin tweaks the search radius via the km input
+  // in the rule row. Negative / zero rejected; max 50km sanity cap.
+  if (typeof body.radius_km === "number" && body.radius_km > 0 && body.radius_km <= 50) {
+    patch.radius_km = body.radius_km;
+  }
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "no fields to update" }, { status: 400 });

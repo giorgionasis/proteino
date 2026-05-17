@@ -27,7 +27,15 @@ interface Rule {
   is_active: boolean;
   created_at: string;
   modified_at: string;
+  /** Set only for nearby-radius rules (field === "_nearby_radius_").
+   *  Numeric km; null/undefined for value-match rules. */
+  radius_km?: number | null;
 }
+
+/** Special field token recognised by the resolver as "find venues
+ *  within radius_km km of the current item's lat/lng". Added to the
+ *  venue category presets so admins can pick it from the same UI. */
+const NEARBY_FIELD = "_nearby_radius_";
 
 /** Per-category presets the admin can pick from. Each entry maps to an
  *  extension-table path the fetcher understands (lib/related-sections.ts). */
@@ -58,12 +66,15 @@ const FIELD_PRESETS: Record<string, { value: string; label: string; suggestedTit
   food: [
     { value: "cuisine",         label: "Κουζίνα",          suggestedTitle: "Άλλα {value}" },
     { value: "type",            label: "Τύπος μαγαζιού",   suggestedTitle: "Άλλα {value}" },
+    { value: NEARBY_FIELD,      label: "Κοντινά (km)",     suggestedTitle: "Άλλα μέρη εδώ κοντά" },
   ],
   bars: [
     { value: "type",            label: "Τύπος",            suggestedTitle: "Άλλα {value}" },
+    { value: NEARBY_FIELD,      label: "Κοντινά (km)",     suggestedTitle: "Άλλα μέρη εδώ κοντά" },
   ],
   hotels: [
     { value: "type",            label: "Τύπος ξενοδοχείου", suggestedTitle: "Άλλα {value}" },
+    { value: NEARBY_FIELD,      label: "Κοντινά (km)",     suggestedTitle: "Άλλα καταλύματα εδώ κοντά" },
   ],
   recipes: [
     { value: "level",           label: "Επίπεδο",          suggestedTitle: "Άλλες {value} συνταγές" },
@@ -242,10 +253,13 @@ function RuleRow({
   const [titleDraft, setTitleDraft] = useState(rule.title_template);
   const [minDraft, setMinDraft] = useState<number>(rule.min_items);
   const [limitDraft, setLimitDraft] = useState<number>(rule.item_limit);
+  const [radiusDraft, setRadiusDraft] = useState<number>(rule.radius_km ?? 1);
+  const isNearby = rule.field === NEARBY_FIELD;
 
   useEffect(() => { setTitleDraft(rule.title_template); }, [rule.title_template]);
   useEffect(() => { setMinDraft(rule.min_items); }, [rule.min_items]);
   useEffect(() => { setLimitDraft(rule.item_limit); }, [rule.item_limit]);
+  useEffect(() => { setRadiusDraft(rule.radius_km ?? 1); }, [rule.radius_km]);
 
   function commitTitle() {
     const v = titleDraft.trim();
@@ -257,6 +271,11 @@ function RuleRow({
   function commitLimit() {
     if (limitDraft >= 1 && limitDraft <= 20 && limitDraft !== rule.item_limit) {
       onPatch({ item_limit: limitDraft });
+    }
+  }
+  function commitRadius() {
+    if (radiusDraft > 0 && radiusDraft !== rule.radius_km) {
+      onPatch({ radius_km: radiusDraft });
     }
   }
 
@@ -321,6 +340,22 @@ function RuleRow({
           className="w-12 px-1.5 py-1 border border-zinc-200 rounded text-center"
         />
       </label>
+
+      {/* Radius (only for nearby rules) */}
+      {isNearby && (
+        <label className="shrink-0 flex items-center gap-1 text-xs text-zinc-500">
+          <span>km</span>
+          <input
+            type="number"
+            value={radiusDraft}
+            onChange={(e) => setRadiusDraft(Number(e.target.value))}
+            onBlur={commitRadius}
+            min={0.1}
+            step={0.1}
+            className="w-14 px-1.5 py-1 border border-zinc-200 rounded text-center"
+          />
+        </label>
+      )}
 
       {/* Delete */}
       <button
