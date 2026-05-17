@@ -15,6 +15,14 @@ const nextConfig = {
       { protocol: "https", hostname: "*.facebook.com" },
       // TMDB poster/backdrop images (saved during AI submission match)
       { protocol: "https", hostname: "image.tmdb.org" },
+      // Google Books covers (book submission enrichment)
+      { protocol: "https", hostname: "books.google.com" },
+      { protocol: "https", hostname: "books.googleusercontent.com" },
+      // Google Places photos (venue submission enrichment — URLs carry
+      // the API key as a query param; image pipeline should replace
+      // these with Supabase-hosted variants over time)
+      { protocol: "https", hostname: "places.googleapis.com" },
+      { protocol: "https", hostname: "lh5.googleusercontent.com" },
       // Unsplash (used in showcase sample data)
       { protocol: "https", hostname: "images.unsplash.com" },
     ],

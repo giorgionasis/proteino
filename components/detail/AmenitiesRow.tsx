@@ -1,5 +1,4 @@
-import { Icon } from "@/components/ui/Icon";
-import type { IconName } from "@/lib/icons";
+import { ICON_PATHS, type IconName } from "@/lib/icons";
 
 export interface AmenityItem {
   /** Stable key for React. Usually the amenity slug. */
@@ -14,7 +13,10 @@ export interface AmenityItem {
 
 interface AmenitiesRowProps {
   items: AmenityItem[];
-  /** Visual size of each icon. Default 44 (hotel amenities). */
+  /** Visual height of each icon (px). Width is auto so icons with
+   *  different viewBox aspect ratios stay visually aligned at the
+   *  same height — fixes the issue where a 32×32 icon looks bigger
+   *  than a 45×40 one when both are forced into a 44×44 square. */
   iconSize?: number;
 }
 
@@ -22,6 +24,12 @@ interface AmenitiesRowProps {
  * Hotel-style amenities row. Tight 4-column grid when up to 4 items;
  * horizontal scroll when more. Each cell is icon + label, with optional
  * secondary line above the icon (used for the ★★★ "Ξενοδοχείο" pattern).
+ *
+ * Icons render with a fixed HEIGHT, width auto (height-pinned approach).
+ * This means a mix of square icons (32×32) and wider icons (45×40) all
+ * share the same visual height in the row — visually consistent baseline.
+ * Using a plain <img> with explicit CSS height instead of the <Icon>
+ * primitive gives us this control (Icon sets explicit pixel width too).
  *
  * No background — sits flush on the page bg. Use NutritionRow for the
  * lavender-card nutrition variant.
@@ -44,7 +52,16 @@ export function AmenitiesRow({ items, iconSize = 44 }: AmenitiesRowProps) {
               {it.secondary}
             </div>
           )}
-          <Icon name={it.icon} size={iconSize} />
+          <div className="flex items-center justify-center" style={{ height: iconSize }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={ICON_PATHS[it.icon]}
+              alt=""
+              style={{ height: iconSize, width: "auto" }}
+              draggable={false}
+              aria-hidden
+            />
+          </div>
           <span className="text-[13px] font-semibold text-zinc-800 text-center leading-tight">
             {it.label}
           </span>

@@ -11,10 +11,12 @@ export const ICON_PATHS = {
   // ── Brands ──────────────────────────────────────────────────────────
   "efood":              "/icons/brands/efood.svg",
   "box":                "/icons/brands/box.svg",
+  "wolt":               "/icons/brands/wolt.svg",
   "booking":            "/icons/brands/booking.svg",            // small B icon
   "booking-wordmark":   "/icons/brands/booking-wordmark.svg",   // full Booking.com lockup
   "google":             "/icons/brands/google.svg",
   "google-pin":         "/icons/brands/google-pin.svg",
+  "google-maps-pin":    "/icons/brands/google-maps-pin.svg",
   "public":             "/icons/brands/public.svg",
   "airbnb":             "/icons/brands/airbnb.svg",
   "imdb":               "/icons/brands/imdb.svg",
@@ -63,6 +65,17 @@ export const ICON_PATHS = {
   "amenity-playground": "/icons/amenities/playground.svg",
   "amenity-on-the-sea": "/icons/amenities/on-the-sea.svg",
   "amenity-roof-garden":"/icons/amenities/roof-garden.svg",
+  // Bar/cafe attribute icons — line-art set, same visual treatment
+  // as the hotel amenity icons. Add new keys here as the admin
+  // attribute taxonomy grows.
+  "amenity-outdoor-seating": "/icons/amenities/outdoor-seating.svg",
+  "amenity-live-music":      "/icons/amenities/live-music.svg",
+  "amenity-dj":              "/icons/amenities/dj.svg",
+  "amenity-reservations":    "/icons/amenities/reservations.svg",
+  "amenity-smoking-area":    "/icons/amenities/smoking-area.svg",
+  "amenity-credit-cards":    "/icons/amenities/credit-cards.svg",
+  "amenity-happy-hour":      "/icons/amenities/happy-hour.svg",
+  "amenity-late-night":      "/icons/amenities/late-night.svg",
 
   // ── Property types (hotel filter / category) ───────────────────────
   "property-apartment":     "/icons/property/apartment.svg",
@@ -142,34 +155,59 @@ export const AMENITY_ICON_MAP: Record<string, IconName> = {
   mountain:    "amenity-mountain",
   transfer:    "amenity-transfer",
   disabled:    "amenity-disabled",
+  accessible:  "amenity-disabled",       // alias — admin label "Accessible" → disabled icon
   pet:         "amenity-pet",
   vegan_menu:  "amenity-vegan-menu",
   playground:  "amenity-playground",
   on_the_sea:  "amenity-on-the-sea",
   roof_garden: "amenity-roof-garden",
+  // Bar / cafe attributes
+  outdoor_seating: "amenity-outdoor-seating",
+  live_music:      "amenity-live-music",
+  dj:              "amenity-dj",
+  reservations:    "amenity-reservations",
+  smoking_area:    "amenity-smoking-area",
+  credit_cards:    "amenity-credit-cards",
+  happy_hour:      "amenity-happy-hour",
+  late_night:      "amenity-late-night",
 };
 
-/** Greek labels shown beneath the amenity icon. */
+/** Greek labels shown beneath the amenity icon. Includes bar/cafe-
+ *  specific keys (outdoor_seating, live_music, dj, etc.) so the
+ *  detail page can display text labels even when no icon exists yet
+ *  for that amenity — the rendering layer falls back to text-only. */
 export const AMENITY_LABELS: Record<string, string> = {
-  hotel:       "Ξενοδοχείο",
-  three_star:  "3★",
-  rooms:       "Δωμάτια",
-  suites:      "Σουίτες",
-  breakfast:   "Πρωινό",
-  parking:     "Free Parking",
-  pool:        "Πισίνα",
-  wifi:        "Wi-Fi",
-  bar:         "Bar",
-  restaurant:  "Εστιατόριο",
-  sea_view:    "Θέα Θάλασσα",
-  mountain:    "Θέα Βουνό",
-  transfer:    "Transfer",
-  disabled:    "ΑΜΕΑ",
-  pet:         "Pet Friendly",
-  vegan_menu:  "Vegan",
-  playground:  "Παιδότοπος",
-  on_the_sea:  "Παραλιακό",
-  roof_garden: "Roof Garden",
+  hotel:           "Ξενοδοχείο",
+  three_star:      "3★",
+  rooms:           "Δωμάτια",
+  suites:          "Σουίτες",
+  breakfast:       "Πρωινό",
+  parking:         "Free Parking",
+  pool:            "Πισίνα",
+  wifi:            "Wi-Fi",
+  bar:             "Bar",
+  restaurant:      "Εστιατόριο",
+  sea_view:        "Θέα Θάλασσα",
+  mountain:        "Θέα Βουνό",
+  transfer:        "Transfer",
+  disabled:        "ΑΜΕΑ",
+  pet:             "Pet Friendly",
+  vegan_menu:      "Vegan",
+  playground:      "Παιδότοπος",
+  on_the_sea:      "Παραλιακό",
+  roof_garden:     "Roof Garden",
+  // Bar / cafe attributes — keys are snake_cased from the admin
+  // checkbox labels. Icons may not exist yet; AmenitiesRow renders
+  // a text-only pill in that case.
+  outdoor_seating: "Outdoor Seating",
+  live_music:      "Live Music",
+  dj:              "DJ",
+  reservations:    "Reservations",
+  smoking_area:    "Smoking Area",
+  accessible:      "Accessible",
+  credit_cards:    "Credit Cards",
+  happy_hour:      "Happy Hour",
+  late_night:      "Late Night",
 };
 
 /**

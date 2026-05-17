@@ -19,8 +19,18 @@ export type SubmissionState =
 export interface DuplicateInfo {
   /** "own" → the current user already suggested this. "other" → someone else did. */
   kind: "own" | "other";
-  /** Handle/display_name of the original suggester (only set when kind="other"). */
-  suggester: { handle: string; display_name: string } | null;
+  /** Identity of the original suggester (only set when kind="other"). `id`
+   *  lets the DuplicateScreen wire a Follow button. `avatar_url` lets it
+   *  render the suggester's face next to the "Από @handle" line. */
+  suggester: {
+    id: string;
+    handle: string;
+    display_name: string;
+    avatar_url?: string | null;
+  } | null;
+  /** Whether the viewer already follows the original suggester. Drives
+   *  the Follow button's initial state on the DuplicateScreen. */
+  is_following: boolean;
   /** Slug of the existing item, so the UI can deeplink to it. */
   item_slug: string;
   /** Existing suggestion id, in case the UI wants to deeplink to "δες την πρότασή σου". */
@@ -558,6 +568,7 @@ export function useSubmission(): UseSubmissionReturn {
           setDuplicate({
             kind: body.own ? "own" : "other",
             suggester: body.suggester ?? null,
+            is_following: body.is_following === true,
             item_slug: body.item_slug ?? "",
             suggestion_id: body.suggestion_id ?? "",
           });
@@ -596,6 +607,7 @@ export function useSubmission(): UseSubmissionReturn {
           setDuplicate({
             kind: body.own ? "own" : "other",
             suggester: body.suggester ?? null,
+            is_following: body.is_following === true,
             item_slug: body.item_slug ?? "",
             suggestion_id: body.suggestion_id ?? "",
           });
@@ -683,6 +695,7 @@ export function useSubmission(): UseSubmissionReturn {
         setDuplicate({
           kind: body.kind === "own" ? "own" : "other",
           suggester: body.suggester ?? null,
+          is_following: body.is_following === true,
           item_slug: body.item_slug ?? "",
           suggestion_id: body.suggestion_id ?? "",
         });

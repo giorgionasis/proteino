@@ -105,7 +105,7 @@ const CANNES_CATEGORIES = ["Palme d'Or","Grand Prix","Best Director","Jury Prize
 function getMediaConfig(category: string): { tabs: string[]; mode: "single" | "gallery" } {
   switch (category) {
     case "food": return { tabs: ["Εξωτερικά", "Εσωτερικά", "Πιάτα"], mode: "gallery" };
-    case "bars": return { tabs: ["Εσωτερικά", "Εξωτερικά"], mode: "gallery" };
+    case "bars": return { tabs: ["Εξωτερικά", "Εσωτερικά"], mode: "gallery" };
     case "hotels": return { tabs: ["Δωμάτια", "Κοινόχρηστοι", "Εξωτερικά"], mode: "gallery" };
     case "theater": case "events": return { tabs: ["Landscape", "Trailer"], mode: "single" };
     default: return { tabs: ["Portrait", "Landscape", "Trailer"], mode: "single" };
@@ -457,6 +457,15 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
                 <div className="flex-1 flex items-center text-xs text-zinc-400 px-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-lg">
                   Type &amp; Cuisine παρακάτω στα ExtraFields
                 </div>
+              ) : category === "bars" ? (
+                /* Same as food — bars taxonomy lives on `item_bars.type` via
+                 * the Type radio group in BarsExtraFields. BarsExtraFields
+                 * auto-syncs subcategory_id when the type changes (resolves
+                 * by name against the subcategories prop) so /bars sub-tabs
+                 * still work. */
+                <div className="flex-1 flex items-center text-xs text-zinc-400 px-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-lg">
+                  Type παρακάτω στα ExtraFields
+                </div>
               ) : (
                 <div className="flex-1">
                   <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Subcategory</label>
@@ -560,11 +569,17 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
             />
           </div>
         </div>
-        <div className="flex gap-1 mb-6">
-          {mediaConfig.tabs.map((tab, i) => (
-            <button key={tab} onClick={() => setMediaTab(i)} className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${mediaTab === i ? "bg-zinc-100 text-zinc-800" : "text-zinc-500 hover:text-zinc-700"}`}>{tab}</button>
-          ))}
-        </div>
+        {/* Outer tab pills — only for "single" mode (Portrait / Landscape /
+            Trailer for movies/series/books/theater/events). Venue gallery
+            mode renders its own underlined tab strip inside <ImageGallery>,
+            so showing these here would double them up. */}
+        {mediaConfig.mode === "single" && (
+          <div className="flex gap-1 mb-6">
+            {mediaConfig.tabs.map((tab, i) => (
+              <button key={tab} onClick={() => setMediaTab(i)} className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${mediaTab === i ? "bg-zinc-100 text-zinc-800" : "text-zinc-500 hover:text-zinc-700"}`}>{tab}</button>
+            ))}
+          </div>
+        )}
 
         {mediaConfig.mode === "single" ? (
           mediaConfig.tabs[mediaTab] === "Trailer" ? (
@@ -637,7 +652,7 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
       </div>
 
       {/* ExtraFields */}
-      <ExtraFieldsSection ref={extFieldsRef} itemId={item.id} category={category} extData={extData} metadata={item.metadata} regions={regions} extraOptions={extraOptions} />
+      <ExtraFieldsSection ref={extFieldsRef} itemId={item.id} category={category} extData={extData} metadata={item.metadata} regions={regions} extraOptions={extraOptions} subcategories={subcategories} setSubcategoryId={setSubcategoryId} />
     </div>
   );
 }
@@ -652,15 +667,27 @@ function formatDate(iso: string): string {
 
 const ExtraFieldsSection = forwardRef<
   ExtFieldsHandle,
-  { itemId: string; category: string; extData: Record<string, any>; metadata?: any; regions: any[]; extraOptions: ExtraOptions }
+  {
+    itemId: string;
+    category: string;
+    extData: Record<string, any>;
+    metadata?: any;
+    regions: any[];
+    extraOptions: ExtraOptions;
+    /** Threaded through to BarsExtraFields so its Type radio can also
+     *  set subcategory_id (the Subcategory dropdown is hidden for bars
+     *  — Type is the single source of truth, same pattern as food). */
+    subcategories: { id: string; name: string }[];
+    setSubcategoryId: (id: string) => void;
+  }
 >(
-  function ExtraFieldsSection({ itemId, category, extData, metadata, regions, extraOptions }, ref) {
+  function ExtraFieldsSection({ itemId, category, extData, metadata, regions, extraOptions, subcategories, setSubcategoryId }, ref) {
     switch (category) {
       case "movies": return <MovieExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
       case "books": return <BookExtraFields ref={ref} data={extData} metadata={metadata} extraOptions={extraOptions} />;
       case "series": return <SeriesExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
       case "food": return <FoodExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} />;
-      case "bars": return <BarsExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} />;
+      case "bars": return <BarsExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} subcategories={subcategories} setSubcategoryId={setSubcategoryId} />;
       case "hotels": return <HotelExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} />;
       case "recipes": return <RecipeExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
       case "theater": case "events": return <TheaterExtraFields ref={ref} itemId={itemId} category={category} data={extData} metadata={metadata} regions={regions} extraOptions={extraOptions} />;
@@ -1262,19 +1289,19 @@ function FoodExtraFields({ itemId, data, regions, extraOptions }, ref) {
         </div>
       </div>
 
-      {/* Contact */}
+      {/* Contact + Source */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div>
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Telephone</label>
           <input type="text" value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="211 303 4793" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
         </div>
-        <FieldInput label="Information" placeholder="https://www.facebook.com/..." />
-        <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Source</label>
-          <select className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white">
-            <option>Facebook</option><option>Instagram</option><option>Website</option><option>TripAdvisor</option>
-          </select>
-        </div>
+        <InfoSourcePair information={information} setInformation={setInformation} />
+      </div>
+
+      {/* Price level — derived from Google Places at submission time;
+          admin can override here. Same pattern as Bars. */}
+      <div className="mb-6">
+        <PriceLevelSelect information={information} setInformation={setInformation} />
       </div>
 
       {/* Amenities — visual icon grid; saved under information.amenities jsonb */}
@@ -1288,13 +1315,30 @@ function FoodExtraFields({ itemId, data, regions, extraOptions }, ref) {
         />
       </div>
 
-      {/* Delivery */}
+      {/* Delivery — keyed by provider name lowercase (efood / wolt / box).
+          Empty rows are stripped on save so we don't store empty keys. */}
       <div>
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Delivery</label>
         <div className="space-y-3">
-          {getOpts(extraOptions, "delivery_provider", ["efood", "Wolt", "Box"]).map((name) => (
-            <DeliveryRow key={name} name={name} color="#71717a" placeholder={`https://${name.toLowerCase()}.gr/...`} />
-          ))}
+          {getOpts(extraOptions, "delivery_provider", ["efood", "Wolt", "Box"]).map((name) => {
+            const key = name.toLowerCase();
+            const val = typeof deliveryLinks[key] === "string" ? deliveryLinks[key] : "";
+            return (
+              <DeliveryRow
+                key={name}
+                name={name}
+                color="#71717a"
+                placeholder={`https://${key}.gr/...`}
+                value={val}
+                onChange={(next) => {
+                  const updated = { ...deliveryLinks };
+                  if (next.trim()) updated[key] = next.trim();
+                  else delete updated[key];
+                  setDeliveryLinks(updated);
+                }}
+              />
+            );
+          })}
         </div>
       </div>
     </div>
@@ -1303,8 +1347,18 @@ function FoodExtraFields({ itemId, data, regions, extraOptions }, ref) {
 
 /* ─────────────── BARS / CAFES ─────────────── */
 
-const BarsExtraFields = forwardRef<ExtFieldsHandle, { itemId: string; data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
-function BarsExtraFields({ itemId, data, regions, extraOptions }, ref) {
+const BarsExtraFields = forwardRef<
+  ExtFieldsHandle,
+  {
+    itemId: string;
+    data: Record<string, any>;
+    regions: any[];
+    extraOptions: ExtraOptions;
+    subcategories: { id: string; name: string }[];
+    setSubcategoryId: (id: string) => void;
+  }
+>(
+function BarsExtraFields({ itemId, data, regions, extraOptions, subcategories, setSubcategoryId }, ref) {
   const LOCATION_CATEGORY = "bars";
   const [address, setAddress] = useState(data.address ?? "");
   const [telephone, setTelephone] = useState(data.telephone ?? "");
@@ -1353,44 +1407,127 @@ function BarsExtraFields({ itemId, data, regions, extraOptions }, ref) {
       {/* Region / Area */}
       <RegionSelect regionId={regionId} setRegionId={setRegionId} regions={regions} />
 
-      {/* Contact */}
+      {/* Contact + Source */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div>
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Telephone</label>
           <input type="text" value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="211 303 4793" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
         </div>
-        <FieldInput label="Information" placeholder="https://www.facebook.com/..." />
-        <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Source</label>
-          <select className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white">
-            <option>Facebook</option><option>Instagram</option><option>Website</option>
-          </select>
-        </div>
+        <InfoSourcePair information={information} setInformation={setInformation} />
       </div>
 
-      {/* Type */}
+      {/* Price level + Type — Type now wired to setType (was a decorative
+          radio group; admin edits never persisted). Type also pushes the
+          matching subcategory_id so /bars sub-tabs stay in sync with
+          what admin selected here. */}
+      <div className="mb-6">
+        <PriceLevelSelect information={information} setInformation={setInformation} />
+      </div>
       <div className="mb-6">
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Type</label>
         <div className="flex flex-wrap gap-3">
-          {getOpts(extraOptions, "type", ["Cocktail Bar", "Wine Bar", "Jazz Bar", "Rooftop", "Beach Bar", "Coffee Shop", "Speakeasy", "Pub", "All-Day", "Sports Bar"]).map((t) => (
-            <label key={t} className="flex items-center gap-2 px-4 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 cursor-pointer hover:border-zinc-300">
-              <input type="radio" name="barType" className="w-4 h-4" />
-              {t}
-            </label>
-          ))}
+          {getOpts(extraOptions, "type", ["Cocktail Bar", "Wine Bar", "Jazz Bar", "Rooftop", "Beach Bar", "Coffee Shop", "Speakeasy", "Pub", "All-Day", "Sports Bar"]).map((t) => {
+            const active = type === t;
+            const matchSubcat = (name: string) =>
+              subcategories.find((s) => s.name.toLowerCase() === name.toLowerCase())?.id ?? "";
+            return (
+              <label
+                key={t}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm cursor-pointer transition-colors",
+                  active
+                    ? "border-coral-600 bg-coral-50 text-coral-700 font-semibold"
+                    : "border-zinc-200 text-zinc-600 hover:border-zinc-300",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="barType"
+                  className="w-4 h-4 accent-coral-600"
+                  checked={active}
+                  onChange={() => {
+                    const nextType = active ? "" : t;
+                    setType(nextType);
+                    // Mirror into items.subcategory_id so /bars tabs work.
+                    setSubcategoryId(nextType ? matchSubcat(nextType) : "");
+                  }}
+                />
+                {t}
+              </label>
+            );
+          })}
         </div>
       </div>
 
-      {/* Attributes */}
+      {/* Delivery — bars/cafes lack a dedicated delivery_links column
+          (only item_food has one), so we persist these under
+          information.delivery_links. Same DeliveryRow as Food. */}
+      <div className="mb-6">
+        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Delivery</label>
+        <div className="space-y-3">
+          {getOpts(extraOptions, "delivery_provider", ["efood", "Wolt", "Box"]).map((name) => {
+            const key = name.toLowerCase();
+            const links = (information.delivery_links && typeof information.delivery_links === "object")
+              ? (information.delivery_links as Record<string, string>)
+              : {};
+            const val = typeof links[key] === "string" ? links[key] : "";
+            return (
+              <DeliveryRow
+                key={name}
+                name={name}
+                color="#71717a"
+                placeholder={`https://${key}.gr/...`}
+                value={val}
+                onChange={(next) => {
+                  const updated = { ...links };
+                  if (next.trim()) updated[key] = next.trim();
+                  else delete updated[key];
+                  setInformation({
+                    ...information,
+                    delivery_links: Object.keys(updated).length > 0 ? updated : null,
+                  });
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Attributes — wired to information.amenities (matches how Food
+          stores its amenities — IconToggleGrid uses the same key). */}
       <div>
         <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Attributes</label>
         <div className="grid grid-cols-3 gap-x-8 gap-y-2">
-          {getOpts(extraOptions, "attributes", ["Parking", "Wi-Fi", "Outdoor Seating", "Live Music", "DJ", "Pet Friendly", "Reservations", "Smoking Area", "Accessible", "Credit Cards", "Happy Hour", "Late Night"]).map((a) => (
-            <label key={a} className="flex items-center gap-2 text-sm text-zinc-600 py-1">
-              <input type="checkbox" className="w-4 h-4 rounded border-zinc-300" />
-              {a}
-            </label>
-          ))}
+          {getOpts(extraOptions, "attributes", ["Parking", "Wi-Fi", "Outdoor Seating", "Live Music", "DJ", "Pet Friendly", "Reservations", "Smoking Area", "Accessible", "Credit Cards", "Happy Hour", "Late Night"]).map((a) => {
+            // Snake-case keys to match AMENITY_ICON_MAP + AMENITY_LABELS
+            // lookup. Also collapse common aliases:
+            //   "wi-fi" → "wifi"     (matches existing hotel key)
+            //   "pet friendly" → "pet"  (same)
+            const slug = a.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+            const key =
+              slug === "wi_fi" ? "wifi"
+              : slug === "pet_friendly" ? "pet"
+              : slug;
+            const amenities = (information.amenities && typeof information.amenities === "object")
+              ? (information.amenities as Record<string, boolean>)
+              : {};
+            const checked = amenities[key] === true;
+            return (
+              <label key={a} className="flex items-center gap-2 text-sm text-zinc-600 py-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded border-zinc-300 accent-coral-600"
+                  checked={checked}
+                  onChange={(e) => {
+                    const next = { ...amenities, [key]: e.target.checked };
+                    if (!e.target.checked) delete next[key];
+                    setInformation({ ...information, amenities: Object.keys(next).length > 0 ? next : null });
+                  }}
+                />
+                {a}
+              </label>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -1413,6 +1550,11 @@ function HotelExtraFields({ itemId, data, regions, extraOptions }, ref) {
   const [priceRange, setPriceRange] = useState(data.price_range ?? "");
   const [regionId, setRegionId] = useState(data.region_id ?? "");
   const [facilities, setFacilities] = useState<any>(data.facilities ?? {});
+  // information JSONB — stores the Source+URL pair (website / instagram /
+  // facebook) + Google Places metadata (opening hours, maps URL, etc.).
+  const [information, setInformation] = useState<Record<string, any>>(
+    typeof data.information === "object" && data.information ? data.information : {}
+  );
   // External ratings — saves as { google: {score, count}, booking: {score, count}, ... }
   const initER = (data.external_ratings && typeof data.external_ratings === "object") ? data.external_ratings : {};
   const [googleScore, setGoogleScore] = useState(initER.google?.score ?? (typeof initER.google === "string" ? initER.google : ""));
@@ -1442,6 +1584,7 @@ function HotelExtraFields({ itemId, data, regions, extraOptions }, ref) {
         region_id: regionId || null,
         plot: plot || null,
         facilities: Object.keys(facilities).length > 0 ? facilities : null,
+        information: Object.keys(information).length > 0 ? information : null,
         external_ratings: Object.keys(externalRatings).length > 0 ? externalRatings : null,
       };
     }
@@ -1471,11 +1614,7 @@ function HotelExtraFields({ itemId, data, regions, extraOptions }, ref) {
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Telephone</label>
           <input type="text" value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="211 303 4793" className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
         </div>
-        <FieldInput label="INFORMATION" placeholder="https://www.facebook.com/r-diadrom" />
-        <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">Source</label>
-          <select className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-600 bg-white"><option>Facebook</option><option>Website</option></select>
-        </div>
+        <InfoSourcePair information={information} setInformation={setInformation} />
       </div>
 
       {/* Type — visual radio with property icons */}
@@ -2357,11 +2496,29 @@ function SelectGrid({ label, placeholder, count }: { label: string; placeholder:
   );
 }
 
-function DeliveryRow({ name, color, placeholder }: { name: string; color: string; placeholder: string }) {
+function DeliveryRow({
+  name,
+  color,
+  placeholder,
+  value,
+  onChange,
+}: {
+  name: string;
+  color: string;
+  placeholder: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
   return (
     <div className="flex items-center gap-3 p-3 border border-zinc-200 rounded-lg">
       <span className="text-sm font-extrabold w-14 shrink-0" style={{ color }}>{name}</span>
-      <input type="text" placeholder={placeholder} className="flex-1 px-3 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+      <input
+        type="text"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 px-3 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400"
+      />
     </div>
   );
 }
@@ -2380,6 +2537,146 @@ function FieldInput({ label, placeholder, defaultValue }: { label: string; place
     <div>
       {label && <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">{label}</label>}
       <input type="text" placeholder={placeholder} defaultValue={defaultValue ?? ""} className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400" />
+    </div>
+  );
+}
+
+/**
+ * Wired Information + Source pair for venue editors. Reads/writes the
+ * `information` JSONB blob so admins can manage which external link
+ * appears on the detail page.
+ *
+ * Behavior:
+ * - Initial source = first non-empty key in priority website > instagram
+ *   > facebook. Default "website" if none populated.
+ * - Switching the dropdown loads the URL stored for THAT source (so an
+ *   admin can edit multiple sources in turn without losing data).
+ * - Typing in the URL field writes only to the currently selected
+ *   source key — other source keys in `information` stay untouched.
+ *
+ * On the detail page (BarsDetail / FoodDetail / HotelDetail) each
+ * populated source renders as its own labeled row with an icon.
+ */
+type InfoSourceKind = "website" | "instagram" | "facebook";
+
+function InfoSourcePair({
+  information,
+  setInformation,
+}: {
+  information: Record<string, any>;
+  setInformation: (next: Record<string, any>) => void;
+}) {
+  const initialKind: InfoSourceKind = information.website
+    ? "website"
+    : information.instagram
+      ? "instagram"
+      : information.facebook
+        ? "facebook"
+        : "website";
+  const [kind, setKind] = useState<InfoSourceKind>(initialKind);
+  const url = typeof information[kind] === "string" ? (information[kind] as string) : "";
+
+  const setUrl = (next: string) => {
+    setInformation({ ...information, [kind]: next || null });
+  };
+
+  return (
+    <>
+      <div>
+        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">
+          Information
+        </label>
+        <input
+          type="text"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder={
+            kind === "website"
+              ? "https://example.com"
+              : kind === "instagram"
+                ? "https://instagram.com/handle"
+                : "https://facebook.com/page"
+          }
+          className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-400"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">
+          Source
+        </label>
+        <select
+          value={kind}
+          onChange={(e) => setKind(e.target.value as InfoSourceKind)}
+          className="w-full px-3 py-2.5 border border-zinc-200 rounded-lg text-sm text-zinc-700 bg-white"
+        >
+          <option value="website">Website</option>
+          <option value="instagram">Instagram</option>
+          <option value="facebook">Facebook</option>
+        </select>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Price-level radio strip. Stores the integer 0-4 in
+ * `information.price_level` so it matches what Google Places gives us
+ * at submission time. Detail page derives the €/€€/€€€/€€€€ label from
+ * this integer.
+ */
+function PriceLevelSelect({
+  information,
+  setInformation,
+}: {
+  information: Record<string, any>;
+  setInformation: (next: Record<string, any>) => void;
+}) {
+  const current: number | null = typeof information.price_level === "number" ? information.price_level : null;
+  const setLevel = (next: number | null) => {
+    setInformation({ ...information, price_level: next });
+  };
+  const opts: Array<{ value: number; label: string }> = [
+    { value: 0, label: "Δωρεάν" },
+    { value: 1, label: "€" },
+    { value: 2, label: "€€" },
+    { value: 3, label: "€€€" },
+    { value: 4, label: "€€€€" },
+  ];
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">
+        Τιμή
+      </label>
+      <div className="flex flex-wrap gap-2">
+        {opts.map((o) => {
+          const active = current === o.value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => setLevel(active ? null : o.value)}
+              className={cn(
+                "h-9 px-3 rounded-lg text-sm font-semibold border transition-colors",
+                active
+                  ? "border-coral-600 bg-coral-50 text-coral-700"
+                  : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300",
+              )}
+              aria-pressed={active}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+        {current !== null && (
+          <button
+            type="button"
+            onClick={() => setLevel(null)}
+            className="h-9 px-3 rounded-lg text-xs text-zinc-500 hover:text-zinc-700"
+          >
+            Καθαρισμός
+          </button>
+        )}
+      </div>
     </div>
   );
 }

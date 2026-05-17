@@ -221,7 +221,7 @@ export function TheaterDetail({ data }: { data: ItemDetailData }) {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 text-[14px] font-semibold text-zinc-700 underline active:opacity-70 transition-opacity"
             >
-              <MapPinIcon /> Άνοιγμα στους χάρτες
+              <Icon name="google-maps-pin" width={12} height={16} /> Άνοιγμα στους χάρτες
             </a>
           )}
         </div>

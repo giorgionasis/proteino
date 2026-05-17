@@ -131,6 +131,125 @@ function buildVideoExtPayload(
   return payload;
 }
 
+/** Build the item_books payload from a Google Books ai_match_data
+ *  (source === "google-books"). Maps:
+ *    writer ← md.writer (first author)
+ *    publication ← md.publisher
+ *    language ← md.language (ISO code, e.g. "el", "en")
+ *    pages ← md.pages
+ *    publication_year ← md.publication_year
+ *    plot ← md.plot (description)
+ *
+ *  is_trilogy / trilogy_name stay null — Google Books doesn't expose
+ *  series metadata at this level; admin sets via editor. */
+function buildBookExtPayload(itemId: string, md: Record<string, any>): Record<string, any> {
+  return {
+    item_id: itemId,
+    writer: typeof md.writer === "string" ? md.writer : null,
+    publication: typeof md.publisher === "string" ? md.publisher : null,
+    language: typeof md.language === "string" ? md.language : null,
+    pages: typeof md.pages === "number" ? md.pages : null,
+    publication_year: typeof md.publication_year === "number" ? md.publication_year : null,
+    plot: typeof md.plot === "string" ? md.plot : null,
+    is_trilogy: false,
+    trilogy_name: null,
+  };
+}
+
+/** Derive a Proteino-style cuisine label from a Google Places types[]
+ *  array when one of the cuisine-coded restaurant types is present
+ *  ("italian_restaurant" → "Ιταλική"). Returns null when no cuisine
+ *  signal — admin can fill via editor later. */
+function deriveCuisine(types: unknown): string | null {
+  if (!Array.isArray(types)) return null;
+  const map: Record<string, string> = {
+    italian_restaurant: "Ιταλική",
+    japanese_restaurant: "Ιαπωνική",
+    chinese_restaurant: "Κινέζικη",
+    indian_restaurant: "Ινδική",
+    mexican_restaurant: "Μεξικάνικη",
+    french_restaurant: "Γαλλική",
+    spanish_restaurant: "Ισπανική",
+    thai_restaurant: "Ταϊλανδέζικη",
+    korean_restaurant: "Κορεάτικη",
+    vietnamese_restaurant: "Βιετναμέζικη",
+    greek_restaurant: "Ελληνική",
+    mediterranean_restaurant: "Μεσογειακή",
+    seafood_restaurant: "Θαλασσινά",
+    vegan_restaurant: "Vegan",
+    vegetarian_restaurant: "Χορτοφαγική",
+    steak_house: "Steak House",
+    sushi_restaurant: "Sushi",
+    pizza_restaurant: "Πίτσα",
+    fast_food_restaurant: "Fast food",
+  };
+  for (const t of types) {
+    if (typeof t === "string" && map[t]) return map[t];
+  }
+  return null;
+}
+
+/** Build the item_food / item_bars / item_hotels payload from a Google
+ *  Places ai_match_data (source === "google-places"). Common fields
+ *  across all three venue extensions: type, address, telephone, lat,
+ *  lng, external_ratings, plot. Hotels add price_range from
+ *  md.price_level. Food adds cuisine derived from primary_type. */
+function buildVenueExtPayload(
+  itemId: string,
+  category: "food" | "bars" | "hotels",
+  md: Record<string, any>,
+): Record<string, any> {
+  // Prefer Greek label when Google gave us one — that's what the
+  // admin + detail surfaces want to display. Falls back to the raw
+  // primary_type when label is missing.
+  const venueType =
+    (typeof md.primary_type_label === "string" && md.primary_type_label) ||
+    (typeof md.primary_type === "string" ? md.primary_type : null);
+
+  const base: Record<string, any> = {
+    item_id: itemId,
+    type: venueType,
+    address: typeof md.address === "string" ? md.address : null,
+    telephone: typeof md.telephone === "string" ? md.telephone : null,
+    lat: typeof md.lat === "number" ? md.lat : null,
+    lng: typeof md.lng === "number" ? md.lng : null,
+    external_ratings:
+      md.external_ratings && typeof md.external_ratings === "object" ? md.external_ratings : null,
+    information: {
+      ...(typeof md.website === "string" ? { website: md.website } : {}),
+      ...(typeof md.google_maps_url === "string" ? { google_maps_url: md.google_maps_url } : {}),
+      ...(md.opening_hours ? { opening_hours: md.opening_hours } : {}),
+      ...(typeof md.price_level === "number" ? { price_level: md.price_level } : {}),
+      ...(Array.isArray(md.types) && md.types.length > 0 ? { google_types: md.types } : {}),
+      ...(typeof md.google_places_id === "string" ? { google_places_id: md.google_places_id } : {}),
+    },
+    plot: typeof md.plot === "string" ? md.plot : null,
+  };
+
+  if (category === "food") {
+    base.cuisine = deriveCuisine(md.types);
+    base.delivery_links = null;
+  }
+  if (category === "hotels") {
+    // price_level 0-4 → price_range buckets: 0-1 = "€", 2 = "€€",
+    // 3 = "€€€", 4 = "€€€€". Null when Google didn't classify.
+    const pl = md.price_level;
+    base.price_range =
+      typeof pl !== "number"
+        ? null
+        : pl <= 1 ? "€" : pl === 2 ? "€€" : pl === 3 ? "€€€" : "€€€€";
+    base.facilities = null;
+  }
+  return base;
+}
+
+const VENUE_CATEGORIES = new Set<CategorySlug>(["food", "bars", "hotels"]);
+const VENUE_EXT_TABLE: Record<"food" | "bars" | "hotels", string> = {
+  food: "item_food",
+  bars: "item_bars",
+  hotels: "item_hotels",
+};
+
 interface SubmitBody {
   category: CategorySlug;
   title: string;
@@ -213,13 +332,25 @@ export async function POST(req: NextRequest) {
     // 2. Duplicate check — has anyone already suggested this item?
     const { data: dup } = await admin
       .from("suggestions")
-      .select("id, user_id, users!suggestions_user_id_fkey(handle, display_name)")
+      .select("id, user_id, users!suggestions_user_id_fkey(id, handle, display_name, avatar_url)")
       .eq("item_id", itemId)
       .limit(1)
       .maybeSingle();
 
     if (dup) {
       const ownSuggestion = (dup as any).user_id === user.id;
+      // Pre-compute is_following so the DuplicateScreen's follow CTA
+      // shows the right state without a second round-trip.
+      let isFollowing = false;
+      if (!ownSuggestion) {
+        const { data: f } = await admin
+          .from("follows")
+          .select("id")
+          .eq("follower_id", user.id)
+          .eq("following_id", (dup as any).user_id)
+          .maybeSingle();
+        isFollowing = !!f;
+      }
       return NextResponse.json(
         {
           error: "duplicate",
@@ -227,6 +358,7 @@ export async function POST(req: NextRequest) {
           suggestion_id: (dup as any).id,
           item_slug: itemSlug,
           suggester: ownSuggestion ? null : (dup as any).users,
+          is_following: isFollowing,
         },
         { status: 409 }
       );
@@ -234,8 +366,8 @@ export async function POST(req: NextRequest) {
 
     // Existing item with no suggestions yet (e.g. legacy MySQL row, or
     // created earlier by a flow that bailed). Backfill anything missing
-    // from the fresh TMDB payload — extension row, subcategory_id — so
-    // the admin/detail surfaces aren't half-empty.
+    // from the fresh enrichment payload — extension row, subcategory_id
+    // — so the admin/detail surfaces aren't half-empty.
     if ((category === "movies" || category === "series") && md.tmdb_id) {
       const extTable = category === "movies" ? "item_movies" : "item_series";
       const { data: existingExt } = await admin
@@ -256,6 +388,34 @@ export async function POST(req: NextRequest) {
             .eq("id", itemId);
           if (subErr) console.error(`[suggestions] subcategory backfill for existing ${itemId}:`, subErr.message);
         }
+      }
+    }
+    // Books — enrich from Google Books matchData when present.
+    if (category === "books" && md.source === "google-books") {
+      const { data: existingExt } = await admin
+        .from("item_books")
+        .select("item_id")
+        .eq("item_id", itemId)
+        .maybeSingle();
+      if (!existingExt) {
+        const { error: extErr } = await (admin.from("item_books") as any)
+          .insert(buildBookExtPayload(itemId, md));
+        if (extErr) console.error(`[suggestions] enrich item_books for existing ${itemId}:`, extErr.message);
+      }
+    }
+    // Venues (food/bars/hotels) — enrich from Google Places matchData.
+    if (VENUE_CATEGORIES.has(category) && md.source === "google-places") {
+      const venueCat = category as "food" | "bars" | "hotels";
+      const extTable = VENUE_EXT_TABLE[venueCat];
+      const { data: existingExt } = await admin
+        .from(extTable)
+        .select("item_id")
+        .eq("item_id", itemId)
+        .maybeSingle();
+      if (!existingExt) {
+        const { error: extErr } = await (admin.from(extTable) as any)
+          .insert(buildVenueExtPayload(itemId, venueCat, md));
+        if (extErr) console.error(`[suggestions] enrich ${extTable} for existing ${itemId}:`, extErr.message);
       }
     }
   } else {
@@ -323,6 +483,18 @@ export async function POST(req: NextRequest) {
       const extTable = category === "movies" ? "item_movies" : "item_series";
       const { error: extErr } = await (admin.from(extTable) as any)
         .insert(buildVideoExtPayload(itemId, category, md));
+      if (extErr) console.error(`[suggestions] insert ${extTable} for new ${itemId}:`, extErr.message);
+    }
+    if (category === "books" && md.source === "google-books") {
+      const { error: extErr } = await (admin.from("item_books") as any)
+        .insert(buildBookExtPayload(itemId, md));
+      if (extErr) console.error(`[suggestions] insert item_books for new ${itemId}:`, extErr.message);
+    }
+    if (VENUE_CATEGORIES.has(category) && md.source === "google-places") {
+      const venueCat = category as "food" | "bars" | "hotels";
+      const extTable = VENUE_EXT_TABLE[venueCat];
+      const { error: extErr } = await (admin.from(extTable) as any)
+        .insert(buildVenueExtPayload(itemId, venueCat, md));
       if (extErr) console.error(`[suggestions] insert ${extTable} for new ${itemId}:`, extErr.message);
     }
 

@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
 
   const { data: sug } = await admin
     .from("suggestions")
-    .select("id, user_id, users!suggestions_user_id_fkey(handle, display_name)")
+    .select("id, user_id, users!suggestions_user_id_fkey(id, handle, display_name, avatar_url)")
     .eq("item_id", itemId)
     .limit(1)
     .maybeSingle();
@@ -76,11 +76,27 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await sb.auth.getUser();
   const ownSuggestion = !!user && (sug as any).user_id === user.id;
 
+  // When someone else owns the suggestion, check whether the viewer
+  // is already following them — drives the follow CTA on the
+  // duplicate screen (HOOKS.md §8): "you both wanted to recommend
+  // the same thing — your taste aligns, follow them".
+  let isFollowing = false;
+  if (!ownSuggestion && user) {
+    const { data: f } = await admin
+      .from("follows")
+      .select("id")
+      .eq("follower_id", user.id)
+      .eq("following_id", (sug as any).user_id)
+      .maybeSingle();
+    isFollowing = !!f;
+  }
+
   return NextResponse.json({
     exists: true,
     own: ownSuggestion,
     suggestion_id: (sug as any).id,
     item_slug: itemSlug,
     suggester: ownSuggestion ? null : (sug as any).users,
+    is_following: isFollowing,
   });
 }

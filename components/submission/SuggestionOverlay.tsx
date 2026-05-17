@@ -6,6 +6,8 @@ import { OverlayHeader } from "@/components/layout/Header";
 import { useSubmission, type AchievementData } from "@/hooks/useSubmission";
 import { AchievementProgress } from "@/components/submission/AchievementProgress";
 import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
+import { FollowButton } from "@/components/ui/FollowButton";
+import { useFollow } from "@/hooks/useFollow";
 import { cn } from "@/lib/utils/cn";
 import Link from "next/link";
 
@@ -915,6 +917,7 @@ function AchievementOverlay({ achievement }: { achievement: AchievementData | nu
 function DuplicateScreen({
   kind,
   suggester,
+  isFollowing,
   itemSlug,
   category,
   title,
@@ -925,7 +928,11 @@ function DuplicateScreen({
   onClose,
 }: {
   kind:         "own" | "other";
-  suggester:    { handle: string; display_name: string } | null;
+  suggester:    { id: string; handle: string; display_name: string; avatar_url?: string | null } | null;
+  /** Initial follow state — already follows this user before the
+   *  duplicate screen opens. Lets the button render in the right
+   *  state without an extra round-trip. */
+  isFollowing:  boolean;
   itemSlug:     string;
   category:     string | null;
   title:        string;
@@ -938,6 +945,11 @@ function DuplicateScreen({
   onWrongMatch: () => void;
   onClose:      () => void;
 }) {
+  // Follow toggle for the matching-taste CTA. Only meaningful when
+  // we have an "other" suggester — otherwise the controller stays
+  // dormant and the button never renders.
+  const { following: nowFollowing, toggle: toggleFollow } =
+    useFollow(suggester?.id ?? "", isFollowing);
   const [confirmed, setConfirmed] = useState(false);
 
   return (
@@ -1078,6 +1090,22 @@ function DuplicateScreen({
                     >
                       Δες παρόμοια
                     </Link>
+                  )}
+                  {/* Matching-taste follow CTA. You both tried to recommend
+                      the same thing — your taste aligns, follow them.
+                      Spec'd in CLAUDE.md §22 (HOOKS.md §8). */}
+                  {suggester && (
+                    <div className="flex items-center justify-between gap-3 px-4 h-12 rounded-card bg-coral-50/50 border border-coral-100">
+                      <span className="text-[12px] text-zinc-700 leading-snug">
+                        Έχετε ίδια γούστα.<br />
+                        <span className="text-zinc-500">Ακολούθησέ τον/την.</span>
+                      </span>
+                      <FollowButton
+                        following={nowFollowing}
+                        onToggle={toggleFollow}
+                        size="sm"
+                      />
+                    </div>
                   )}
                   <button
                     onClick={onTryAgain}
@@ -1347,6 +1375,7 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
       <DuplicateScreen
         kind={duplicate.kind}
         suggester={duplicate.suggester}
+        isFollowing={duplicate.is_following}
         itemSlug={duplicate.item_slug}
         category={analysis?.category ?? null}
         title={matchTitle ?? "Your match"}

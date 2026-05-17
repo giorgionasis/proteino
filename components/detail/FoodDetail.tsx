@@ -25,6 +25,7 @@ import { ReviewCard } from "@/components/detail/ReviewCard";
 import { AllReviewsButton } from "@/components/detail/AllReviewsButton";
 import { PlatformLinksCard } from "@/components/detail/PlatformLinksCard";
 import { Icon } from "@/components/ui/Icon";
+import { ICON_PATHS } from "@/lib/icons";
 import { OutlinedPill } from "@/components/ui/OutlinedPill";
 import { UserBadge } from "@/components/ui/UserBadge";
 import { ReportLink } from "@/components/report/ReportLink";
@@ -103,7 +104,7 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
   const tripadvisor = externalRatings.tripadvisor ?? "-";
 
   const information = ext.information ?? {};
-  const infoLink = information.website ?? information.instagram ?? "-";
+  const infoSources = collectInfoSources(information);
   const activeAmenities = getActiveAmenities(information.amenities);
 
   const deliveryLinks = ext.delivery_links ?? {};
@@ -189,7 +190,8 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
 
       {/* Amenities row — under user reflection */}
       {activeAmenities.length > 0 && (
-        <div className="mt-6">
+        <div className="mt-6 space-y-6">
+          <InfoDivider />
           <div
             className={cn(
               "px-6 pb-1",
@@ -204,7 +206,12 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
               if (!iconName) return null;
               return (
                 <div key={key} className="flex-none flex flex-col items-center gap-2 w-[72px]">
-                  <Icon name={iconName} size={44} />
+                  {/* Height-pinned wrapper so mixed-viewBox icons line
+                      up at exactly the same vertical size. */}
+                  <div className="h-11 flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={ICON_PATHS[iconName]} alt="" className="h-11 w-auto" draggable={false} />
+                  </div>
                   <span className="text-[12px] font-semibold text-zinc-800 text-center leading-tight">
                     {label}
                   </span>
@@ -262,25 +269,25 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 text-[14px] font-bold text-zinc-700 underline active:opacity-70 transition-opacity"
                 >
-                  <MapPinIcon /> Άνοιγμα στους χάρτες
+                  <Icon name="google-maps-pin" width={12} height={16} /> Άνοιγμα στους χάρτες
                 </a>
               )}
             </div>
           </>
         )}
-        {(phone !== "-" || infoLink !== "-") && (
+        {(phone !== "-" || infoSources.length > 0) && (
           <>
             <InfoDivider />
             <div className="flex pl-6 py-5">
               {phone !== "-" ? <InfoCell label="ΤΗΛΕΦΩΝΟ" value={phone} /> : <div className="flex-1" />}
-              {infoLink !== "-" ? <InfoCell label="ΠΛΗΡΟΦΟΡΙΕΣ" value={infoLink} coral /> : <div className="flex-1" />}
+              {infoSources.length > 0 ? <InfoSourcesCell sources={infoSources} /> : <div className="flex-1" />}
             </div>
           </>
         )}
       </div>
 
       {/* Delivery — only show rows for platforms that actually have a link */}
-      {(deliveryLinks.efood || deliveryLinks.box) && (
+      {(deliveryLinks.efood || deliveryLinks.box || deliveryLinks.wolt) && (
         <div className="mx-6 mt-6">
           <PlatformLinksCard
             title="Delivery"
@@ -288,6 +295,9 @@ export function FoodDetail({ data }: { data: ItemDetailData }) {
             links={[
               ...(deliveryLinks.efood
                 ? [{ key: "efood", brandIcon: "efood" as const, brandIconWidth: 94, href: deliveryLinks.efood }]
+                : []),
+              ...(deliveryLinks.wolt
+                ? [{ key: "wolt", brandIcon: "wolt" as const, brandIconWidth: 80, href: deliveryLinks.wolt }]
                 : []),
               ...(deliveryLinks.box
                 ? [{ key: "box", brandIcon: "box" as const, brandIconWidth: 104, href: deliveryLinks.box }]
@@ -370,6 +380,76 @@ function InfoCell({ label, value, coral }: { label: string; value: string; coral
     <div className="flex-1 flex flex-col gap-5 pr-2">
       <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">{label}</p>
       <p className={cn("text-[18px] font-bold leading-[140%]", coral ? "text-[#FE6F5E] underline" : "text-zinc-800")}>{value}</p>
+    </div>
+  );
+}
+
+/** All recognized external sources we surface in the ΠΛΗΡΟΦΟΡΙΕΣ cell.
+ *  Each populated key in `information` becomes its own row (icon + label)
+ *  so a venue with both a website and an Instagram shows two stacked
+ *  rows instead of just one. Order: website → instagram → facebook. */
+type SourceIconType = (props: { size?: number; strokeWidth?: number }) => JSX.Element;
+type InfoSource = { key: "website" | "instagram" | "facebook"; label: string; url: string; Icon: SourceIconType };
+
+function WebsiteIcon({ size = 18, strokeWidth = 2 }: { size?: number; strokeWidth?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20" />
+      <path d="M12 2a15 15 0 010 20 15 15 0 010-20" />
+    </svg>
+  );
+}
+function InstagramIcon({ size = 18, strokeWidth = 2 }: { size?: number; strokeWidth?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+      <path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z" />
+      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+    </svg>
+  );
+}
+function FacebookIcon({ size = 18, strokeWidth = 2 }: { size?: number; strokeWidth?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z" />
+    </svg>
+  );
+}
+
+function collectInfoSources(information: Record<string, any>): InfoSource[] {
+  const out: InfoSource[] = [];
+  if (typeof information.website === "string" && information.website.trim()) {
+    out.push({ key: "website", label: "Website", url: information.website.trim(), Icon: WebsiteIcon });
+  }
+  if (typeof information.instagram === "string" && information.instagram.trim()) {
+    out.push({ key: "instagram", label: "Instagram", url: information.instagram.trim(), Icon: InstagramIcon });
+  }
+  if (typeof information.facebook === "string" && information.facebook.trim()) {
+    out.push({ key: "facebook", label: "Facebook", url: information.facebook.trim(), Icon: FacebookIcon });
+  }
+  return out;
+}
+
+function InfoSourcesCell({ sources }: { sources: InfoSource[] }) {
+  const ensureUrl = (u: string) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
+  return (
+    <div className="flex-1 flex flex-col gap-5 pr-2">
+      <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">ΠΛΗΡΟΦΟΡΙΕΣ</p>
+      <div className="flex flex-col gap-3">
+        {sources.map(({ key, label, url, Icon: SourceIcon }) => (
+          <a
+            key={key}
+            href={ensureUrl(url)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-[18px] font-bold text-[#FE6F5E] underline w-fit active:opacity-70 transition-opacity"
+          >
+            <SourceIcon size={18} strokeWidth={2.2} />
+            {label}
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
