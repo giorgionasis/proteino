@@ -1,12 +1,16 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-15 (session 26 — review-milestone moments + FLIP push-right + showcase)
+Last updated: 2026-05-17 (session 27 — Node 22 + React 19 + Next 16 upgrade)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 26 (current) finished:**
+**Current state — session 27 (current) finished:**
+
+Runtime upgrade — Node 20 → 22 LTS, React 18 → 19.2.6, Next 14.2.35 → 16.2.6. Single commit (`44c6c7d`), full triad, all green: `tsc --noEmit` clean, `next build` succeeds under Turbopack, dev server boots in **171ms** (was 3-4s on webpack), HTTP smoke tests on `/`, `/movies`, `/search`, `/login`, `/api/leaderboard` all return 200. See CLAUDE.md §43 for the full breakdown — codemod scope, manual fixes (`lib/supabase/server.ts` async + 45 caller `await`s, React 19 `RefObject<T | null>` widening on `useFlipReorder` + `useListKeyboard`, `JSX.Element` → `React.JSX.Element`, `next.config.mjs` Turbopack config, `globals.css` `@import` reorder), what survived (forwardRef still works, middleware compat shim active), and rollback plan.
+
+**Previous state — session 26 finished:**
 
 Two surgical additions: (1) **review-milestone celebration modals** wired through the same DB-driven moments system as suggestion milestones, and (2) **FLIP push-right** animation on the reviews carousel so existing cards slide smoothly into their new positions when a new review lands at index 0.
 

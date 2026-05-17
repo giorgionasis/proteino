@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-16 (compaction pass — narrative cut, gotchas + decisions preserved)
+**Last meaningful update:** 2026-05-17 (session 27 — Node 22 + React 19 + Next 16 upgrade)
 
 ---
 
@@ -1752,3 +1752,86 @@ Considered a separate flatter variant — but the existing modal anatomy (title 
 
 - **Per-category review milestones** — admin can compose these via `/admin/moments` (`review_count_eq` + a future `category_eq` predicate row). Not seeded by default.
 - **Streak milestones** (`reviews_this_week_eq`, `reviews_this_month_eq`) — needs a new predicate that counts within a window. Registry already supports async DB-backed predicates.
+
+---
+
+## 43. Runtime upgrade — Node 22 + React 19 + Next 16 (session 27)
+> ✅ Shipped — single commit, full triad. Build + dev + typecheck all green on the new runtime.
+
+Straight off 14.2.35 / React 18 / Node 20, no intermediate stops. The breaking changes between Next 14 → 15 and 15 → 16 overlap heavily (async cookies/headers/params landed in 15, carry through 16) so doing both jumps in one branch was one audit pass instead of two.
+
+### What moved
+
+| Layer | Was | Now |
+|---|---|---|
+| Node engine | `>=18.17.0 <23` | `>=22.0.0 <25` |
+| `@types/node` | `^20` | `^22` |
+| `react` + `react-dom` | `^18` | `^19.2.6` |
+| `@types/react` + `@types/react-dom` | `^18` | `^19` |
+| `next` | `14.2.35` | `^16.2.6` (Turbopack default) |
+
+### Codemod pass — what was automatic
+
+`npx @next/codemod@canary next-async-request-api ./app ./lib --force` transformed **37 files**. Pattern in every dynamic route + page:
+
+```ts
+// before
+interface Props { params: { id: string } }
+export default async function Page({ params }: Props) { … params.id … }
+
+// after
+interface Props { params: Promise<{ id: string }> }
+export default async function Page(props: Props) {
+  const params = await props.params;
+  … params.id …
+}
+```
+
+Same shape for `searchParams`. Pages with `generateMetadata` got two awaits (one for the metadata call, one for the page render).
+
+### Manual fixes — what the codemod couldn't see across module boundaries
+
+- **`lib/supabase/server.ts`** — `cookies()` is now async and is wrapped inside the Supabase factory, so the codemod's scope (file-local `cookies()` calls) misses it. The factory itself became async: `export async function createClient() { const cookieStore = await cookies(); … }`.
+- **45 caller sites** for `createClient()` from `lib/supabase/server` — every one needed `const sb = await createClient()`. Done via a single sed pass (`= createClient()` → `= await createClient()`) since the function lives inside an already-async route handler or RSC. One chained `await createClient().auth.getSession()` in `app/(main)/you/page.tsx` was split into two statements (sed wouldn't touch it because no `=` followed `await`).
+- **`type SB = ReturnType<typeof createClient>`** in `app/(main)/page.tsx` resolved to `Promise<SupabaseClient>` after the async change — fetcher signatures broke. Switched to `Awaited<ReturnType<typeof createClient>>` so the page passes the resolved client and helpers keep their previous signature. Single line.
+
+### React 19 type tightenings
+
+Two API surface changes in `@types/react` broke compilation:
+
+- **`useRef<T>(null)`** now returns `RefObject<T | null>` (was `RefObject<T>`). Affected hooks whose signatures asked for the strict variant:
+  - `hooks/useFlipReorder.ts` — `RefObject<HTMLElement>` → `RefObject<HTMLElement | null>`
+  - `hooks/useListKeyboard.ts` — `RefObject<HTMLInputElement>` → `RefObject<HTMLInputElement | null>`
+  This unblocked ~12 caller files (all 9 detail components + 3 admin tables) without any caller-side casts.
+- **Global `JSX` namespace** moved to `React.JSX`. Two files (`components/detail/BarsDetail.tsx`, `components/detail/FoodDetail.tsx`) used `JSX.Element` in a `SourceIconType` alias — both flipped to `React.JSX.Element`.
+
+### Turbopack — new default bundler
+
+Next 16 makes Turbopack the default for both `dev` and `build`. Two gotchas surfaced immediately:
+
+- **Webpack config without Turbopack config = build error.** Our `next.config.mjs` had a webpack dev-cache disable hack (workaround for a webpack-only `PackFileCache` ENOENT bug). Dropped it and replaced with `turbopack: {}` to silence the warning. Turbopack uses different storage, so the original bug doesn't apply.
+- **CSS `@import` placement is stricter.** Webpack tolerated `@tailwind` directives appearing before an `@import url(...)`; Turbopack rejects it per the CSS spec (`@import` must precede all other rules). After PostCSS expands the Tailwind directives, the Google Fonts `@import` ended up at line ~4768 of the generated output. Reordered `app/globals.css` so the `@import` sits at the very top, before `@tailwind base/components/utilities`.
+
+### Speed wins (measured)
+
+- **Dev boot:** 171ms (was 3–4s on webpack). Effectively instant.
+- **HMR:** subjectively faster, not measured.
+- **Prod build:** comparable on first run; expected to be ~30% faster with Turbopack's persistent build cache once it warms.
+
+### What did NOT break (counted, then confirmed)
+
+- 6 `forwardRef` usages — still supported in React 19 (deprecated, not removed). Left alone for a future cleanup pass when ref-as-prop becomes worth the churn.
+- 0 `defaultProps` on function components — TypeScript project, never used the pattern.
+- 0 `propTypes` / string refs.
+- `middleware.ts` — Next 16 prints a deprecation warning ("Please use 'proxy' instead") but the file still loads and runs. Build output even labels it `Proxy (Middleware)`. Rename to `proxy.ts` deferred until convenient.
+
+### Known follow-ups (non-blocking)
+
+1. **`middleware.ts` → `proxy.ts`** rename — the file convention changed in Next 16 but compat shim is in place. One-line move + verify the matcher config still applies under the new entry point.
+2. **Two pre-existing Tailwind ambiguous-class warnings** (`duration-[350ms]`, `ease-[cubic-bezier(...)]`) — bracket syntax conflict, unrelated to the upgrade. Replace with escaped variants when touching those files.
+3. **React Compiler beta** — opt-in, can remove ~80% of the codebase's `useMemo` / `useCallback` boilerplate once enabled. ~2h trial run to evaluate.
+4. **PPR / Cache Components** for the 9 detail pages — Next 16's PPR can split static shell + dynamic content per route. Detail pages are the obvious candidate (cover/meta is static-able, reviews/bookmarks dynamic). Won't pursue until the current detail surface stabilizes.
+
+### Rollback plan
+
+Single commit (`44c6c7d`). `git revert 44c6c7d && git push` restores the entire prior state — package versions, codemod transforms, manual fixes, CSS reorder, all of it. Vercel will auto-redeploy the reverted state.
