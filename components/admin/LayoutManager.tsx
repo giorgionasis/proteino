@@ -29,6 +29,7 @@ import type {
 import { SectionPickerModal } from "./SectionPickerModal";
 import { SectionConfigDrawer } from "./SectionConfigDrawer";
 import { useToast } from "@/components/ui/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -67,6 +68,7 @@ const AUDIENCE_OPTIONS: { value: AdminPreviewAudience; label: string }[] = [
 
 export function LayoutManager() {
   const { show, toast } = useToast();
+  const [deleteTarget, setDeleteTarget] = useState<ApiSectionRow | null>(null);
   const [pageKey, setPageKey] = useState<string>("cat:movies");
   const [audience, setAudience] = useState<AdminPreviewAudience>("all");
   const [sections, setSections] = useState<ApiSectionRow[]>([]);
@@ -197,9 +199,13 @@ export function LayoutManager() {
 
   /* ── Delete ── */
 
-  async function handleDelete(row: ApiSectionRow) {
-    const label = sectionLabel(row);
-    if (!window.confirm(`Διαγραφή του "${label}";`)) return;
+  function handleDelete(row: ApiSectionRow) {
+    setDeleteTarget(row);
+  }
+
+  async function confirmDelete() {
+    const row = deleteTarget;
+    if (!row) return;
     setBusyId(row.id);
     try {
       const res = await fetch(`/api/admin/page-sections/${row.id}`, { method: "DELETE" });
@@ -210,6 +216,7 @@ export function LayoutManager() {
       }
       setSections(sections.filter((s) => s.id !== row.id));
       setPreviewKey((k) => k + 1);
+      setDeleteTarget(null);
     } finally {
       setBusyId(null);
     }
@@ -325,6 +332,17 @@ export function LayoutManager() {
         load();
         setPreviewKey((k) => k + 1);
       }}
+    />
+    <ConfirmDialog
+      open={deleteTarget !== null}
+      title="Διαγραφή ενότητας;"
+      subtitle={deleteTarget ? sectionLabel(deleteTarget) : ""}
+      message="Η ενότητα θα αφαιρεθεί από το layout. Μπορείς να την προσθέσεις ξανά αργότερα."
+      confirmLabel="Διαγραφή"
+      tone="danger"
+      pending={busyId === deleteTarget?.id}
+      onCancel={() => setDeleteTarget(null)}
+      onConfirm={confirmDelete}
     />
     {toast}
     </>

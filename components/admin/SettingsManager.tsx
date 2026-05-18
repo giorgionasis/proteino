@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 interface Setting {
   key: string;
@@ -16,6 +17,7 @@ export function SettingsManager() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -39,9 +41,25 @@ export function SettingsManager() {
     setSaved(false);
   }
 
-  async function save() {
+  // Original (committed) maintenance_mode value, to detect a flip from
+  // off → on. Any toggle that turns maintenance ON triggers the confirm
+  // dialog before save proceeds.
+  const originalMaintenance = rows.find((r) => r.key === "maintenance_mode")?.value;
+  const willEnableMaintenance =
+    !originalMaintenance && !!draft.maintenance_mode;
+
+  function attemptSave() {
+    if (willEnableMaintenance) {
+      setConfirmOpen(true);
+      return;
+    }
+    void runSave();
+  }
+
+  async function runSave() {
     setError(null);
     setSaving(true);
+    setConfirmOpen(false);
     try {
       const res = await fetch("/api/admin/settings", {
         method: "PATCH",
@@ -73,7 +91,7 @@ export function SettingsManager() {
         <div className="flex items-center gap-3">
           {saved && <span className="text-sm text-emerald-600 font-medium">✓ Αποθηκεύτηκε</span>}
           <button
-            onClick={save}
+            onClick={attemptSave}
             disabled={saving || !dirty}
             className="px-5 py-2 text-sm font-medium text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 disabled:opacity-40"
           >
@@ -85,6 +103,33 @@ export function SettingsManager() {
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>
       )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Ενεργοποίηση maintenance mode;"
+        subtitle="Όλοι οι χρήστες θα δουν το banner"
+        message={
+          <>
+            <p>
+              Με την ενεργοποίηση maintenance mode εμφανίζεται κόκκινο banner
+              σε όλους τους χρήστες με το μήνυμα:
+            </p>
+            <p className="mt-2 px-3 py-2 rounded bg-zinc-50 border border-zinc-200 font-medium text-zinc-800">
+              {typeof draft.maintenance_message === "string" && draft.maintenance_message.trim()
+                ? draft.maintenance_message
+                : "(δεν έχει οριστεί μήνυμα)"}
+            </p>
+            <p className="mt-3 text-zinc-500">
+              Μπορείς να το απενεργοποιήσεις ανά πάσα στιγμή.
+            </p>
+          </>
+        }
+        confirmLabel="Ενεργοποίηση"
+        tone="danger"
+        pending={saving}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={runSave}
+      />
 
       {loading ? (
         <div className="space-y-3">

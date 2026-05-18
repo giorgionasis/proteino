@@ -266,9 +266,9 @@ export function RegisterForm() {
         </div>
         <span className="text-sm text-zinc-600 leading-snug pt-0.5">
           Συμφωνώ με τους{" "}
-          <Link href="/support" className="text-coral-600 hover:underline">Όρους Χρήσης</Link>{" "}
+          <Link href="/terms" className="text-coral-600 hover:underline">Όρους Χρήσης</Link>{" "}
           και την{" "}
-          <Link href="/support" className="text-coral-600 hover:underline">Πολιτική Απορρήτου</Link>
+          <Link href="/privacy" className="text-coral-600 hover:underline">Πολιτική Απορρήτου</Link>
         </span>
       </label>
 

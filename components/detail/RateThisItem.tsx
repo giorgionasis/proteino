@@ -11,7 +11,13 @@ import {
   SOFT_WARN_CHARS,
   TONE_TO_COLOR,
 } from "@/lib/reviews/quality";
+import { streamCoachingTip } from "@/lib/ai/stream-coaching-tip";
 import type { AchievementData } from "@/hooks/useSubmission";
+
+// Threshold for triggering Gemini coaching — matches the server-side
+// 60-char floor in /api/ai/coaching-tip (sub-60 returns 204).
+const COACHING_MIN_CHARS = 60;
+const COACHING_DEBOUNCE_MS = 800;
 
 /**
  * Inline review composer + success modal with FLIP morph.
@@ -87,6 +93,11 @@ export function RateThisItem({
   // enters the carousel right as the modal vanishes (pushing other reviews
   // to the right). This is the cleaner "fade modal → fade-in card" flow.
   const [pendingPublish, setPendingPublish] = useState<PublishResult | null>(null);
+  // Gemini content-aware coaching, layered on top of the local char-count
+  // quality message. Null until the user crosses COACHING_MIN_CHARS + the
+  // debounce settles. Last-tip is fed back so Gemini doesn't repeat itself.
+  const [aiCoaching, setAiCoaching] = useState<string | null>(null);
+  const lastCoachingRef = useRef<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const copy = composerCopy(category);
@@ -100,6 +111,43 @@ export function RateThisItem({
       return () => clearTimeout(t);
     }
   }, [phase]);
+
+  // Gemini coaching — debounce-fetch a content-aware suggestion while
+  // the user composes. Streams in token-by-token via streamCoachingTip.
+  // Aborts on every keystroke so an old request never overwrites a fresh
+  // one. Clears the local tip when the user drops below threshold or
+  // leaves composing mode.
+  useEffect(() => {
+    if (phase !== "composing") {
+      setAiCoaching(null);
+      return;
+    }
+    const trimmed = text.trim();
+    if (trimmed.length < COACHING_MIN_CHARS) {
+      setAiCoaching(null);
+      return;
+    }
+    const controller = new AbortController();
+    const handle = setTimeout(() => {
+      void streamCoachingTip(
+        trimmed,
+        category,
+        lastCoachingRef.current,
+        (update) => {
+          if (controller.signal.aborted) return;
+          setAiCoaching(update.tip);
+        },
+        controller.signal,
+      ).then((final) => {
+        if (controller.signal.aborted) return;
+        if (final.tip) lastCoachingRef.current = final.tip;
+      });
+    }, COACHING_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(handle);
+      controller.abort();
+    };
+  }, [text, phase, category]);
 
   async function commit(newRating: number, newText: string | null): Promise<PublishResult | null> {
     setBusy(true);
@@ -277,6 +325,17 @@ export function RateThisItem({
                   {overSoftWarn ? `+${charCount - SOFT_WARN_CHARS}` : `${charCount}`}
                 </p>
               </div>
+              {aiCoaching && (
+                <div
+                  className="mt-2 flex items-start gap-2 rounded-[10px] bg-coral-50/60 px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-300"
+                  role="note"
+                >
+                  <span aria-hidden className="text-[14px] mt-[1px]">✨</span>
+                  <p className="text-[12px] text-zinc-700 leading-snug">
+                    {aiCoaching}
+                  </p>
+                </div>
+              )}
             </div>
 
             {error && (

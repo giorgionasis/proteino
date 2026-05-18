@@ -73,10 +73,10 @@ export function FooterMobile() {
 
       {/* Legal */}
       <div className="flex items-center gap-4">
-        <Link href="/support" className="text-[18px] text-zinc-700 active:text-zinc-500">
+        <Link href="/terms" className="text-[18px] text-zinc-700 active:text-zinc-500">
           Όροι χρήσης
         </Link>
-        <Link href="/support" className="text-[18px] text-zinc-700 active:text-zinc-500">
+        <Link href="/privacy" className="text-[18px] text-zinc-700 active:text-zinc-500">
           Πολιτική Απορρήτου
         </Link>
       </div>

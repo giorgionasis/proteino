@@ -25,6 +25,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${siteUrl}/leaderboard`, lastModified: now, changeFrequency: "daily",   priority: 0.5 },
     { url: `${siteUrl}/support`,     lastModified: now, changeFrequency: "monthly", priority: 0.3 },
     { url: `${siteUrl}/help`,        lastModified: now, changeFrequency: "monthly", priority: 0.5 },
+    { url: `${siteUrl}/terms`,       lastModified: now, changeFrequency: "yearly",  priority: 0.2 },
+    { url: `${siteUrl}/privacy`,     lastModified: now, changeFrequency: "yearly",  priority: 0.2 },
     ...VALID_CATEGORIES.map((c) => ({
       url:             `${siteUrl}/${c}`,
       lastModified:    now,
