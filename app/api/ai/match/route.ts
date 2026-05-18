@@ -400,9 +400,10 @@ export async function GET(req: NextRequest) {
         ? detectCandidateCategory(text) as "movies" | "series"
         : null;
 
-  // Try TMDB for movies/series. Other categories fall through with the
-  // raw candidate (TODO: wire Google Books / Places / Ticketmaster the
-  // same way; admin enrichment helpers are already in place).
+  // Try TMDB for movies/series. Books → Google Books, venues → Google
+  // Places (both wired below with full alternatives). Theater + events
+  // currently fall through to the soft Gemini-only lock at the end —
+  // Ticketmaster wiring is a future enrichment slot.
   if (candidateCategory === "movies" || candidateCategory === "series") {
     // Try all candidates concurrently. For each TMDB hit, score how well
     // its title matches the candidate. The best score wins. This stops
@@ -529,14 +530,18 @@ export async function GET(req: NextRequest) {
       // spelling in Google's index — Gemini supplies the equivalent.
       const englishTitle = geminiExtraction?.english_title_hint || null;
       const englishAuthor = geminiExtraction?.english_author_hint || null;
-      const match = await searchGoogleBooks({
+      const result = await searchGoogleBooks({
         title: bookTitle,
         author: authorHint,
         englishTitle,
         englishAuthor,
       });
-      if (match) {
-        const tier = computeTierShared(match.match_score, null);
+      if (result) {
+        const { best: match, alternatives: altMatches } = result;
+        // Runner-up score gap-tests the tier the same way TMDB does —
+        // a close runner-up means we shouldn't fully trust the top hit.
+        const runnerUpScore = altMatches[0]?.match_score ?? null;
+        const tier = computeTierShared(match.match_score, runnerUpScore);
         const payload = googleBookToMatchData(match);
         const tierMessage =
           tier === "low"
@@ -557,7 +562,14 @@ export async function GET(req: NextRequest) {
             tried_candidate: bookTitle,
             confidence_tier: tier,
             best_score: match.match_score,
-            alternatives: [],
+            alternatives: altMatches.map((alt) => ({
+              title: alt.title,
+              year: alt.published_year,
+              poster_url: alt.cover_url,
+              score: alt.match_score,
+              category: "books" as CategorySlug,
+              match_data: googleBookToMatchData(alt),
+            })),
           },
           quality,
         };
@@ -587,12 +599,13 @@ export async function GET(req: NextRequest) {
       // not useful for venue search. Location hints come from the
       // free-text description instead (Gemini infers location from
       // context, surfaced as part of the title sometimes).
-      const place = await searchGooglePlace({
+      const result = await searchGooglePlace({
         name: venueName,
         locationHint: geminiExtraction?.location_hint || null,
         category: venueCategory,
       });
-      if (place) {
+      if (result) {
+        const { best: place, alternatives: altPlaces } = result;
         // Override Gemini's initial category guess with what Google
         // actually says the venue is. An all-day bar/cafe/restaurant
         // (Etouto, common in Athens) might be described as "πήγαμε
@@ -602,7 +615,8 @@ export async function GET(req: NextRequest) {
         // when both are present.
         const googleDerivedCategory = categorizeGooglePlace(place.primary_type, place.types);
         const finalCategory: "food" | "bars" | "hotels" = googleDerivedCategory ?? venueCategory;
-        const tier = computeTierShared(place.match_score, null);
+        const runnerUpScore = altPlaces[0]?.match_score ?? null;
+        const tier = computeTierShared(place.match_score, runnerUpScore);
         const payload = googlePlaceToMatchData(place);
         const tierMessage =
           tier === "low"
@@ -623,7 +637,17 @@ export async function GET(req: NextRequest) {
             tried_candidate: venueName,
             confidence_tier: tier,
             best_score: place.match_score,
-            alternatives: [],
+            alternatives: altPlaces.map((alt) => {
+              const altDerivedCategory = categorizeGooglePlace(alt.primary_type, alt.types);
+              return {
+                title: alt.name,
+                year: null,
+                poster_url: googlePlaceToMatchData(alt).backdrop_url ?? null,
+                score: alt.match_score,
+                category: (altDerivedCategory ?? venueCategory) as CategorySlug,
+                match_data: googlePlaceToMatchData(alt),
+              };
+            }),
             gemini_guessed_category: venueCategory,
             google_derived_category: googleDerivedCategory,
           },
@@ -635,10 +659,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Other categories: prefer Gemini's title + category (semantic — it
-  // read the full text + DB taxonomy). Falls back to regex first
-  // candidate only when Gemini had nothing. No external verification
-  // yet (TODO: wire Google Places / Ticketmaster).
+  // Remaining categories (recipes / theater / events): prefer Gemini's
+  // title + category (semantic — it read the full text + DB taxonomy).
+  // Falls back to regex first candidate only when Gemini had nothing.
+  // No external verification — Ticketmaster integration for theater
+  // and events is a future enrichment slot.
   const geminiCategory = (geminiExtraction?.category ?? categoryHint) as CategorySlug | null;
   const finalCategory = geminiCategory ?? candidateCategory;
   const finalTitle =

@@ -546,7 +546,7 @@ export function UserProfile({
           { icon: <SettingIconSparkle />,label: "Προσωποποιημένη Εμπειρία",href: `/profile/${handle}/settings/personalization` },
         ]} />
         <SettingsGroup label="ΥΠΟΣΤΗΡΙΞΗ" items={[
-          { icon: <SettingIconHelp />,   label: "Κέντρο Βοήθειας",        href: "/support" },
+          { icon: <SettingIconHelp />,   label: "Κέντρο Βοήθειας",        href: "/help" },
           { icon: <SettingIconMail />,   label: "Επικοινωνία",             href: "/support" },
         ]} />
 

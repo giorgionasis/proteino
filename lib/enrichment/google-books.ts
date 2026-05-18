@@ -195,7 +195,7 @@ export async function searchGoogleBooks(opts: {
   englishTitle?: string | null;
   /** Latin-script author name (Καζαντζάκης → Kazantzakis). */
   englishAuthor?: string | null;
-}): Promise<GoogleBookMatch | null> {
+}): Promise<{ best: GoogleBookMatch; alternatives: GoogleBookMatch[] } | null> {
   const title = opts.title.trim();
   if (!title) return null;
   const author = opts.author?.trim() || null;
@@ -267,6 +267,12 @@ export async function searchGoogleBooks(opts: {
   // beating "Hooked by Nir Eyal" bug).
   let bestOverall: GoogleBookMatch | null = null;
   let bestAuthorMatch: GoogleBookMatch | null = null;
+  // Deduped pool of all viable candidates across every tier — drives
+  // the alternatives list returned for low/medium-tier matches. Keyed
+  // by volume id so the same edition isn't surfaced twice when it
+  // shows up in multiple tiers (Greek + English fallbacks frequently
+  // re-hit the same volume).
+  const pool = new Map<string, GoogleBookMatch>();
   const haveAuthorHint = Boolean(author || enAuthor);
 
   const matchesAnyAuthorHint = (book: GoogleBookMatch): boolean => {
@@ -292,18 +298,37 @@ export async function searchGoogleBooks(opts: {
           bestAuthorMatch = mapped;
         }
       }
+      const existing = pool.get(mapped.id);
+      if (!existing || mapped.match_score > existing.match_score) {
+        pool.set(mapped.id, mapped);
+      }
     }
     // Early-exit only when we have a strong author-confirmed match
     // (when author hint exists) OR a strong overall match (when not).
     const earlyCandidate = haveAuthorHint ? bestAuthorMatch : bestOverall;
-    if (earlyCandidate && earlyCandidate.match_score >= 60) return earlyCandidate;
+    if (earlyCandidate && earlyCandidate.match_score >= 60) {
+      return { best: earlyCandidate, alternatives: pickAlternatives(pool, earlyCandidate.id) };
+    }
   }
 
   // No early exit — return author-match if any found, else overall.
   // Important: bestAuthorMatch wins even with a lower score than
   // bestOverall when an author hint was supplied. The user told us
   // who the author was; respecting that beats fuzzy title-only luck.
-  return bestAuthorMatch ?? bestOverall;
+  const best = bestAuthorMatch ?? bestOverall;
+  if (!best) return null;
+  return { best, alternatives: pickAlternatives(pool, best.id) };
+}
+
+/** Top-2 runner-ups from the pool, score-sorted, excluding the picked best. */
+function pickAlternatives(
+  pool: Map<string, GoogleBookMatch>,
+  bestId: string,
+): GoogleBookMatch[] {
+  return [...pool.values()]
+    .filter((b) => b.id !== bestId)
+    .sort((a, b) => b.match_score - a.match_score)
+    .slice(0, 2);
 }
 
 /**

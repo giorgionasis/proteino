@@ -179,7 +179,7 @@ export async function searchGooglePlace(opts: {
   locationHint?: string | null;
   /** "food" or "bars" — drives which Google place types we accept. */
   category: "food" | "bars" | "hotels";
-}): Promise<GooglePlaceMatch | null> {
+}): Promise<{ best: GooglePlaceMatch; alternatives: GooglePlaceMatch[] } | null> {
   const key = process.env.GOOGLE_PLACES_API_KEY;
   if (!key) {
     console.warn("[google-places] GOOGLE_PLACES_API_KEY not set");
@@ -245,15 +245,22 @@ export async function searchGooglePlace(opts: {
     // with an exact-script title would score higher.
     //
     // Without a location hint, score-sort is our only signal.
+    let ranked: GooglePlaceMatch[];
     if (opts.locationHint) {
-      const top = candidates[0];
-      // Always treat location-biased #1 as high confidence — Google
-      // told us this is the location-best match. Tier calculator
-      // upstream uses match_score so we bump it.
-      return top.match_score >= 100 ? top : { ...top, match_score: 100 };
+      // Google's location-biased order wins for #1; runner-ups stay in
+      // Google's order behind it. Always treat #1 as high-confidence
+      // (tier calculator upstream uses match_score).
+      const head = candidates[0];
+      const headBoosted: GooglePlaceMatch = head.match_score >= 100
+        ? head
+        : { ...head, match_score: 100 };
+      ranked = [headBoosted, ...candidates.slice(1)];
+    } else {
+      ranked = [...candidates].sort((a, b) => b.match_score - a.match_score);
     }
-    candidates.sort((a, b) => b.match_score - a.match_score);
-    return candidates[0];
+
+    const [best, ...rest] = ranked;
+    return { best, alternatives: rest.slice(0, 2) };
   } catch (err) {
     console.error("[google-places] fetch error", err);
     return null;

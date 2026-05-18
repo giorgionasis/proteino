@@ -13,15 +13,13 @@ const CATEGORIES = [
 ];
 
 const SUPPORT = [
-  { label: "Κέντρο Βοήθειας",              href: "/support" },
+  { label: "Κέντρο Βοήθειας",              href: "/help" },
   { label: "Επικοινωνία",                   href: "/support" },
-  { label: "Chat",                          href: "/support" },
-  { label: "Πως μπορώ να προτείνω",        href: "/support" },
-  { label: "Εξατομικευμένη Εμπειρία",      href: "/support" },
-  { label: "Πως υπολογίζονται οι πόντοι μου", href: "/support" },
+  { label: "Πως μπορώ να προτείνω",        href: "/help" },
+  { label: "Εξατομικευμένη Εμπειρία",      href: "/help" },
+  { label: "Πως υπολογίζονται οι πόντοι μου", href: "/help" },
   { label: "Leaderboard",                   href: "/leaderboard" },
-  { label: "Στατιστικά",                    href: "/support" },
-  { label: "FAQ",                           href: "/support" },
+  { label: "FAQ",                           href: "/help" },
 ];
 
 export function FooterMobile() {

@@ -1,9 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-// Edge-runtime middleware. Kept intentionally minimal — anything that throws
-// here surfaces as MIDDLEWARE_INVOCATION_FAILED → 500 on every request. No
-// @supabase/ssr import (historically flaky on Edge cold-starts) and no JWT
-// validation — middleware only needs cookie presence to gate /admin redirects.
+// Edge-runtime proxy (Next 16 — renamed from middleware.ts). Kept intentionally
+// minimal — anything that throws here surfaces as MIDDLEWARE_INVOCATION_FAILED
+// → 500 on every request. No @supabase/ssr import (historically flaky on Edge
+// cold-starts) and no JWT validation — the proxy only needs cookie presence
+// to gate /admin redirects.
 
 function hasAuthCookie(request: NextRequest): boolean {
   try {
@@ -22,7 +23,7 @@ function hasAuthCookie(request: NextRequest): boolean {
   return false;
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   try {
     const pathname = request.nextUrl?.pathname ?? "/";
     const loggedIn = hasAuthCookie(request);
@@ -36,14 +37,14 @@ export async function middleware(request: NextRequest) {
     }
 
     // Deliberately NOT redirecting logged-in users away from /login or
-    // /register: middleware can only detect cookie presence, not JWT
+    // /register: this layer can only detect cookie presence, not JWT
     // validity, so a stale cookie would trap users who can never re-auth.
     // Those pages do their own server-side getSession() check.
 
     return NextResponse.next();
   } catch (err) {
-    // Last-resort: never 500 the site from middleware.
-    console.error("[middleware] passthrough:", err);
+    // Last-resort: never 500 the site from the proxy layer.
+    console.error("[proxy] passthrough:", err);
     return NextResponse.next();
   }
 }
@@ -52,7 +53,7 @@ export const config = {
   matcher: [
     // Run on everything except static assets, _next internals, favicon,
     // and API routes (which gate themselves). Image extensions excluded so
-    // we don't burn middleware invocations on every <img>.
+    // we don't burn invocations on every <img>.
     "/((?!_next/|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|avif|woff|woff2)$).*)",
   ],
 };

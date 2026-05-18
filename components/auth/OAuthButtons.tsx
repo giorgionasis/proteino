@@ -31,18 +31,12 @@ export function OAuthButtons({ mode }: OAuthButtonsProps) {
   const [loading, setLoading] = useState<"google" | "facebook" | null>(null);
 
   async function handleOAuth(provider: "google" | "facebook") {
-    console.log("[OAuth] button clicked, provider:", provider);
-    console.log("[OAuth] loading guard:", loading);
-    console.log("[OAuth] NEXT_PUBLIC_SUPABASE_URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
-
     if (loading) return;
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
 
     setLoading(provider);
     try {
       const supabase = createClient();
-      console.log("[OAuth] calling signInWithOAuth...");
-
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
@@ -51,19 +45,14 @@ export function OAuthButtons({ mode }: OAuthButtonsProps) {
         },
       });
 
-      console.log("[OAuth] signInWithOAuth result — data:", data, "error:", error);
-      console.log("[OAuth] data.url:", data?.url);
-
       if (error || !data.url) {
-        console.log("[OAuth] bailing — error or no URL");
         setLoading(null);
         return;
       }
 
-      console.log("[OAuth] redirecting to:", data.url);
       window.location.href = data.url;
     } catch (err) {
-      console.log("[OAuth] caught exception:", err);
+      console.error("[OAuth] signInWithOAuth failed:", err);
       setLoading(null);
     }
   }
