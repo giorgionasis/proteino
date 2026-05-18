@@ -6,6 +6,7 @@ import { AdminPanel } from "./ui/AdminPanel";
 import { AdminEmpty } from "./ui/AdminEmpty";
 import { AdminRow, AdminActionButton, AdminActionSelect } from "./ui/AdminRow";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 interface Region {
   id: string;
@@ -49,6 +50,7 @@ function flatten(roots: TreeNode[]): TreeNode[] {
 }
 
 export function RegionsManager() {
+  const { show, toast } = useToast();
   const [rows, setRows] = useState<Region[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +106,7 @@ export function RegionsManager() {
       setRows((rs) => rs.map((r) => r.id === editingId ? { ...r, name: data.name } : r));
       setEditingId(null);
     } catch (e: any) {
-      alert(e.message ?? "Save failed");
+      show(e.message ?? "Save failed", { tone: "error" });
     } finally {
       setBusyId(null);
     }
@@ -119,7 +121,7 @@ export function RegionsManager() {
       if (!res.ok) throw new Error(data.error ?? "Delete failed");
       setRows((rs) => rs.filter((r) => r.id !== n.id));
     } catch (e: any) {
-      alert(e.message ?? "Delete failed");
+      show(e.message ?? "Delete failed", { tone: "error" });
     } finally {
       setBusyId(null);
     }
@@ -141,7 +143,7 @@ export function RegionsManager() {
       setRows((rs) => [...rs, data]);
       setNewName(""); setAddingUnderParent(undefined);
     } catch (e: any) {
-      alert(e.message ?? "Create failed");
+      show(e.message ?? "Create failed", { tone: "error" });
     } finally {
       setBusyId(null);
     }
@@ -159,7 +161,7 @@ export function RegionsManager() {
       if (!res.ok) throw new Error(data.error ?? "Move failed");
       setRows((rs) => rs.map((r) => r.id === id ? { ...r, parent_id: data.parent_id } : r));
     } catch (e: any) {
-      alert(e.message ?? "Move failed");
+      show(e.message ?? "Move failed", { tone: "error" });
     } finally {
       setBusyId(null);
     }
@@ -371,6 +373,7 @@ export function RegionsManager() {
       <p className="text-xs text-zinc-400 mt-4 px-1">
         Click σε όνομα → επεξεργασία inline · Hover σε γραμμή → εμφανίζονται οι ενέργειες · Διαγραφή μόνο για περιοχές χωρίς παιδιά ή items.
       </p>
+      {toast}
     </div>
   );
 }

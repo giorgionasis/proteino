@@ -28,6 +28,7 @@ import type {
 } from "@/lib/layout/types";
 import { SectionPickerModal } from "./SectionPickerModal";
 import { SectionConfigDrawer } from "./SectionConfigDrawer";
+import { useToast } from "@/components/ui/Toast";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -65,6 +66,7 @@ const AUDIENCE_OPTIONS: { value: AdminPreviewAudience; label: string }[] = [
 /* ─── Main manager ──────────────────────────────────────────────────── */
 
 export function LayoutManager() {
+  const { show, toast } = useToast();
   const [pageKey, setPageKey] = useState<string>("cat:movies");
   const [audience, setAudience] = useState<AdminPreviewAudience>("all");
   const [sections, setSections] = useState<ApiSectionRow[]>([]);
@@ -203,7 +205,7 @@ export function LayoutManager() {
       const res = await fetch(`/api/admin/page-sections/${row.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) {
-        alert(data?.error ?? "Αποτυχία διαγραφής");
+        show(data?.error ?? "Αποτυχία διαγραφής", { tone: "error" });
         return;
       }
       setSections(sections.filter((s) => s.id !== row.id));
@@ -324,6 +326,7 @@ export function LayoutManager() {
         setPreviewKey((k) => k + 1);
       }}
     />
+    {toast}
     </>
   );
 }

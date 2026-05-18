@@ -53,9 +53,6 @@ export function HeroSuggest() {
                   style={{ background: ph?.bg ?? "#a1a1aa" }}
                 >
                   <span className="text-[80px] opacity-90" aria-hidden>{ph?.emoji ?? "✨"}</span>
-                  <span className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-[0.15em] text-white/90 bg-black/30 backdrop-blur-sm px-2.5 py-1 rounded-full">
-                    Σύντομα
-                  </span>
                 </div>
               )}
 

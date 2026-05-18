@@ -236,7 +236,7 @@ Wiped clean by migration 016 (0 rows). The hook (`useRating`), the API (`/api/ra
 id uuid PK, user_id FK, suggestion_id FK,
 parent_id FK (for replies), body text, created_at
 ```
-343 K2 rows. `CommentComposer` / `CommentThread` / `/api/comments` were all deleted in session 23 — no new comments are written. The admin surface at `/admin/reviews` is now labelled **"Comments (Legacy)"** in the sidebar and exists only to moderate the historic K2 rows; new review moderation flows through `/admin/reports` (which understands `target_type='review'` as of migration 035). The new flow (reviews + reviews moderation via content_reports) replaces both `ratings` and `comments`.
+343 K2 rows. `CommentComposer` / `CommentThread` / `/api/comments` were all deleted in session 23 — no new comments are written. The admin surface has since moved to `/admin/legacy-comments` (renamed in session 25 + consolidated in session 28); the `reportedComments` counter still pings off this table since reports filed against the K2 rows are tracked via `comments.report_count`. New review moderation flows through `/admin/reviews` (which absorbed the dedicated `/admin/reports` page in session 28 and understands `target_type='review'` as of migration 035). The reviews + content_reports stack replaces both `ratings` and `comments`.
 
 #### bookmarks
 ```sql
@@ -746,7 +746,7 @@ K2/MySQL → Supabase migration completed in session 6 (627 users / 1953 items /
 ---
 
 ## 21. Image Schema & Storage
-> ⏳ PENDING — Implement during submission flow + migration.
+> ✅ Shipped (core path) — `poster_url` + `backdrop_url` columns in `items`, types in `types/database.ts`, admin enrich route (`/api/admin/enrich`) auto-fetches from TMDB for movies/series + Google Books for books + Google Places for venues. Ticketmaster enrichment for theater/events is the open slot.
 
 ### Two images per item
 Every item stores two images for different display contexts:

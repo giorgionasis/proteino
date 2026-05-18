@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useToast } from "@/components/ui/Toast";
 
 interface SubcategoryRow {
   id: string;
@@ -28,6 +29,7 @@ interface Props {
 }
 
 export function CategoryDetail({ categoryId, categoryName, subcategories: initial, stats }: Props) {
+  const { show, toast } = useToast();
   const [rows, setRows] = useState(initial);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -106,7 +108,10 @@ export function CategoryDetail({ categoryId, categoryName, subcategories: initia
 
   async function deleteRow(row: SubcategoryRow) {
     if (row.itemCount > 0) {
-      alert(`Δεν διαγράφεται: ${row.itemCount} items χρησιμοποιούν αυτή τη subcategory. Ανάθεσέ τα κάπου αλλού πρώτα.`);
+      show(
+        `Δεν διαγράφεται: ${row.itemCount} items χρησιμοποιούν αυτή τη subcategory. Ανάθεσέ τα κάπου αλλού πρώτα.`,
+        { tone: "error" }
+      );
       return;
     }
     if (!confirm(`Διαγραφή "${row.name}";`)) return;
@@ -362,6 +367,7 @@ export function CategoryDetail({ categoryId, categoryName, subcategories: initia
           </tbody>
         </table>
       </div>
+      {toast}
     </div>
   );
 }

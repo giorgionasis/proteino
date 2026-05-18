@@ -7,6 +7,7 @@ import { AdminPanel } from "@/components/admin/ui/AdminPanel";
 import { AdminRow, AdminActionButton } from "@/components/admin/ui/AdminRow";
 import { AdminEmpty } from "@/components/admin/ui/AdminEmpty";
 import { MomentEditDrawer } from "@/components/admin/MomentEditDrawer";
+import { useToast } from "@/components/ui/Toast";
 import type { MomentRow, PredicateSchema } from "@/lib/moments";
 
 /**
@@ -52,6 +53,7 @@ interface Props {
 }
 
 export function MomentsManager({ initialMoments, initialStats, predicateSchemas }: Props) {
+  const { show, toast } = useToast();
   const router  = useRouter();
   const [rows,    setRows]    = useState<MomentRow[]>(initialMoments);
   const [stats]               = useState(initialStats);
@@ -104,7 +106,7 @@ export function MomentsManager({ initialMoments, initialStats, predicateSchemas 
       setRows((curr) => curr.filter((r) => r.id !== row.id));
     } catch (e) {
       console.error("[moments] delete failed", e);
-      window.alert("Διαγραφή απέτυχε. Δες την κονσόλα.");
+      show("Διαγραφή απέτυχε. Δες την κονσόλα.", { tone: "error" });
     } finally {
       setBusyId(null);
     }
@@ -137,7 +139,7 @@ export function MomentsManager({ initialMoments, initialStats, predicateSchemas 
       setEditing(created);
     } catch (e) {
       console.error("[moments] duplicate failed", e);
-      window.alert("Αντιγραφή απέτυχε.");
+      show("Αντιγραφή απέτυχε.", { tone: "error" });
     } finally {
       setBusyId(null);
     }
@@ -278,6 +280,7 @@ export function MomentsManager({ initialMoments, initialStats, predicateSchemas 
           onClose={() => setEditing(null)}
         />
       )}
+      {toast}
     </>
   );
 }

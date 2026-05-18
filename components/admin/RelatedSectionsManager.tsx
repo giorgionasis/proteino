@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CATEGORIES } from "@/constants/categories";
+import { useToast } from "@/components/ui/Toast";
 
 interface Rule {
   id: string;
@@ -83,6 +84,7 @@ const FIELD_PRESETS: Record<string, { value: string; label: string; suggestedTit
 };
 
 export function RelatedSectionsManager() {
+  const { show, toast } = useToast();
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -113,7 +115,7 @@ export function RelatedSectionsManager() {
       });
       if (!res.ok) {
         const data = await res.json();
-        alert(data?.error ?? "Αποτυχία ενημέρωσης");
+        show(data?.error ?? "Αποτυχία ενημέρωσης", { tone: "error" });
         load();
       }
     } finally {
@@ -128,7 +130,7 @@ export function RelatedSectionsManager() {
       const res = await fetch(`/api/admin/related-sections/${rule.id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json();
-        alert(data?.error ?? "Αποτυχία διαγραφής");
+        show(data?.error ?? "Αποτυχία διαγραφής", { tone: "error" });
         return;
       }
       setRules((prev) => prev.filter((r) => r.id !== rule.id));
@@ -145,7 +147,7 @@ export function RelatedSectionsManager() {
     });
     const data = await res.json();
     if (!res.ok) {
-      alert(data?.error ?? "Αποτυχία δημιουργίας");
+      show(data?.error ?? "Αποτυχία δημιουργίας", { tone: "error" });
       return;
     }
     setRules((prev) => [...prev, data.rule as Rule]);
@@ -235,6 +237,7 @@ export function RelatedSectionsManager() {
           })}
         </div>
       )}
+      {toast}
     </div>
   );
 }

@@ -277,14 +277,16 @@ function SubTab({ active, label, count, onClick }: { active: boolean; label: str
 function EmptyState({ isOwnProfile }: { isOwnProfile: boolean }) {
   return (
     <div className="text-center py-20 px-6">
-      <div className="text-5xl mb-3">🔖</div>
+      <div className="text-5xl mb-3" aria-hidden>
+        {isOwnProfile ? "🔖" : "🔒"}
+      </div>
       <h2 className="text-lg font-bold text-zinc-800 mb-1">
-        {isOwnProfile ? "Δεν έχεις αποθηκεύσεις ακόμη" : "Καμία αποθήκευση"}
+        {isOwnProfile ? "Δεν έχεις αποθηκεύσεις ακόμη" : "Ιδιωτικά αγαπημένα"}
       </h2>
       <p className="text-sm text-zinc-500 max-w-xs mx-auto mb-5">
         {isOwnProfile
           ? "Πάτησε το 🔖 σε όποια πρόταση σε ενδιαφέρει για να την βρεις εδώ."
-          : "Αυτός ο χρήστης δεν έχει αποθηκεύσει ακόμη."}
+          : "Οι αποθηκεύσεις κάθε χρήστη είναι ορατές μόνο σε αυτόν."}
       </p>
       {isOwnProfile && (
         <Link

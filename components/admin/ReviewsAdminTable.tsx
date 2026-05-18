@@ -7,6 +7,8 @@ import { createBrowserClient } from "@supabase/ssr";
 import { AdminPagination } from "./AdminPagination";
 import { useListKeyboard } from "@/hooks/useListKeyboard";
 import { AvatarImage } from "@/components/ui/AvatarImage";
+import { PromptModal } from "@/components/ui/PromptModal";
+import { useToast } from "@/components/ui/Toast";
 import type { Database } from "@/types/database";
 
 const PAGE_SIZE = 20;
@@ -132,6 +134,7 @@ export function ReviewsAdminTable({ stats, unresolved }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeReports, setActiveReports] = useState<{ row: UnresolvedReviewRow; reports: ReportEntry[] } | null>(null);
+  const [hidePrompt, setHidePrompt] = useState<{ row: ReviewRow | UnresolvedReviewRow } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Sync the unresolved section from the server prop when it changes (e.g.
@@ -280,27 +283,24 @@ export function ReviewsAdminTable({ stats, unresolved }: Props) {
    * pending content_reports for the review (see API route comments) — so
    * we also drop the row from the Unresolved section locally.
    */
-  async function toggleHidden(row: ReviewRow | UnresolvedReviewRow) {
+  function toggleHidden(row: ReviewRow | UnresolvedReviewRow) {
+    setError(null);
+    if (!row.is_hidden) {
+      // Hiding requires an admin justification — open prompt modal.
+      setHidePrompt({ row });
+      return;
+    }
+    // Unhide is direct, no prompt needed.
+    void executeHide(row, false, null);
+  }
+
+  async function executeHide(
+    row: ReviewRow | UnresolvedReviewRow,
+    willHide: boolean,
+    reason: string | null,
+  ) {
     setBusyId(row.id);
     setError(null);
-    const willHide = !row.is_hidden;
-    let reason: string | null = null;
-    if (willHide) {
-      const input = prompt(
-        "Λόγος απόκρυψης (≥5 χαρακτήρες, ορατός μόνο στους admins):",
-        "admin moderation"
-      );
-      if (input === null) {
-        setBusyId(null);
-        return;
-      }
-      reason = input.trim();
-      if (reason.length < 5) {
-        setError("Ο λόγος πρέπει να έχει ≥5 χαρακτήρες.");
-        setBusyId(null);
-        return;
-      }
-    }
     const res = await fetch(`/api/admin/reviews/${row.id}/hide`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -644,6 +644,26 @@ export function ReviewsAdminTable({ stats, unresolved }: Props) {
           onResolve={resolveReport}
         />
       )}
+
+      {/* Hide-reason prompt */}
+      <PromptModal
+        open={hidePrompt !== null}
+        title="Απόκρυψη αξιολόγησης"
+        description="Λόγος απόκρυψης — ορατός μόνο στους admins. Πρέπει να είναι ≥5 χαρακτήρες."
+        placeholder="π.χ. spam, απειλή, διπλότυπο..."
+        initialValue="admin moderation"
+        minLength={5}
+        confirmLabel="Απόκρυψη"
+        cancelLabel="Άκυρο"
+        tone="danger"
+        multiline
+        onConfirm={(value) => {
+          const row = hidePrompt?.row;
+          setHidePrompt(null);
+          if (row) void executeHide(row, true, value);
+        }}
+        onClose={() => setHidePrompt(null)}
+      />
     </div>
   );
 }
@@ -816,6 +836,7 @@ interface ReportsDrawerProps {
 }
 
 function ReportsDrawer({ row, reports, onClose, onResolve }: ReportsDrawerProps) {
+  const { show: toastShow, toast } = useToast();
   const [activeReportId, setActiveReportId] = useState<string | null>(reports[0]?.id ?? null);
   const [pendingAction, setPendingAction] = useState<"kept" | "hidden" | null>(null);
   const [note, setNote] = useState("");
@@ -823,6 +844,7 @@ function ReportsDrawer({ row, reports, onClose, onResolve }: ReportsDrawerProps)
   const [reporterStats, setReporterStats] = useState<ReporterStats | null>(null);
   const [reporterFlagBusy, setReporterFlagBusy] = useState(false);
   const [reporterFlagged, setReporterFlagged] = useState(false);
+  const [reporterFlagPromptOpen, setReporterFlagPromptOpen] = useState(false);
   const active = reports.find((r) => r.id === activeReportId) ?? reports[0];
 
   // ESC closes
@@ -869,32 +891,28 @@ function ReportsDrawer({ row, reports, onClose, onResolve }: ReportsDrawerProps)
     };
   }, [active]);
 
-  async function flagReporterAsAbusive() {
+  function openFlagReporterPrompt() {
     if (!active) return;
-    const reason = prompt(
-      `Σημείωση για το flag του reporter (≥5 χαρακτήρες). Θα προστεθεί στο audit log του χρήστη @${active.reporter_handle ?? active.reporter_name}:`,
-      `${reporterStats?.dismissed ?? 0} αναφορές απορριφθείσες — σήμανση ως καταχραστής`
-    );
-    if (reason === null) return;
-    const trimmed = reason.trim();
-    if (trimmed.length < 5) {
-      alert("Η σημείωση πρέπει να έχει ≥5 χαρακτήρες.");
-      return;
-    }
+    setReporterFlagPromptOpen(true);
+  }
+
+  async function submitFlagReporter(note: string) {
+    if (!active) return;
+    setReporterFlagPromptOpen(false);
     setReporterFlagBusy(true);
     const res = await fetch(`/api/admin/users/${active.reporter_id}/warn`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         kind: "abusive_reporter",
-        note: trimmed,
+        note,
         source_report_id: active.id,
       }),
     });
     setReporterFlagBusy(false);
     if (!res.ok) {
       const e = await res.json().catch(() => ({ error: "Σφάλμα" }));
-      alert(e.error || "Σφάλμα");
+      toastShow(e.error || "Σφάλμα", { tone: "error" });
       return;
     }
     setReporterFlagged(true);
@@ -993,7 +1011,7 @@ function ReportsDrawer({ row, reports, onClose, onResolve }: ReportsDrawerProps)
                     stats={reporterStats}
                     suspicious={reporterIsSuspicious}
                     flagged={reporterFlagged}
-                    onFlag={flagReporterAsAbusive}
+                    onFlag={openFlagReporterPrompt}
                     flagBusy={reporterFlagBusy}
                   />
                 )}
@@ -1091,6 +1109,21 @@ function ReportsDrawer({ row, reports, onClose, onResolve }: ReportsDrawerProps)
           </div>
         </div>
       </div>
+      <PromptModal
+        open={reporterFlagPromptOpen}
+        title="Σήμανε reporter ως καταχραστή"
+        description={`Σημείωση που θα προστεθεί στο audit log του χρήστη @${active?.reporter_handle ?? active?.reporter_name ?? ""}. ≥5 χαρακτήρες.`}
+        placeholder="π.χ. επαναλαμβανόμενες αβάσιμες αναφορές"
+        initialValue={`${reporterStats?.dismissed ?? 0} αναφορές απορριφθείσες — σήμανση ως καταχραστής`}
+        minLength={5}
+        confirmLabel="Σήμανε"
+        cancelLabel="Άκυρο"
+        tone="danger"
+        multiline
+        onConfirm={submitFlagReporter}
+        onClose={() => setReporterFlagPromptOpen(false)}
+      />
+      {toast}
     </div>
   );
 }
