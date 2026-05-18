@@ -1,7 +1,7 @@
 # Proteino — Admin Panel
 
 > Route: `/admin` — protected via `public.users.role === 'admin'` (`ADMIN_DEV_BYPASS=1` for local skip)
-> Last updated: 2026-05-15 (session 26 — review-milestone moments + FLIP push-right)
+> Last updated: 2026-05-18 (session 28 — review reports consolidated into /admin/reviews; user warnings audit log surfaced on /admin/users)
 
 The admin panel is the back-office for managing all platform content, structure, metadata, and what users see on the frontend.
 

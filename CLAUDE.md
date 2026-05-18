@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-17 (session 27 — Node 22 + React 19 + Next 16 upgrade)
+**Last meaningful update:** 2026-05-18 (session 28 — admin moderation consolidation: review reports folded into /admin/reviews; warn endpoint + audit log; warnings surfaced in /admin/users)
 
 ---
 
@@ -1709,6 +1709,10 @@ User-reported reviews land in `content_reports` with `target_type='review'` (sug
   - **Ναι — απόκρυψη review** → soft-hides the review via `PATCH /api/admin/reports/[id]` action='hidden'; auto-resolves every pending report for that review with the same admin note.
 - **Optional: warn the review author.** On the "Ναι" path, a checkbox under the admin note offers "Προειδοποίηση και στον συγγραφέα του review". When checked + submitted, after the hide lands a parallel `POST /api/admin/users/[author_id]/warn` writes a `{ kind: 'review_hidden', source_review_id, source_report_id, note }` entry to `users.admin_warnings` (migration 039). Append-only audit log — never removed even after the source review is unhidden.
 - **Reporter abuse signal.** When the drawer opens, a thin browser-client query against `content_reports` derives per-reporter stats: `{ total, dismissed, hidden, pending }`. If `dismissed ≥ 2 && total ≥ 3 && dismissed/total ≥ 0.5`, a red "⚠ Reporter: N αναφορές · M απορριφθείσες (X%)" line surfaces under the "Από" row with a **"Σήμανε ως καταχραστή"** action. Clicking it `POST /api/admin/users/[reporter_id]/warn` with `{ kind: 'abusive_reporter', ... }` — appends to the same audit log. Independent of the keep/hide decision; admin can flag without resolving, or vice versa.
+
+### Warnings visible in `/admin/users`
+
+The audit log written by the warn endpoint is read in the users moderation table — new **Warnings** column with the same red filled badge / "0" plain visual language as the REPORTS column on `/admin/reviews`. Click → side drawer renders the audit log newest-first with kind chip (Review hidden / Abusive reporter / Manual), note, relative time, issuing admin (resolved client-side via a batched `users.display_name` lookup), and source pointers (`source_review_id` / `source_report_id`) when present. The drawer also exposes **"+ Πρόσθεσε manual προειδοποίηση"** — admin writes a free-form note, posts to the same `/api/admin/users/[id]/warn` with `kind='manual'`. Append-only — no delete affordance, audit integrity preserved.
 - **Hide endpoint also auto-resolves** — `POST /api/admin/reviews/[id]/hide` (called from the row's hover action or keyboard shortcut) now mirrors the bulk-resolve path: hiding a review marks all its open `content_reports` rows resolved with `action='hidden'` and the same admin note. Keeps the two entry points behaviourally aligned.
 
 The `PATCH /api/admin/reports/[id]` endpoint stays (audit trail, single-source-of-truth for resolution). The deleted bits: `app/admin/reports/page.tsx` + `components/admin/ReportsTable.tsx` + the sidebar entry + the `pendingReports` counter (renamed `pendingReviewReports` and now attached to the Reviews sidebar entry).

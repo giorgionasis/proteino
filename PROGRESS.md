@@ -1,12 +1,56 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-17 (session 27 — Node 22 + React 19 + Next 16 upgrade)
+Last updated: 2026-05-18 (session 28 — admin moderation consolidation + user warnings audit log)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 27 (current) finished:**
+**Current state — session 28 (current) finished:**
+
+Admin moderation consolidation. The standalone `/admin/reports` queue was confusingly parallel to `/admin/reviews` even though in practice every report is filed against a review (suggestions are admin-curated and can't be user-reported). Folded the whole flow into `/admin/reviews`.
+
+**Shipped — review-report consolidation:**
+- ✅ **Sidebar:** "Reports" entry removed from the Moderation section. `pendingReports` counter renamed `pendingReviewReports` (now scoped to `target_type='review'` in `/api/admin/counters`) and attached to the **Reviews** sidebar entry. `IconFlag` deleted.
+- ✅ **Deleted** `app/admin/reports/page.tsx` + `components/admin/ReportsTable.tsx`. The `PATCH /api/admin/reports/[id]` endpoint stays — that's the single source of truth for report resolution, called from inside the new drawer.
+- ✅ **`/admin/reviews` server fetch** now also pulls unresolved review-reports + hydrates the parent reviews. Stat strip "Με αναφορές" → "Unresolved".
+- ✅ **Top "Unresolved (N)" section** above the main paginated list. Lists every review with pending reports; not paginated, always visible.
+- ✅ **REPORTS column** on every row (3 states): **black filled circle + count** = unresolved (clickable, opens drawer); **green filled circle + count** = resolved-only history; plain "0" = pristine. Visual language matches the Figma screenshot the user shared.
+- ✅ **Column layout reorganised** to match the same screenshot: Review · Author · Suggestion · Rating · Published · Reports · Status pill (Active/Hidden) + hover-revealed hide toggle.
+- ✅ **Reports drawer** opens on badge click. Lists every pending report (reason / description / reporter / date). Header reframed as a question: **"Είναι έγκυρη η αναφορά;"** with two answer buttons (Όχι — άσε το review / Ναι — απόκρυψη review). Admin note ≥5 chars required on either path.
+- ✅ **Reporter abuse signal in the drawer.** Browser-client query against `content_reports` derives `{ total, dismissed, hidden, pending }` for the reporter. If `dismissed ≥ 2 && total ≥ 3 && dismissed/total ≥ 0.5`, a red "⚠ Reporter: N αναφορές · M απορριφθείσες (X%)" line surfaces under "Από" with a **"Σήμανε ως καταχραστή"** action. Independent of the keep/hide decision.
+- ✅ **Hide endpoint also auto-resolves.** `POST /api/admin/reviews/[id]/hide` now mirrors the bulk-resolve path: hiding a review marks every pending `content_reports` row resolved with `action='hidden'` + same admin note. Keeps the two entry points behaviourally aligned.
+
+**Shipped — user warnings audit log (migration 039 + reader UI):**
+- ✅ **Migration 039** — `users.admin_warnings jsonb DEFAULT '[]'` + GIN index (`jsonb_path_ops`). Append-only audit log. **Applied in Supabase 2026-05-18.**
+- ✅ **`POST /api/admin/users/[id]/warn`** — admin-gated endpoint that appends `{ created_at, by_admin_id, kind, note, source_review_id?, source_report_id? }`. Kinds: `'review_hidden'` (author of a hidden review), `'abusive_reporter'` (reporter flagged), `'manual'` (admin-initiated). Note ≥5 chars required.
+- ✅ **Drawer "Warn the review author" checkbox.** On the "Ναι — απόκρυψη review" path, a checkbox under the admin note triggers a parallel `kind='review_hidden'` warn write after the hide lands. Best-effort — hide is unaffected if the warn fails.
+- ✅ **`/admin/users` Warnings column.** Same visual language as the REPORTS badge: red filled circle + count when ≥1, plain "0" when zero. Click → side drawer renders the audit log newest-first with kind chip / note / relative time / issuing admin (resolved client-side via batched `users.display_name` lookup) / source pointers when present.
+- ✅ **"+ Πρόσθεσε manual προειδοποίηση"** in the drawer footer. Admin writes a free-form note, posts `kind='manual'`. Append-only — no delete affordance per the audit-log contract.
+
+**Files touched (session 28):**
+- Sidebar / counters / pages: `components/admin/AdminSidebar.tsx`, `app/api/admin/counters/route.ts`, `app/admin/page.tsx`, `app/admin/reviews/page.tsx`
+- Tables: `components/admin/ReviewsAdminTable.tsx` (full redesign), `components/admin/UsersTable.tsx` (column + drawer)
+- API: `app/api/admin/reviews/[id]/hide/route.ts` (auto-resolve), `app/api/admin/users/[id]/warn/route.ts` (new)
+- Migrations: `scripts/sql/039-user-admin-warnings.sql`
+- Deleted: `app/admin/reports/page.tsx`, `components/admin/ReportsTable.tsx`
+- Touch-ups: `components/admin/LegacyCommentsTable.tsx` (note repointed)
+- Docs: CLAUDE.md §41, ADMIN.md (sidebar map + implementation status row), DEPLOY.md (also caught missing 037 + 038 entries), PROGRESS.md, START.md
+
+**Stats:** ~+1,420 / -560 across 15 files. `npx tsc --noEmit` → 0 errors. Two commits this session: `6d1be1b` (consolidation + warn endpoint) + the next follow-up (warnings reader on `/admin/users`).
+
+**Open follow-ups (next session):**
+- **Phase B — pgvector recommendations.** Biggest user-visible leap left. ~5 days. Architecture documented in AI.md §4 + PROGRESS §3 Phase B. The 1953-item corpus is finally rich enough; this unblocks the "Tailored for You" rail with real "because you liked X" reasoning.
+- **AI-coached review writing** — Gemini overlay on top of the char-count tiered praise (content-aware "πες ένα συγκεκριμένο σημείο που σε εντυπωσίασε" suggestions). ~1 hour + Gemini cost.
+- **Surface warning chips on user-facing profile / detail pages?** Currently warnings are admin-only. Could optionally display a discreet badge to other admins viewing a user's content. Not built; design call.
+- **Configurable abuse threshold.** The 2/3/50% heuristic for "Σήμανε ως καταχραστή" is hardcoded in `ReviewsAdminTable.tsx`. Could move to `app_settings` if it needs tuning.
+- **SEO redirects + indexing follow-ups.** 301-redirect map from legacy K2 URLs (need sample of old URL format), `noindex` meta for thin pages, canonical URLs on category + profile pages.
+- **Per-category visual identity** (UI_AUDIT.md option B — ~1.5 weeks): cinematic hero for movies, warm photographic for hotels, paper-typographic for books.
+- **Remaining A.5 punch list:** drop legacy `ratings`/`comments` tables (data already wiped), geographic distance ranking via region centroids, browser geolocation opt-in, map↔list drop-down reveal (3-4 hours).
+
+---
+
+**Previous state — session 27 finished:**
 
 Runtime upgrade — Node 20 → 22 LTS, React 18 → 19.2.6, Next 14.2.35 → 16.2.6. Single commit (`44c6c7d`), full triad, all green: `tsc --noEmit` clean, `next build` succeeds under Turbopack, dev server boots in **171ms** (was 3-4s on webpack), HTTP smoke tests on `/`, `/movies`, `/search`, `/login`, `/api/leaderboard` all return 200. See CLAUDE.md §43 for the full breakdown — codemod scope, manual fixes (`lib/supabase/server.ts` async + 45 caller `await`s, React 19 `RefObject<T | null>` widening on `useFlipReorder` + `useListKeyboard`, `JSX.Element` → `React.JSX.Element`, `next.config.mjs` Turbopack config, `globals.css` `@import` reorder), what survived (forwardRef still works, middleware compat shim active), and rollback plan.
 
