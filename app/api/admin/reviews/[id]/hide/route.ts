@@ -7,6 +7,11 @@ import { NextRequest, NextResponse } from "next/server";
  * Body: { hide: boolean; reason: string | null }
  *
  * Toggles `reviews.is_hidden` + sets hidden_at / hidden_reason / hidden_by.
+ * When hiding, also auto-resolves every pending `content_reports` row for
+ * this review with the same admin note — once the review is out of public
+ * view, all its open reports are effectively addressed. Mirrors the
+ * `action='hidden'` behaviour of /api/admin/reports/[id].
+ *
  * Service-role write; auth gate is admin role on `public.users`.
  */
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -68,5 +73,22 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // Auto-resolve pending reports on hide. Mirrors the bulk-resolve path in
+  // /api/admin/reports/[id] when an admin picks `action='hidden'`.
+  if (willHide) {
+    await (sbAdmin.from("content_reports") as any)
+      .update({
+        resolved: true,
+        resolution_action: "hidden",
+        resolution_note: reason,
+        resolved_by: user.id,
+        resolved_at: new Date().toISOString(),
+      })
+      .eq("target_type", "review")
+      .eq("target_id", id)
+      .eq("resolved", false);
+  }
+
   return NextResponse.json({ ok: true });
 }

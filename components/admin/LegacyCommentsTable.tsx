@@ -226,8 +226,8 @@ export function LegacyCommentsTable({ stats }: Props) {
         <p className="text-sm text-zinc-500 mt-1">
           Frozen archive από το K2 — δεν δημιουργούνται νέα σχόλια. Νέες αξιολογήσεις
           μετριάζονται από το{" "}
-          <Link href="/admin/reports" className="text-coral-700 underline hover:text-coral-800">
-            /admin/reports
+          <Link href="/admin/reviews" className="text-coral-700 underline hover:text-coral-800">
+            /admin/reviews
           </Link>
           .
         </p>

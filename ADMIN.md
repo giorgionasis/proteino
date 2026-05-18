@@ -27,7 +27,8 @@ Admins never touch code. Everything is managed through the admin UI.
 | Suggestions list | ✅ | ✅ | Filters: category/subcategory/author/published/search/sort |
 | Suggestion editor | ✅ | ✅ | Saves items + suggestions + extension tables; DB-backed extra options; Portrait/Landscape image uploads + Trailer URL wired |
 | Users | ✅ | ✅ | Search, sort, pagination, badges by level |
-| Reviews | ✅ | ✅ | NEW (session 25). `/admin/reviews` — first-class moderation surface for the `reviews` table. Stats / filters / 7 sort options / inline hide-unhide with required reason. See CLAUDE.md §41. |
+| Reviews | ✅ | ✅ | NEW (session 25, consolidated session 28). `/admin/reviews` — first-class moderation surface for the `reviews` table **and** their reports. Top "Unresolved (N)" section + REPORTS column with 3-state badge (black=unresolved / green=resolved history / "0"=pristine). Per-report Keep/Hide via drawer. Hide endpoint auto-resolves pending reports. See CLAUDE.md §41. |
+| Reports | 🚫 | — | **Deprecated session 28.** Was a separate moderation queue across all `content_reports` target_types; in practice only reviews are reported (suggestions are admin-curated). Folded into `/admin/reviews`. The `PATCH /api/admin/reports/[id]` resolution endpoint stays. |
 | Legacy Comments | ✅ | ✅ | Frozen K2-archive `comments` table (343 rows) — moderation surface for historic content. Moved from `/admin/reviews` → `/admin/legacy-comments` in session 25 (was confusingly labelled "Comments (Legacy)" sharing the canonical reviews route). |
 | Review detail | ✅ | ✅ | Reports section, hide w/ reason, author flagged history |
 | Extra Fields | ✅ | ✅ | Collapsed cards + wizard (paste options bulk) |
@@ -73,8 +74,7 @@ Proteino•
 ├── Overview                        → /admin
 
 MODERATION  ● red
-├── Reviews                         → /admin/reviews             [session 25 — NEW reviews table]
-├── Reports                         → /admin/reports             [content_reports across all target_types]
+├── Reviews                         → /admin/reviews             [session 25 + session 28 — reviews + their reports]
 ├── Suggestions                     → /admin/suggestions
 └── Data Quality                    → /admin/data-quality
 

@@ -50,11 +50,12 @@ export default async function AdminOverviewPage() {
     aiUsage14Res,
     appSettings,
   ] = await Promise.all([
-    sb.from("content_reports").select("id", { count: "exact", head: true }).eq("resolved", false),
+    sb.from("content_reports").select("id", { count: "exact", head: true }).eq("resolved", false).eq("target_type", "review"),
     sb
       .from("content_reports")
       .select("created_at")
       .eq("resolved", false)
+      .eq("target_type", "review")
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle(),
@@ -67,7 +68,7 @@ export default async function AdminOverviewPage() {
     sb.from("items").select("id", { count: "exact", head: true }).is("subcategory_id", null),
     sb.from("items").select("id", { count: "exact", head: true }).is("cover_url", null),
     // Sparkline raw data — last 14 days of `created_at` per surface.
-    sb.from("content_reports").select("created_at").gte("created_at", fourteenDaysAgo).limit(5000),
+    sb.from("content_reports").select("created_at").eq("target_type", "review").gte("created_at", fourteenDaysAgo).limit(5000),
     sb
       .from("suggestions")
       .select("created_at")
@@ -147,7 +148,7 @@ export default async function AdminOverviewPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <AttentionCard
               index={0}
-              href="/admin/reports"
+              href="/admin/reviews"
               label="Reports pending"
               count={pendingReports}
               tone={pendingReports > 0 ? "red" : "clear"}

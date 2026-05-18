@@ -1633,8 +1633,8 @@ Fix: introduce a cookie-aware auth client (`createClient` from `@/lib/supabase/s
 
 ---
 
-## 41. Admin IA + visual refresh (session 25)
-> ✅ Shipped — sidebar regrouped into 6 jobs-based sections, Overview rewritten as a control room, new `/admin/reviews` surface, legacy comments split.
+## 41. Admin IA + visual refresh (session 25, consolidated session 28)
+> ✅ Shipped — sidebar regrouped into 6 jobs-based sections, Overview rewritten as a control room, new `/admin/reviews` surface, legacy comments split. **Session 28 consolidation:** `/admin/reports` removed entirely; review-report moderation now lives inside `/admin/reviews` (top "Unresolved" section + REPORTS column with 3-state badge).
 
 ### Sidebar — 6 jobs-based sections
 
@@ -1642,8 +1642,7 @@ Fix: introduce a cookie-aware auth client (`createClient` from `@/lib/supabase/s
 Overview
 
 MODERATION                     ← red dot
-  Reviews                      (NEW — new reviews table moderation)
-  Reports
+  Reviews                      (handles both reviews + their reports)
   Suggestions
   Data Quality
 
@@ -1694,7 +1693,25 @@ Fail-soft when `ai_usage_log` migration (019) isn't applied — AI spend default
 
 ### `/admin/reviews` — first-class moderation for the new reviews table
 
-Reads from `reviews` directly (the route formerly pointed at the legacy K2 `comments` table). Stats strip (Total / Last 24h / Reported / Hidden — clickable as filters), text search on reflection, mode chips (all / with-text / rating-only / reported / hidden), 1–5★ filter, per-category filter, 7 sort options. Inline hide/unhide via `POST /api/admin/reviews/[id]/hide` (admin-gated, service-role write, ≥5-char reason required, audit-trailed in `hidden_by` / `hidden_at` / `hidden_reason`).
+Reads from `reviews` directly (the route formerly pointed at the legacy K2 `comments` table). Stats strip (Total / Last 24h / **Unresolved** / Hidden — clickable as filters), text search on reflection, mode chips (all / with-text / rating-only / hidden), 1–5★ filter, per-category filter, 6 sort options. Inline hide/unhide via `POST /api/admin/reviews/[id]/hide` (admin-gated, service-role write, ≥5-char reason required, audit-trailed in `hidden_by` / `hidden_at` / `hidden_reason`).
+
+### Consolidated reports flow (session 28)
+
+User-reported reviews land in `content_reports` with `target_type='review'` (suggestions are admin-curated and can't be user-reported in practice). Previously these flowed through a separate `/admin/reports` page; that route was removed in session 28 and the moderation surface folded into `/admin/reviews`:
+
+- **Unresolved section** at the top of the page — server-fetched on each request, lists every review with at least one pending report. Always visible, not paginated, sits above the main list.
+- **REPORTS column** on every row, three states:
+  - **Black filled circle with count** — unresolved reports. Click → opens a reports drawer.
+  - **Green filled circle with count** — resolved-only history (some reports were filed, all dismissed/hidden). Visual context, no action needed.
+  - **Plain "0"** — never reported, pristine.
+- **Reports drawer** (per row, opens on badge click) — lists every pending report for that review with reason, description, reporter, timestamp. Headline: **"Είναι έγκυρη η αναφορά;"** + two answer buttons:
+  - **Όχι — άσε το review** → resolves just this report via `PATCH /api/admin/reports/[id]` action='kept'; review stays visible. Other pending reports on the same review stay open.
+  - **Ναι — απόκρυψη review** → soft-hides the review via `PATCH /api/admin/reports/[id]` action='hidden'; auto-resolves every pending report for that review with the same admin note.
+- **Optional: warn the review author.** On the "Ναι" path, a checkbox under the admin note offers "Προειδοποίηση και στον συγγραφέα του review". When checked + submitted, after the hide lands a parallel `POST /api/admin/users/[author_id]/warn` writes a `{ kind: 'review_hidden', source_review_id, source_report_id, note }` entry to `users.admin_warnings` (migration 039). Append-only audit log — never removed even after the source review is unhidden.
+- **Reporter abuse signal.** When the drawer opens, a thin browser-client query against `content_reports` derives per-reporter stats: `{ total, dismissed, hidden, pending }`. If `dismissed ≥ 2 && total ≥ 3 && dismissed/total ≥ 0.5`, a red "⚠ Reporter: N αναφορές · M απορριφθείσες (X%)" line surfaces under the "Από" row with a **"Σήμανε ως καταχραστή"** action. Clicking it `POST /api/admin/users/[reporter_id]/warn` with `{ kind: 'abusive_reporter', ... }` — appends to the same audit log. Independent of the keep/hide decision; admin can flag without resolving, or vice versa.
+- **Hide endpoint also auto-resolves** — `POST /api/admin/reviews/[id]/hide` (called from the row's hover action or keyboard shortcut) now mirrors the bulk-resolve path: hiding a review marks all its open `content_reports` rows resolved with `action='hidden'` and the same admin note. Keeps the two entry points behaviourally aligned.
+
+The `PATCH /api/admin/reports/[id]` endpoint stays (audit trail, single-source-of-truth for resolution). The deleted bits: `app/admin/reports/page.tsx` + `components/admin/ReportsTable.tsx` + the sidebar entry + the `pendingReports` counter (renamed `pendingReviewReports` and now attached to the Reviews sidebar entry).
 
 ### Legacy comments split
 
