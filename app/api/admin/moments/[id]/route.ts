@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { executeWithAuditFallback, getAdminAuditUserId } from "@/lib/admin/audit";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -51,11 +52,13 @@ export async function PATCH(req: NextRequest, props: RouteParams) {
   }
 
   const sb = createAdminClient();
-  const { data, error } = await (sb.from("moments") as any)
-    .update(patch)
-    .eq("id", params.id)
-    .select("*")
-    .single();
+  const userId = await getAdminAuditUserId();
+  const { data, error } = await executeWithAuditFallback(
+    (stamped) =>
+      (sb.from("moments") as any).update(stamped).eq("id", params.id).select("*").single(),
+    patch,
+    userId,
+  );
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }

@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidateCategory, revalidateHome } from "@/lib/revalidate";
 import { isWidgetFixed } from "@/lib/layout/widgets";
+import { executeWithAuditFallback, getAdminAuditUserId } from "@/lib/admin/audit";
 
 const VALID_AUDIENCES = new Set(["all", "registered", "guest"]);
 
@@ -41,11 +42,13 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   }
 
   const sb = createAdminClient();
-  const { data, error } = await (sb.from("page_sections") as any)
-    .update(patch)
-    .eq("id", id)
-    .select()
-    .single();
+  const userId = await getAdminAuditUserId();
+  const { data, error } = await executeWithAuditFallback<{ context: string; category: string | null } & Record<string, unknown>>(
+    (stamped) =>
+      (sb.from("page_sections") as any).update(stamped).eq("id", id).select().single(),
+    patch,
+    userId,
+  );
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

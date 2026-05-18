@@ -1723,10 +1723,11 @@ Moved `app/admin/reviews/` → `app/admin/legacy-comments/` (component renamed `
 
 ### Open polish items (admin)
 
-- **Audit log** "recent admin changes" on Overview — needs `modified_by` columns across the relevant tables.
-- **`Last edited by X on Y`** stamps on Moments / Layout / Filters / Collections — same prerequisite.
-- **Confirm-before-save** on Settings / Layout / Maintenance — risky surfaces shouldn't be one-click commits.
-- **Merge Reports + Data Quality into a single Inbox** — needs new UI scaffolding.
+- **✅ Audit log on Overview** — shipped (migration 040 + `<RecentChanges>` widget on `/admin`). Reads `modified_at` + `modified_by` from `moments`, `page_sections`, `collections`, `related_sections_config`, `category_filters`. Five PATCH endpoints stamp the columns via `lib/admin/audit.ts:executeWithAuditFallback` (degrades silently when the migration isn't applied — every per-table SELECT that errors with `42703` returns `[]`).
+- **✅ Confirm-before-save on Settings/Layout** — shipped via new `<ConfirmDialog>` primitive. Settings opens the dialog only when maintenance_mode flips OFF → ON (other field saves proceed). Layout swapped its `window.confirm` for the modal on section delete.
+- **⏳ `Last edited by X on Y` stamps on per-row UIs** — `MomentRow` type extended in `lib/moments/types.ts` to carry `modified_at` + `modified_by`. Render-side wiring on Moments/Layout/Filters/Collections rows still open.
+- **⏳ POST routes don't stamp `modified_by` on initial create** — covered only by the PATCH path. Trivial follow-up.
+- **⏳ Merge Reports + Data Quality into a single Inbox** — needs new UI scaffolding.
 
 ---
 

@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateFrontend } from "@/lib/revalidate";
+import { executeWithAuditFallback, getAdminAuditUserId } from "@/lib/admin/audit";
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -21,7 +22,13 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   }
 
   const sb = createAdminClient();
-  const { error } = await (sb.from("category_filters") as any).update(patch).eq("id", params.id);
+  const userId = await getAdminAuditUserId();
+  const { error } = await executeWithAuditFallback(
+    (stamped) =>
+      (sb.from("category_filters") as any).update(stamped).eq("id", params.id),
+    patch,
+    userId,
+  );
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   revalidateFrontend();
   return NextResponse.json({ ok: true });

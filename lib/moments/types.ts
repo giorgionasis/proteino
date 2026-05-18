@@ -40,6 +40,10 @@ export interface MomentRow {
   is_active:      boolean;
   valid_from:     string | null;
   valid_until:    string | null;
+  /** Audit stamps from migration 040. Null when never edited since
+   *  migration was applied. */
+  modified_at?:   string | null;
+  modified_by?:   string | null;
 }
 
 /** Copy templates — strings with {placeholder} interpolation +

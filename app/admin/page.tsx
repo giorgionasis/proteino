@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAppSettings } from "@/lib/app-settings";
+import { RecentChanges } from "@/components/admin/RecentChanges";
 
 // Gemini Flash-Lite pricing (USD per 1M tokens) — same as /admin/ai-usage
 const PRICE_INPUT_PER_M = 0.04;
@@ -236,8 +237,18 @@ export default async function AdminOverviewPage() {
           </div>
         </section>
 
-        {/* Row 3 — Quick actions */}
-        <section className="animate-in fade-in slide-in-from-bottom-2 duration-500" style={{ animationDelay: "480ms", animationFillMode: "backwards" }}>
+        {/* Row 3 — Recent admin changes (silently hidden when migration 040
+            unapplied or no row has ever been touched). */}
+        <section
+          className="mb-10 animate-in fade-in slide-in-from-bottom-2 duration-500"
+          style={{ animationDelay: "420ms", animationFillMode: "backwards" }}
+        >
+          <SectionHeading>Recent changes</SectionHeading>
+          <RecentChanges />
+        </section>
+
+        {/* Row 4 — Quick actions */}
+        <section className="animate-in fade-in slide-in-from-bottom-2 duration-500" style={{ animationDelay: "540ms", animationFillMode: "backwards" }}>
           <SectionHeading>Quick actions</SectionHeading>
           <div className="flex flex-wrap gap-2.5">
             <QuickAction href="/admin/suggestions/new" label="New suggestion" icon={<IconDiamond />} />
