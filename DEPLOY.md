@@ -67,6 +67,7 @@ scripts/sql/036-moments-review-published.sql
 scripts/sql/037-items-admin-review.sql
 scripts/sql/038-nearby-related-section.sql
 scripts/sql/039-user-admin-warnings.sql
+scripts/sql/040-admin-audit-stamps.sql
 ```
 
 **Note:** Migration 016 wipes the legacy `ratings` table and resets `items.rating_count` / `avg_rating` to 0 across all items. The legacy `comments` and `ratings` tables stay in the DB as archive but are NOT read by the new UI — all reviews from now on flow through the new `reviews` table (rating mandatory + reflection optional, one row per (user, item)).
@@ -76,6 +77,8 @@ scripts/sql/039-user-admin-warnings.sql
 **Note:** Migration 036 extends `moments.trigger_event` CHECK to include `'review_published'` and seeds 5 review-milestone celebrations (counts 1 / 5 / 10 / 25 / 50). Drops the existing CHECK constraint and re-adds it with the new value. Idempotent. See CLAUDE.md §42 + PROGRESS.md session 26.
 
 **Note:** Migration 039 adds `users.admin_warnings jsonb DEFAULT '[]'` + a GIN index. Append-only audit log used by the consolidated review-reports drawer (CLAUDE.md §41) when an admin opts to warn a review's author or flag a reporter as abusive. Idempotent.
+
+**Note:** Migration 040 adds `modified_by uuid REFERENCES users(id) ON DELETE SET NULL` + `modified_at timestamptz` columns plus partial indexes to: `moments`, `page_sections`, `collections`, `related_sections_config`, `category_filters`. Powers the `<RecentChanges>` widget on `/admin` Overview + the `/api/admin/audit-log` endpoint. Five PATCH endpoints stamp the columns via `lib/admin/audit.ts:executeWithAuditFallback` — which retries the UPDATE without stamps on Postgres code `42703` so the codebase still functions before the migration lands. Idempotent.
 
 Each is idempotent (uses `IF NOT EXISTS` / `ON CONFLICT DO NOTHING`); rerunning is safe.
 

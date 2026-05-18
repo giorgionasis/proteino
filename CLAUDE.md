@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-18 (session 28 — admin moderation consolidation: review reports folded into /admin/reviews; warn endpoint + audit log; warnings surfaced in /admin/users)
+**Last meaningful update:** 2026-05-19 (session 29 — pre-Phase-B polish sweep: 18 tasks across boundaries, /terms+/privacy, PWA manifest, OAuth log strip, admin alert/prompt → Toast/PromptModal, Gemini review-composer coaching, migration 040 admin audit log + RecentChanges widget)
 
 ---
 

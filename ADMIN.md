@@ -60,6 +60,9 @@ Admins never touch code. Everything is managed through the admin UI.
 | Layout (page composition) | ✅ | ✅ | `/admin/layout` — DB-driven page composition via `page_sections` (migrations 032 + 033). Category + home pages support reorder, add, delete, audience toggle, mobile-frame iframe preview. See CLAUDE.md §37 |
 | Related Sections (detail pages) | ✅ | ✅ | `/admin/related-sections` — admin-defined "More from {director|writer|actor}" carousels per category via `related_sections_config` (migration 034). Auto-hide when `min_items` threshold isn't met. See CLAUDE.md §38 |
 | Moments | ✅ | ✅ | `/admin/moments` — DB-driven copy + timing + conditions for in-app moments (bookmark celebration, achievement modal — for BOTH suggestion milestones [1/2/3/7/9/10/22/24/25/47/49/50] AND review milestones [1/5/10/25/50] per migration 036, …). See PROGRESS.md session 21 + 26 |
+| Audit log (Overview) | ✅ | ✅ | NEW (session 29 — migration 040). `<RecentChanges>` widget surfaces last N admin actions across moments/page_sections/collections/related_sections_config/category_filters. `/api/admin/audit-log` endpoint unions tables. PATCH endpoints stamp via `lib/admin/audit.ts:executeWithAuditFallback` (graceful degradation when migration unapplied). Per-row "Last edited by X on Y" stamps on manager UIs are the next follow-up. |
+| Confirm-before-save | ✅ | ✅ | NEW (session 29). Generic `<ConfirmDialog>` primitive in `components/ui/`. Settings dialog fires when maintenance_mode flips OFF → ON. Layout section-delete swapped from `window.confirm()` to modal. |
+| Toast / PromptModal primitives | ✅ | ✅ | NEW (session 29). All 14 admin native `alert()`/`prompt()` sites refactored to `useToast()` + new `<PromptModal>` (single-line or multiline input, min-length validator). |
 
 Legend: ✅ done · ⏳ mock UI exists, needs data wiring · 🚫 deprecated
 
@@ -118,6 +121,13 @@ Active link state: soft `bg-coral-50 text-coral-700` pill. All hrefs preserved (
 - Total users
 - Total items
 - Quick create buttons: Suggestion, Collection, Activity
+
+**Recent changes widget (session 29 — migration 040):**
+- `<RecentChanges/>` server component between "Last 7 days" and "Quick actions"
+- Reads `modified_at` + `modified_by` from moments / page_sections / collections / related_sections_config / category_filters
+- 8 most recent entries, color-coded kind chip + admin handle + relative time
+- Each row click-throughs to the relevant manager surface
+- Renders `null` when no rows have been touched yet — graceful empty
 
 ---
 

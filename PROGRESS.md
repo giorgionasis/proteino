@@ -1,12 +1,88 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-18 (session 28 — admin moderation consolidation + user warnings audit log)
+Last updated: 2026-05-19 (session 29 — pre-Phase-B polish sweep: 18 tasks across boundaries, legal/PWA, AI coaching, admin audit log)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 28 (current) finished:**
+**Current state — session 29 (current) finished:**
+
+Full pre-Phase-B polish pass — a deep audit of the codebase surfaced ~17 gaps (dead routes, missing boundaries, doc drift, native alerts, legal pages, PWA manifest, admin audit log). User picked the most impactful 18 items across three batches; all shipped. Branch `main` is 4 commits ahead of origin.
+
+**Shipped — Batch 1 (commit `3b186e2`) — boundaries + cleanup:**
+- ✅ **App-wide error/loading/404 boundaries** — `app/not-found.tsx` + `app/error.tsx` (root), `app/(main)/loading.tsx` + `app/(main)/error.tsx` (main shell — keeps header/nav), `app/(main)/[category]/[id]/not-found.tsx` (item-specific 404 with "search for something else" CTA), `app/admin/loading.tsx` + `app/admin/error.tsx`. Detail page already called `notFound()` correctly; the new boundary just catches it. Greek-localized copy throughout, brand-consistent coral CTA. The whole app was previously running on Next's default error overlay + bare 404.
+- ✅ **OAuth debug logs stripped** — `components/auth/OAuthButtons.tsx` had 9 `console.log` calls dumping provider / URL / loading state / Supabase env. Production blocker. Kept one `console.error` for actual exception path.
+- ✅ **Legacy `/showcase` public route deleted** — 612 lines of unauthenticated showcase, dated April. The canonical surface is `/admin/showcase` (admin-gated, 16 tabs).
+- ✅ **`middleware.ts` → `proxy.ts`** — Next 16's rename convention. Function renamed `middleware` → `proxy`, comment updated. Compat shim was still loading the old name; the rename is the canonical form now.
+- ✅ **Confidence-tiered conversational match verified shipped, not pending.** CLAUDE.md §7 listed it as "PENDING" but the `<MatchConfirmCard>` (medium tier — "Νομίζω είναι X. Σωστό; Ναι / Όχι") and `<MatchAlternatives>` (low tier — horizontal candidate cards) were already wired in `SuggestionOverlay.tsx`, calling `useSubmission.confirmMatch` / `rejectMatch` / `chooseAlternative`. The audit was wrong; doc drift on CLAUDE.md.
+- ✅ **Google Books + Places enrichment alternatives populated.** Both helpers (`lib/enrichment/google-books.ts` + `google-places.ts`) used to return a single `match` object; extended to return `{ best, alternatives }` (top-2 runner-ups, deduped by id, score-sorted). `/api/ai/match/route.ts` books + venues branches now populate the alternatives array with proper `match_data` payloads so `chooseAlternative` can swap to a runner-up without a server roundtrip. Tier calculator also gap-tests the books runner-up score (was always null before). Stale TODOs at lines 404 + 641 deleted.
+- ✅ **Cover fallback verified across 9 detail pages** — every hero wrapper has `bg-zinc-200` placeholder. Layouts don't break when `cover_url IS NULL`. SeriesDetail uses 📺 emoji while others show plain gray (logged as a minor inconsistency; not a layout break).
+- ✅ **`/help` orphan route wired** — sidebar settings ("Κέντρο Βοήθειας" → `/help`) + FooterMobile re-pointed from `/support`. "Επικοινωνία" kept at `/support`. Removed 3 dead footer entries (Chat / Στατιστικά / Πως υπολογίζονται) that all pointed to /support.
+
+**Shipped — Batch 2 (commit `6ef052c`) — dead code + UX polish + admin alert/prompt:**
+- ✅ **`/submit` empty shell deleted** — `app/(main)/submit/page.tsx` was 11 lines of `<main>` with a placeholder comment. Submission only ever ran through the FAB overlay. Route gone.
+- ✅ **`useRecommendations` + `/api/recommendations` dead code deleted** — the hook had zero consumers in production code. The API returned 2 hardcoded mock items (`{id:"r1", ...}`) that would 404 if clicked. Hook also referenced `/api/recommendations/popular` which never existed. All three files removed.
+- ✅ **Bookmarks empty state for non-own profile** — previously rendered silently empty because RLS is own-only. Now shows lock icon + "Ιδιωτικά αγαπημένα — οι αποθηκεύσεις κάθε χρήστη είναι ορατές μόνο σε αυτόν." Honest about the privacy contract instead of implying the user has no bookmarks.
+- ✅ **"Σύντομα" chip on guest HeroSuggest removed** — guest-facing "coming soon" pill that exposed unfinished hero placeholders. Kept the gradient + emoji + tagline (visual variety still works); just dropped the staleness signal.
+- ✅ **CLAUDE.md drift corrected.** §21 image schema flipped from `⏳ PENDING` to `✅ Shipped (core path)` since TMDB / Google Books / Google Places enrichment all run via `/api/admin/enrich`. §3 legacy `comments` table footnote updated to mention `/admin/legacy-comments` (renamed in session 25 + consolidated in session 28) and the still-active `reportedComments` counter.
+- ✅ **Admin alert/prompt → Toast + PromptModal** across **all 14 admin sites**:
+  - **New `components/ui/PromptModal.tsx`** — generic replacement for native `prompt()`. Single-line or multiline input, min-length validator, Enter-to-submit, danger/default tone, focus-restore via `requestAnimationFrame`.
+  - 5 alert sites in `RegionsManager` (save/delete/create/move errors), 2 in `MomentsManager` (delete/duplicate failures), 1 in `LayoutManager` (delete error), 3 in `RelatedSectionsManager` (update/delete/create errors), 1 in `CategoryDetail` (items-still-using-this-subcategory) → all now use `useToast()` with `tone: "error"`.
+  - 2 prompt sites in `ReviewsAdminTable` (hide-reason input + abusive-reporter flag note) → restructured from synchronous `prompt()` to async `<PromptModal>` state pattern. `toggleHidden` now opens the modal; the actual fetch fires from the modal's `onConfirm` via a new `executeHide(row, willHide, reason)` extracted helper. Same shape for `flagReporterAsAbusive` (was prompt + alert; now PromptModal + Toast).
+
+**Shipped — Batch 3 (commit `33461be`) — launch readiness + review coaching + risky-save confirms:**
+- ✅ **`/terms` + `/privacy` pages** — Greek-market boilerplate (legal review still needed for production but structure + placeholder content land the URLs). New `components/legal/LegalPage.tsx` shell mirrors HelpPage's visual grammar: InnerHeader, hero with last-updated date, sectioned body, mailto CTA, cross-link footer. 9 sections in Terms (acceptance / account / user-content / community rules / 3rd parties / disclaimer / termination / changes / Greek law), 9 in Privacy (collection / use / storage / cookies / 3rd parties / GDPR rights / minors / changes / DPO).
+- ✅ **Link retargeting** — `RegisterForm.tsx` "Όρους Χρήσης" + "Πολιτική Απορρήτου" now point to `/terms` + `/privacy` (was `/support` for both — legal compliance gap). FooterMobile's "Legal" row same retarget. Sitemap.ts includes both new routes with yearly changeFrequency.
+- ✅ **PWA manifest + dynamic icons** — `app/manifest.ts` (name / start_url / scope / standalone display / portrait orientation / coral theme_color / Greek lang / categories). Dynamic `app/icon.tsx` (32×32 favicon — coral square + white "P") and `app/apple-icon.tsx` (180×180 — coral background + Proteino wordmark with signature dot), both via `next/og` `ImageResponse`. Theme color in `app/layout.tsx` viewport flipped from old `#D85A30` to canonical `#FE6F5E`. App is now installable on iOS/Android home screens.
+- ✅ **Gemini coaching overlay on review composer** — content-aware suggestions on top of the char-count tiered praise in `<RateThisItem>`. Reuses existing `/api/ai/coaching-tip` + `lib/ai/stream-coaching-tip.ts` (originally built for the submission flow's IntelligencePanel — the prompt is generic enough to work for reviews unchanged). 60-char threshold matches the server's 204 floor, 800ms debounce, AbortController cancels in-flight on every keystroke, `lastCoachingRef` feeds the API's anti-repeat hard rule so Gemini picks a fresh angle each cycle. Renders as a coral-tinted hint box ("✨ Θα μ' ενδιέφερε να μάθω και τι σου άρεσε στον πρωταγωνιστή") below the existing quality message.
+- ✅ **New `components/ui/ConfirmDialog.tsx`** — generic non-destructive AND destructive confirm dialog. Portal-mounted, body-scroll lock, Esc-dismisses, three tones (default / warning / danger). Differs from the existing `<ConfirmDeleteDialog>` (profile-scoped, hard-coded delete icon) — this is the reusable primitive.
+- ✅ **Confirm-before-save on Settings** — `SettingsManager` now opens `<ConfirmDialog tone="danger">` when the admin flips `maintenance_mode` OFF → ON. Shows the maintenance message preview inside the dialog body. Other field saves (site_name, tagline, etc.) proceed without friction. Cancel keeps the draft intact.
+- ✅ **Confirm-before-delete on LayoutManager** — section delete swapped from `window.confirm()` to the new ConfirmDialog. Cleaner, mobile-friendly, fits the rest of the admin UI.
+
+**Shipped — Batch 4 (commit `fb8809f`) — admin audit log + modified_by stamps:**
+- ✅ **Migration 040** — `scripts/sql/040-admin-audit-stamps.sql`. Adds `modified_by uuid REFERENCES users(id) ON DELETE SET NULL` + `modified_at timestamptz` to `moments`, `page_sections`, `collections`, `related_sections_config`, `category_filters`. Plus partial GIN indexes on each `modified_at` (where NOT NULL) to keep the recent-changes feed snappy. **Applied in Supabase 2026-05-19.**
+- ✅ **`lib/admin/audit.ts`** — `getAdminAuditUserId()` resolves the auth user via the cookie-aware server client. `withAuditStamps(patch, userId)` merges `{ modified_by, modified_at: ISO }` into any patch. `executeWithAuditFallback<T>(runner, basePatch, userId)` runs the UPDATE with stamps; on `code === '42703'` (column not found) retries without — graceful degradation when migration 040 isn't applied yet. Generic-typed so callers preserve their data shape.
+- ✅ **5 PATCH endpoints stamped:**
+  - `/api/admin/moments/[id]`
+  - `/api/admin/page-sections/[id]`
+  - `/api/admin/collections/[id]`
+  - `/api/admin/related-sections/[id]`
+  - `/api/admin/category-filters/[id]`
+  Each imports the audit helpers, fetches the current admin's auth id, and routes its UPDATE through `executeWithAuditFallback`.
+- ✅ **`/api/admin/audit-log`** — GET endpoint that unions the most recent (default 10) changes across the 5 tables. Per-table fetch wrapped in 42703 → `[]` fallback so the page still renders before the migration lands. Batched `users` SELECT resolves `modified_by_id` → `{ handle, display_name }`. Returns typed `{ entries: AuditEntry[] }` with `kind`, `id`, `label`, `modified_at`, `modified_by`.
+- ✅ **`<RecentChanges/>` widget on `/admin` Overview** — server-rendered between "Last 7 days" and "Quick actions". 8 entries max, color-coded kind chip (Moment violet / Layout blue / Collection emerald / Related-rule amber / Filter zinc), label, admin handle, relative time ("just now", "5m ago", "3d ago"). Each entry click-throughs to the relevant manager surface. Renders `null` when no rows have been touched yet (migration just applied) or when migration 040 hasn't landed — graceful empty.
+- ✅ **`MomentRow` type extended** with optional `modified_at` + `modified_by` in `lib/moments/types.ts`. Foundation for per-row "Last edited by X on Y" stamps on the manager UIs — render-side wiring is the next follow-up.
+
+**Files touched (session 29):**
+- New boundaries: `app/not-found.tsx`, `app/error.tsx`, `app/(main)/{loading,error}.tsx`, `app/(main)/[category]/[id]/not-found.tsx`, `app/admin/{loading,error}.tsx`
+- New primitives: `components/ui/PromptModal.tsx`, `components/ui/ConfirmDialog.tsx`, `components/legal/LegalPage.tsx`, `components/admin/RecentChanges.tsx`
+- New pages: `app/(main)/{terms,privacy}/page.tsx`
+- PWA: `app/manifest.ts`, `app/icon.tsx`, `app/apple-icon.tsx`
+- Admin audit lib: `lib/admin/audit.ts`
+- Audit log endpoint: `app/api/admin/audit-log/route.ts`
+- Migration: `scripts/sql/040-admin-audit-stamps.sql`
+- Renamed: `middleware.ts` → `proxy.ts`
+- Deleted: `app/showcase/page.tsx`, `app/(main)/submit/page.tsx`, `app/api/recommendations/route.ts`, `hooks/useRecommendations.ts`
+- Refactored: 5 admin managers (Regions, Moments, Layout, CategoryDetail, RelatedSections) + `ReviewsAdminTable.tsx` + `OAuthButtons.tsx` + `RateThisItem.tsx` + `HeroSuggest.tsx` + `BookmarksCategoryPage.tsx` + `SettingsManager.tsx` + `SuggestionOverlay.tsx` (no-op verify) + 5 admin PATCH endpoints + Supabase enrichment helpers
+- Docs: CLAUDE.md (§3 + §21 drift, §41 polish status), PROGRESS.md, START.md, DEPLOY.md
+
+**Stats:** 4 commits, ~+1,850 / -750 across ~45 files. `npx tsc --noEmit` → 0 errors throughout. Migration 040 applied in Supabase before session end.
+
+**Open follow-ups (next session — pre-Phase-B):**
+- **Phase B — pgvector recommendations.** Now the focus. ~5 days. Architecture in AI.md §4 + PROGRESS §3 Phase B. 1953-item corpus is rich enough; unlocks "Tailored for You" + real "because you liked X" reasoning.
+- **§39 SEO closing:** `noindex` on thin pages (empty category lists, profile pages with 0 suggestions, /onboarding), canonical URLs on category + profile pages, K2 → new 301 redirect map (needs sample of old URL format from user).
+- **§41 admin polish remainder:** per-row "Last edited by X on Y" stamps on Moments / Layout / Filters / Collections manager UIs (`MomentRow` already typed; render-side wiring open), POST endpoints stamping `modified_by` on initial create (only the PATCH path covers it today), merge Reports + Data Quality into a single Inbox.
+- **§42 review milestones:** per-category review milestones (admin can compose via `/admin/moments` with `review_count_eq` + future `category_eq` predicate), streak milestones (`reviews_this_week_eq`, `reviews_this_month_eq` — needs a new windowed predicate).
+- **§43 runtime polish:** React Compiler beta trial (~2h to evaluate, would remove ~80% of `useMemo`/`useCallback` boilerplate), PPR / Cache Components for the 9 detail pages (Next 16's PPR splits static shell + dynamic content; detail pages are the obvious candidate).
+- **Per-category visual identity** (UI_AUDIT.md option B — ~1.5 weeks): cinematic hero for movies, warm photographic for hotels, paper-typographic for books.
+- **Σύντομα hero images** — `public/heroes/hero_suggestion_recipe.png` is the only ready one. Other 5 vignettes in `constants/heroSuggestions.ts` still render the emoji fallback (chip now gone; placeholder is clean). Source 5 real photos to flip `ready: true`.
+- **Real legal copy** — `/terms` + `/privacy` are placeholder-shaped real-looking text. A lawyer should review before production launch.
+- **Drop legacy `ratings` / `comments` tables** — data already wiped, archive only. The `comments` table still pings the `reportedComments` counter (for K2 archive moderation).
+
+---
+
+**Previous state — session 28 finished:**
 
 Admin moderation consolidation. The standalone `/admin/reports` queue was confusingly parallel to `/admin/reviews` even though in practice every report is filed against a review (suggestions are admin-curated and can't be user-reported). Folded the whole flow into `/admin/reviews`.
 
