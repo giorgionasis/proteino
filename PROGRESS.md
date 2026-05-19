@@ -1,12 +1,88 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-19 (session 30 — Biblionet smoke test + Phase B day-by-day plan locked)
+Last updated: 2026-05-19 (session 31 — cleanup pass + image-wipe bug fix + profile lists v2)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 30 (current) finished:**
+**Current state — session 31 (current) finished:**
+
+Three workstreams advanced in one long session: a planned **cleanup pass**, an **unplanned critical bug fix** (admin save was silently wiping `items.images` JSONB on rows with the new dual-shape — discovered investigating a single missing-images report, but the bug was systemic), and a follow-up **profile lists redesign**.
+
+### Shipped — cleanup pass (the planned half)
+
+The user picked items 1–7 from a curated list, all shipped:
+
+1. ✅ **`feedback_books_data_source` memory file persisted.** CLAUDE.md §44 / PROGRESS §0 (session 30) had claimed it was saved; the file was missing. Recovered the 5 locked decisions into `~/.claude/projects/-Users-georgenasis-Code-proteino/memory/feedback_books_data_source.md` + index entry.
+2. ✅ **forwardRef → ref-as-prop sweep.** 6 files, 15 occurrences. Simple cases (Button / IconButton / Input / Textarea / AdminRow's AdminActionButton) converted to `function Foo({ ref, ...props }: Props & { ref?: React.Ref<...> })`. SuggestionEditor's 9 `useImperativeHandle` wrappers + the ExtraFieldsSection router converted the same way (`useImperativeHandle(ref, ...)` still works unchanged when `ref` is just a regular prop). `displayName` boilerplate dropped throughout. CLAUDE.md §43 status flips from "left alone for a future cleanup pass" to "done".
+3. ✅ **`modified_by` stamped on 5 admin POST routes.** `/api/admin/moments`, `/page-sections`, `/collections` (single + batch placements), `/related-sections`, `/category-filters`. Audit columns from migration 040 were only being set on PATCH; now also on initial create. New `executeManyWithAuditFallback` helper in `lib/admin/audit.ts` for the placement batch insert.
+4. ✅ **"Last edited by X · Y ago" rendered in 4 admin manager UIs.** New `<RowAuditFooter>` primitive in `components/admin/ui/RowAuditFooter.tsx` (consumes `modified_at` + `modified_by` + `userMap`, returns `null` when not edited yet). New `resolveAdminUserMap` server helper in `lib/admin/audit.ts` (batches `users` lookup for a list of rows). Wired into:
+   - `MomentsManager` (via server-fetched `userMap` prop on `/admin/moments/page.tsx`)
+   - `LayoutManager` (`/api/admin/page-sections` GET now returns `{ sections, userMap }`)
+   - `FiltersManager` (`/api/admin/category-filters` GET now returns `{ filters, userMap }`)
+   - `CollectionsList` (`/api/admin/collections?context=...` now returns `{ placements, userMap }`)
+   - Also extended `PageSectionRow` + `FilterRow` + `CollectionRow` types with optional `modified_at` / `modified_by`.
+5. ✅ **Audit-log endpoint column-name bugs fixed.** `/api/admin/audit-log` was querying `moments.name`, `collections.name`, `category_filters.field_label` — none of which exist. Every per-table call was silently returning `[]` (42703 fallback). RecentChanges widget on `/admin` Overview was therefore always empty. Fixed: `moments` → `key, label` (label || key for the entry label); `collections` → `title, title_specific`; `category_filters` → `label`.
+6. ✅ **React Compiler beta trial.** `babel-plugin-react-compiler@1.0.0` installed. `next.config.mjs` updated with top-level `reactCompiler: true` (Next 16 promoted the flag out of `experimental`; we caught the deprecation warning on first build and moved it). `npx next build` → 112 routes generated, 0 bailout warnings. Compiler is now auto-memoizing every component at build time. Identified follow-up: **135 manual `useMemo`/`useCallback`/`React.memo` sites across 45 files** are now redundant — a future sweep can delete them; harmless until then.
+
+### Unplanned — the image-wipe bug
+
+User opened `http://localhost:3000/bars/etouto-ath1` and reported the gallery images were gone. Investigation:
+
+- Storage diagnostic (`scripts/check-etouto.ts`): the 5 pipeline-generated poster variants (s/m/l/xl/og) AND 4 admin-uploaded gallery photos were **all still in storage**. The row's `items.images` JSONB had been wiped to `{}` at 14:33 on 2026-05-17, ~4 hours after the gallery uploads. Legacy `cover_url` / `poster_url` columns were intact (pipeline-generated URLs).
+- Recovery (`scripts/restore-etouto-images.ts`): reconstructed the `images` JSONB from the storage files + wrote to the row. Idempotent (skips if already populated). Applied at 19:52.
+- **Root cause** (`app/admin/suggestions/[id]/page.tsx:140`):
+  ```ts
+  images: Array.isArray(item.images) ? item.images : [],
+  ```
+  The new dual-shape stores `images` as an **object** (`{ poster, backdrop, og, gallery }`), not an array. Every modern row failed the `Array.isArray` check → editor received `[]` → admin "saw" no images → any subsequent save called `mergeGalleryIntoImages([], [])` → result was `{}` → JSONB wiped. The legacy poster URL was mirrored into `cover_url` separately, so the page still half-worked — masking the bug for months.
+- **Fix** (3 prongs):
+  - `app/admin/suggestions/[id]/page.tsx` — pass `item.images ?? null` verbatim. The editor's `extractGalleryImages` already handles array OR object shapes.
+  - `components/admin/SuggestionEditor.tsx` — prop type `images?: GalleryImage[]` → `images?: unknown` (the prop was lying about its type).
+  - `app/api/admin/suggestions/route.ts` — server-side gallery merge. Client now sends only the admin-edited `gallery` array; server re-reads the row's current `images` blob and merges via `mergeGalleryIntoImages`. Eliminates the stale-mount-time race that could re-wipe the row even after the page route fix. Also strips any incoming `itemData.images` so two writers can't fight over the same column.
+- See CLAUDE.md §46 for the full save-path architecture + the dual-shape JSONB gotcha checklist.
+
+### Shipped — gallery viewer redesign (`ItemGalleryViewer`)
+
+User asked for visual cleanup on the public-facing image gallery:
+
+- **Image cells**: 240×160 → `w-[280px] aspect-[3/2]`. 280px wide, 3:2 ratio, cleaner sub-pixel rendering via CSS `aspect-ratio`.
+- **Pills**: fixed `width: 125, height: 45` → `h-11 px-5` (auto-width with consistent padding). Greek labels of any length fit without clipping. Applies to all categories with photos (food / bars / hotels) — they all share the same viewer.
+- **Empty-tab filter**: only render pills for tabs that actually have ≥1 image. Previously rendered every tab and just `disabled` the empty ones.
+- **Hide-on-one**: viewer returns `null` when ≤1 image, since a single image is the cover by convention — repeating it as a one-item strip is redundant.
+
+### Shipped — profile lists v2 (orientation-aware cards)
+
+User wasn't enthusiastic with the profile sub-pages (`/profile/[handle]/suggestions/[category]`, `/bookmarks`, `/reviews`). Specific complaint: "portrait" image choice was wrong for venues. Investigation revealed the polished `OwnSuggestionCard` and `BookmarkedCard` components existed but were unused — the list pages had forked inline cards with portrait posters for everything.
+
+- **New shared primitive** `components/profile/shared/ProfilePoster.tsx`. Reads `isPortraitCategory` from the existing helper (movies/series/books → portrait 2:3; food/bars/hotels/recipes/events/theater → landscape 3:2). Three modes: `thumb` (inline cell next to text), `hero` (full-width top of a stacked card), `tile` (grid cell).
+- **Suggestions card** — `SuggestionsByCategoryPage.tsx` rewritten with two variants. Portrait categories: row card with 76×114 poster left + title/meta/reflection right. Landscape categories: stacked card with full-width 3:2 hero on top + info below. Cards now use soft shadow (`shadow-[0_1px_3px_rgba(0,0,0,0.04)]`) + hover lift instead of hard border.
+- **Bookmarks grid** — new `BookmarksGrid` component. Portrait categories → 2-col grid with 2:3 tiles. Landscape categories → 1-col on mobile / 2-col on sm+ with 3:2 tiles (avoids cramped 140px-wide landscape thumbs on phones). RowMenu now hover/focus-revealed via `group-hover:opacity-100`.
+- **Reviews card** — replaced the inline 64×80 portrait poster with orientation-aware `ProfilePoster`. Added expand/collapse for long review text (200-char threshold, "Περισσότερα"/"Λιγότερα" CTA in coral). Star row + dot + relative time on one tight line. The old fixed-width-342 `ReviewCard` at `components/profile/reviews/ReviewCard.tsx` is still present but unused (it's a Figma-spec component, kept for showcase reference).
+- **Page chrome** (all 3 surfaces) — killed the giant 52px count badge → `text-2xl font-bold` next to a small label. Killed the "Ταξινόμηση ανά" preamble + over-padded 3-col sort row → tight `h-9 px-4` zinc-100/zinc-900 pills.
+
+### Files touched (session 31)
+
+- New code: `components/admin/ui/RowAuditFooter.tsx`, `components/profile/shared/ProfilePoster.tsx`, `scripts/check-etouto.ts`, `scripts/restore-etouto-images.ts`
+- Memory: `~/.claude/projects/-Users-georgenasis-Code-proteino/memory/feedback_books_data_source.md` (+ index entry in MEMORY.md)
+- Refactored: 6 UI primitives (forwardRef sweep), 5 admin POST routes (audit stamps), 4 admin manager UIs (audit footers), audit-log endpoint (column-name fixes), SuggestionEditor (prop type + save path), `/api/admin/suggestions` (server-side gallery merge), ItemGalleryViewer (pill + image dimensions), `app/admin/suggestions/[id]/page.tsx` (root-cause fix), 3 profile sub-page components (orientation-aware cards)
+- Config: `next.config.mjs` (`reactCompiler: true`), `package.json` (+`babel-plugin-react-compiler@1.0.0` devDep), `lib/admin/audit.ts` (3 new helpers), `lib/layout/types.ts` (PageSectionRow gets `modified_by?`)
+- Docs: CLAUDE.md (new §46 + §47, status flip on §43), PROGRESS.md (this entry), START.md (current state + next step)
+
+**Stats:** zero new migrations. `npx tsc --noEmit` → 0 errors. `npx next build` → green with React Compiler (112 routes, 8.8s build).
+
+### Open follow-ups (next session)
+
+- **Phase B day 1** — still blocked on the same two decisions from session 30 (embedding provider lock + backfill scope). Plan locked in CLAUDE.md §45.
+- **Biblionet subcategory taxonomy decision** — still blocked on user (expand to ~18 vs two-tier). Plan in CLAUDE.md §44.
+- **Audit damage scan from the image-wipe bug** — write a script that finds items where `items.images IS NULL OR images = '{}'` but storage has gallery uploads keyed to the row (matching `items-<category>/*-<some-pattern>`). Count how many rows are affected. If significant, bulk-restore using the same logic as `scripts/restore-etouto-images.ts`.
+- **Sweep redundant `useMemo`/`useCallback`** — React Compiler is now auto-memoizing. 135 manual sites across 45 files become redundant; delete them in a focused PR.
+- Everything from session 30's open list carries forward (SEO closing, real legal copy, hero images, drop legacy `ratings`/`comments` tables, K2 redirect map, per-category visual identity, per-category review milestones).
+
+---
+
+**Previous state — session 30 finished:**
 
 Two workstreams advanced, both **planning/scaffolding only — zero production code touched**. The smoke-test infrastructure for Biblionet is in the repo and validated against real API responses; Phase B has a concrete 5-day plan but day 1 hasn't started.
 

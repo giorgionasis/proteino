@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useCallback, useRef, useImperativeHandle, forwardRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useImperativeHandle, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CATEGORIES } from "@/constants/categories";
 import { ImageUploader } from "./ImageUploader";
 import { ImageGallery, type GalleryImage } from "./ImageGallery";
-import { extractGalleryImages, mergeGalleryIntoImages, pickCoverUrl } from "@/lib/images/gallery";
+import { extractGalleryImages, pickCoverUrl } from "@/lib/images/gallery";
 import { MapPicker } from "./MapPicker";
 import { OpenAsUserButton } from "./OpenAsUserButton";
 import { IconToggleGrid } from "./IconToggleGrid";
@@ -46,7 +46,12 @@ interface ItemProps {
   coverUrl: string | null;
   posterUrl: string | null;
   backdropUrl: string | null;
-  images?: GalleryImage[];
+  /** Dual-shape `items.images` JSONB. Either:
+   *    - legacy array `[{url, tab?, alt?, isDefault?}, ...]`
+   *    - new object `{ poster, backdrop, og, gallery? }`
+   *    - null / undefined
+   *  `extractGalleryImages` normalises all three shapes for the editor. */
+  images?: unknown;
   avgRating: number;
   ratingCount: number;
   suggestionCount: number;
@@ -151,8 +156,9 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
   // Gallery state is derived from the dual-shape items.images JSONB.
   // Legacy items stored arrays at root; new items store under .gallery
   // alongside the pipeline-managed .poster / .backdrop / .og keys.
-  // extractGalleryImages handles both. On save we merge back via
-  // mergeGalleryIntoImages so pipeline keys never get clobbered.
+  // extractGalleryImages handles both. On save we send only the gallery
+  // array; the server re-reads the current images blob and merges so
+  // pipeline keys never get clobbered.
   const [galleryImages, setGalleryImages] = useState<GalleryImage[]>(
     extractGalleryImages(item.images)
   );
@@ -257,9 +263,12 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
       ? (posterUrl.trim() || backdropUrl.trim() || galleryDefault || galleryFirst)
       : (galleryDefault || galleryFirst || backdropUrl.trim() || posterUrl.trim());
 
-    // Merge gallery array into the dual-shape images JSONB so pipeline-
-    // managed poster/backdrop/og keys survive admin saves.
-    const mergedImages = mergeGalleryIntoImages(item.images, galleryImages);
+    // Gallery is merged into items.images server-side now — see
+    // `/api/admin/suggestions` route. Client sends only the admin-edited
+    // array; server re-fetches the row's current `images` blob and
+    // merges, so pipeline-managed poster/backdrop/og keys can't be wiped
+    // by a stale client copy. (This is the bug that wiped bars/etouto-ath1
+    // in session 31.)
 
     const res = await fetch("/api/admin/suggestions", {
       method: "PUT",
@@ -278,9 +287,9 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
           poster_url: posterUrl.trim() || null,
           backdrop_url: backdropUrl.trim() || null,
           cover_url: cover || null,
-          images: mergedImages,
           admin_reviewed_at: adminReviewedAt,
         },
+        gallery: galleryImages,
         suggestionData: {
           is_published: isPublished,
           reflection: reflection || null,
@@ -709,41 +718,46 @@ function formatDate(iso: string): string {
 
 /* ─────────────── ExtraFields Router ─────────────── */
 
-const ExtraFieldsSection = forwardRef<
-  ExtFieldsHandle,
-  {
-    itemId: string;
-    category: string;
-    extData: Record<string, any>;
-    metadata?: any;
-    regions: any[];
-    extraOptions: ExtraOptions;
-    /** Threaded through to BarsExtraFields so its Type radio can also
-     *  set subcategory_id (the Subcategory dropdown is hidden for bars
-     *  — Type is the single source of truth, same pattern as food). */
-    subcategories: { id: string; name: string }[];
-    setSubcategoryId: (id: string) => void;
+function ExtraFieldsSection({
+  ref,
+  itemId,
+  category,
+  extData,
+  metadata,
+  regions,
+  extraOptions,
+  subcategories,
+  setSubcategoryId,
+}: {
+  ref?: React.Ref<ExtFieldsHandle>;
+  itemId: string;
+  category: string;
+  extData: Record<string, any>;
+  metadata?: any;
+  regions: any[];
+  extraOptions: ExtraOptions;
+  /** Threaded through to BarsExtraFields so its Type radio can also
+   *  set subcategory_id (the Subcategory dropdown is hidden for bars
+   *  — Type is the single source of truth, same pattern as food). */
+  subcategories: { id: string; name: string }[];
+  setSubcategoryId: (id: string) => void;
+}) {
+  switch (category) {
+    case "movies": return <MovieExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
+    case "books": return <BookExtraFields ref={ref} data={extData} metadata={metadata} extraOptions={extraOptions} />;
+    case "series": return <SeriesExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
+    case "food": return <FoodExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} />;
+    case "bars": return <BarsExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} subcategories={subcategories} setSubcategoryId={setSubcategoryId} />;
+    case "hotels": return <HotelExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} />;
+    case "recipes": return <RecipeExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
+    case "theater": case "events": return <TheaterExtraFields ref={ref} itemId={itemId} category={category} data={extData} metadata={metadata} regions={regions} extraOptions={extraOptions} />;
+    default: return null;
   }
->(
-  function ExtraFieldsSection({ itemId, category, extData, metadata, regions, extraOptions, subcategories, setSubcategoryId }, ref) {
-    switch (category) {
-      case "movies": return <MovieExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
-      case "books": return <BookExtraFields ref={ref} data={extData} metadata={metadata} extraOptions={extraOptions} />;
-      case "series": return <SeriesExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
-      case "food": return <FoodExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} />;
-      case "bars": return <BarsExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} subcategories={subcategories} setSubcategoryId={setSubcategoryId} />;
-      case "hotels": return <HotelExtraFields ref={ref} itemId={itemId} data={extData} regions={regions} extraOptions={extraOptions} />;
-      case "recipes": return <RecipeExtraFields ref={ref} data={extData} extraOptions={extraOptions} />;
-      case "theater": case "events": return <TheaterExtraFields ref={ref} itemId={itemId} category={category} data={extData} metadata={metadata} regions={regions} extraOptions={extraOptions} />;
-      default: return null;
-    }
-  }
-);
+}
 
 /* ─────────────── MOVIES ─────────────── */
 
-const MovieExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; extraOptions: ExtraOptions }>(
-function MovieExtraFields({ data, extraOptions }, ref) {
+function MovieExtraFields({ ref, data, extraOptions }: { ref?: React.Ref<ExtFieldsHandle>; data: Record<string, any>; extraOptions: ExtraOptions }) {
   const initDirectors = Array.isArray(data.director) ? data.director.map((d: any) => typeof d === "string" ? d : d.name || "") : (data.director ? [String(data.director)] : [""]);
   const initCountries = Array.isArray(data.country) ? data.country : (data.country ? [data.country] : [""]);
   const initActors = Array.isArray(data.actors) ? data.actors.map((a: any) => ({ name: typeof a === "string" ? a : a.name || "", avatar: a.avatar || "" })) : Array.from({ length: 8 }, () => ({ name: "", avatar: "" }));
@@ -961,12 +975,11 @@ function MovieExtraFields({ data, extraOptions }, ref) {
       </datalist>
     </div>
   );
-});
+}
 
 /* ─────────────── BOOKS ─────────────── */
 
-const BookExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; metadata?: any; extraOptions: ExtraOptions }>(
-function BookExtraFields({ data, metadata, extraOptions }, ref) {
+function BookExtraFields({ ref, data, metadata, extraOptions }: { ref?: React.Ref<ExtFieldsHandle>; data: Record<string, any>; metadata?: any; extraOptions: ExtraOptions }) {
   const [writer, setWriter] = useState(data.writer ?? "");
   const [publication, setPublication] = useState(data.publication ?? "");
   const [language, setLanguage] = useState(data.language ?? "");
@@ -1080,12 +1093,11 @@ function BookExtraFields({ data, metadata, extraOptions }, ref) {
       </div>
     </div>
   );
-});
+}
 
 /* ─────────────── SERIES ─────────────── */
 
-const SeriesExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; extraOptions: ExtraOptions }>(
-function SeriesExtraFields({ data, extraOptions }, ref) {
+function SeriesExtraFields({ ref, data, extraOptions }: { ref?: React.Ref<ExtFieldsHandle>; data: Record<string, any>; extraOptions: ExtraOptions }) {
   const initCountries = Array.isArray(data.country) ? data.country : (data.country ? [data.country] : [""]);
   const [countries, setCountries] = useState(initCountries.length ? initCountries : [""]);
   const [seasons, setSeasons] = useState(data.seasons?.toString() ?? "");
@@ -1208,7 +1220,7 @@ function SeriesExtraFields({ data, extraOptions }, ref) {
       </div>
     </div>
   );
-});
+}
 
 /* ─────────────── FOOD / RESTAURANT ─────────────── */
 
@@ -1238,8 +1250,7 @@ const FOOD_TYPE_SUGGESTIONS = [
   "wine bar restaurant",
 ] as const;
 
-const FoodExtraFields = forwardRef<ExtFieldsHandle, { itemId: string; data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
-function FoodExtraFields({ itemId, data, regions, extraOptions }, ref) {
+function FoodExtraFields({ ref, itemId, data, regions, extraOptions }: { ref?: React.Ref<ExtFieldsHandle>; itemId: string; data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }) {
   const LOCATION_CATEGORY = "food";
   const [address, setAddress] = useState(data.address ?? "");
   const [telephone, setTelephone] = useState(data.telephone ?? "");
@@ -1387,22 +1398,27 @@ function FoodExtraFields({ itemId, data, regions, extraOptions }, ref) {
       </div>
     </div>
   );
-});
+}
 
 /* ─────────────── BARS / CAFES ─────────────── */
 
-const BarsExtraFields = forwardRef<
-  ExtFieldsHandle,
-  {
-    itemId: string;
-    data: Record<string, any>;
-    regions: any[];
-    extraOptions: ExtraOptions;
-    subcategories: { id: string; name: string }[];
-    setSubcategoryId: (id: string) => void;
-  }
->(
-function BarsExtraFields({ itemId, data, regions, extraOptions, subcategories, setSubcategoryId }, ref) {
+function BarsExtraFields({
+  ref,
+  itemId,
+  data,
+  regions,
+  extraOptions,
+  subcategories,
+  setSubcategoryId,
+}: {
+  ref?: React.Ref<ExtFieldsHandle>;
+  itemId: string;
+  data: Record<string, any>;
+  regions: any[];
+  extraOptions: ExtraOptions;
+  subcategories: { id: string; name: string }[];
+  setSubcategoryId: (id: string) => void;
+}) {
   const LOCATION_CATEGORY = "bars";
   const [address, setAddress] = useState(data.address ?? "");
   const [telephone, setTelephone] = useState(data.telephone ?? "");
@@ -1576,12 +1592,11 @@ function BarsExtraFields({ itemId, data, regions, extraOptions, subcategories, s
       </div>
     </div>
   );
-});
+}
 
 /* ─────────────── HOTELS ─────────────── */
 
-const HotelExtraFields = forwardRef<ExtFieldsHandle, { itemId: string; data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }>(
-function HotelExtraFields({ itemId, data, regions, extraOptions }, ref) {
+function HotelExtraFields({ ref, itemId, data, regions, extraOptions }: { ref?: React.Ref<ExtFieldsHandle>; itemId: string; data: Record<string, any>; regions: any[]; extraOptions: ExtraOptions }) {
   const LOCATION_CATEGORY = "hotels";
   const initLinks = Array.isArray(data.availability_links) ? data.availability_links : [{ url: "" }];
   const [availabilities, setAvailabilities] = useState(initLinks.length ? initLinks : [{ url: "" }]);
@@ -1766,12 +1781,11 @@ function HotelExtraFields({ itemId, data, regions, extraOptions }, ref) {
       </div>
     </div>
   );
-});
+}
 
 /* ─────────────── RECIPES ─────────────── */
 
-const RecipeExtraFields = forwardRef<ExtFieldsHandle, { data: Record<string, any>; extraOptions: ExtraOptions }>(
-function RecipeExtraFields({ data, extraOptions }, ref) {
+function RecipeExtraFields({ ref, data, extraOptions }: { ref?: React.Ref<ExtFieldsHandle>; data: Record<string, any>; extraOptions: ExtraOptions }) {
   const initIngredients = Array.isArray(data.ingredients) ? data.ingredients : [{ qty: "", unit: "", name: "", link: "" }];
   const initSteps = Array.isArray(data.steps) ? data.steps.map((s: any) => typeof s === "string" ? s : s.text || "") : [""];
   const initTips = Array.isArray(data.tips) ? data.tips.map((t: any) => typeof t === "string" ? t : t.text || "") : [""];
@@ -1972,12 +1986,11 @@ function RecipeExtraFields({ data, extraOptions }, ref) {
 
     </div>
   );
-});
+}
 
 /* ─────────────── THEATER / EVENTS ─────────────── */
 
-const TheaterExtraFields = forwardRef<ExtFieldsHandle, { itemId: string; category: string; data: Record<string, any>; metadata?: any; regions: any[]; extraOptions: ExtraOptions }>(
-function TheaterExtraFields({ itemId, category, data, metadata, regions, extraOptions }, ref) {
+function TheaterExtraFields({ ref, itemId, category, data, metadata, regions, extraOptions }: { ref?: React.Ref<ExtFieldsHandle>; itemId: string; category: string; data: Record<string, any>; metadata?: any; regions: any[]; extraOptions: ExtraOptions }) {
   const [eventType, setEventType] = useState<"single" | "tour">("single");
   const [adsActive, setAdsActive] = useState(false);
   const initDates = Array.isArray(data.dates) ? data.dates : [
@@ -2221,7 +2234,7 @@ function TheaterExtraFields({ itemId, category, data, metadata, regions, extraOp
       </div>
     </>
   );
-});
+}
 
 /* ─────────────── SHARED COMPONENTS ─────────────── */
 

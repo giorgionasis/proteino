@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-19 (session 29 — pre-Phase-B polish sweep: 18 tasks across boundaries, /terms+/privacy, PWA manifest, OAuth log strip, admin alert/prompt → Toast/PromptModal, Gemini review-composer coaching, migration 040 admin audit log + RecentChanges widget)
+**Last meaningful update:** 2026-05-19 (session 31 — cleanup pass: forwardRef sweep, audit POST stamps + manager UI footers, React Compiler beta on. **Image-wipe bug fix:** admin save was silently wiping `items.images` JSONB; §46 documents save path. **Profile lists v2** §47: orientation-aware cards across suggestions/bookmarks/reviews via new `<ProfilePoster>` primitive)
 
 ---
 
@@ -1842,7 +1842,7 @@ Next 16 makes Turbopack the default for both `dev` and `build`. Two gotchas surf
 
 ### What did NOT break (counted, then confirmed)
 
-- 6 `forwardRef` usages — still supported in React 19 (deprecated, not removed). Left alone for a future cleanup pass when ref-as-prop becomes worth the churn.
+- ~~6 `forwardRef` usages — still supported in React 19 (deprecated, not removed). Left alone for a future cleanup pass when ref-as-prop becomes worth the churn.~~ **Swept in session 31** — all 15 occurrences across 6 files converted to React 19's ref-as-prop (the `SuggestionEditor` file accounted for 9 `useImperativeHandle` wrappers + the router). `displayName` boilerplate dropped throughout.
 - 0 `defaultProps` on function components — TypeScript project, never used the pattern.
 - 0 `propTypes` / string refs.
 - `middleware.ts` — Next 16 prints a deprecation warning ("Please use 'proxy' instead") but the file still loads and runs. Build output even labels it `Proxy (Middleware)`. Rename to `proxy.ts` deferred until convenient.
@@ -1851,7 +1851,7 @@ Next 16 makes Turbopack the default for both `dev` and `build`. Two gotchas surf
 
 1. **`middleware.ts` → `proxy.ts`** rename — the file convention changed in Next 16 but compat shim is in place. One-line move + verify the matcher config still applies under the new entry point.
 2. **Two pre-existing Tailwind ambiguous-class warnings** (`duration-[350ms]`, `ease-[cubic-bezier(...)]`) — bracket syntax conflict, unrelated to the upgrade. Replace with escaped variants when touching those files.
-3. **React Compiler beta** — opt-in, can remove ~80% of the codebase's `useMemo` / `useCallback` boilerplate once enabled. ~2h trial run to evaluate.
+3. ~~**React Compiler beta** — opt-in, can remove ~80% of the codebase's `useMemo` / `useCallback` boilerplate once enabled. ~2h trial run to evaluate.~~ **Trialled + enabled in session 31** (`babel-plugin-react-compiler@1.0.0`, top-level `reactCompiler: true` in `next.config.mjs` — Next 16 promoted the flag out of `experimental`). Build clean, no bailout warnings, 112 routes. Identified ~135 manual `useMemo`/`useCallback`/`React.memo` sites across 45 files that are now redundant; a future focused PR can delete them (harmless until then).
 4. **PPR / Cache Components** for the 9 detail pages — Next 16's PPR can split static shell + dynamic content per route. Detail pages are the obvious candidate (cover/meta is static-able, reviews/bookmarks dynamic). Won't pursue until the current detail surface stabilizes.
 
 ### Rollback plan
@@ -2029,3 +2029,92 @@ The concern: "users haven't interacted enough yet; recommendations won't have si
 2. **Backfill scope** — production directly ($0.008, embeddings sit idle until day 2) vs dev branch first then prod (~$0.016, validates similarity output before any user sees it).
 
 Both parked — user said "decide later, will test later". No code starts until these land.
+
+---
+
+## 46. Image save path + dual-shape `items.images` JSONB gotcha (session 31)
+> 🩺 Discovered + fixed a years-old bug that was silently wiping `items.images` on innocent admin saves. Recovery script in `scripts/restore-etouto-images.ts` (one-off — bulk damage scan deferred to next session).
+
+`items.images` is a dual-shape JSONB column. The image pipeline (`lib/item-image-upload.ts`) writes an object with explicit slots:
+
+```ts
+{
+  poster:   { s, m, l, xl },   // 2:3 portrait variants (movies/series/books)
+  backdrop: { s, m, l, xl },   // 16:9 landscape variants
+  og:       "...jpg",          // 1200×630 social-card image
+  gallery:  [{ url, tab?, alt?, isDefault? }, ...]   // admin uploads
+}
+```
+
+The admin-side editor (`SuggestionEditor`) only owns the `gallery` array; the pipeline owns the rest. Legacy K2-migrated rows may store `images` as a bare array (no `gallery` key) — `extractGalleryImages` and `mergeGalleryIntoImages` in `lib/images/gallery.ts` normalise across both shapes.
+
+### The bug (silent for months)
+
+`app/admin/suggestions/[id]/page.tsx` was coercing the prop:
+
+```ts
+images: Array.isArray(item.images) ? item.images : [],
+```
+
+The new dual-shape stores `images` as an **object**, not an array. Every modern row failed the `Array.isArray` check → editor received `[]` → admin opened the editor and saw "no gallery images" even when 4 photos existed in storage → any save called `mergeGalleryIntoImages([], [galleryImages])`, where `galleryImages` was the editor's local state (often empty if the admin wasn't intending to touch images). Result: `images = {}`, JSONB wiped, pipeline poster keys gone. The legacy `cover_url` / `poster_url` columns were mirrored separately and survived, so detail pages still rendered a cover — masking the bug for months.
+
+### The three-prong fix
+
+1. **`app/admin/suggestions/[id]/page.tsx`** — pass `item.images ?? null` through verbatim. The editor's `extractGalleryImages` already handles array OR object OR null.
+2. **`components/admin/SuggestionEditor.tsx`** — prop type `images?: GalleryImage[]` → `images?: unknown`. The prop was lying about its type; downstream uses just hand it to `extractGalleryImages` which is shape-tolerant.
+3. **`app/api/admin/suggestions/route.ts` PUT** — server-side gallery merge. Client now sends only the admin-edited `gallery: GalleryImage[]` (no pre-merged `images` blob). Server re-reads the row's current `images`, merges via `mergeGalleryIntoImages`, writes the result. Eliminates the stale-mount-time race that could re-wipe the row even after the page-route fix. Also strips any incoming `itemData.images` so two writers can't fight over the column.
+
+### Recovery (one-off)
+
+For `bars/etouto-ath1` specifically: `scripts/check-etouto.ts` confirmed all 9 storage files were intact (5 pipeline poster variants in `media/items/<id>/` + 4 admin gallery uploads in `media/items-bars/<uuid>-...`). `scripts/restore-etouto-images.ts` reconstructs the `images` JSONB from storage + writes it. Idempotent.
+
+### How to spot this pattern in the future (audit checklist)
+
+If you're consuming `items.images` anywhere, the value can be **any of**:
+
+- `null` / `undefined` (row never had images)
+- Plain array (legacy K2 row, gallery only — no pipeline keys)
+- Object with some/all of `{ poster, backdrop, og, gallery }` keys (modern row)
+
+**Don't** narrow with `Array.isArray(x) ? x : []` — that drops the modern object shape entirely. **Do** either:
+- Use `extractGalleryImages(x)` from `lib/images/gallery.ts` if you want the gallery array.
+- Use `pickCoverUrl(x, fallback)` if you want the cover URL.
+- Pass it through unchanged if you're just plumbing it to a consumer that handles the dual shape.
+
+### Damage scan (deferred)
+
+The bug could have wiped any number of other rows the same way. PROGRESS.md §0 lists an audit-script follow-up: scan all items where `items.images IS NULL OR images = '{}'` but storage has gallery uploads keyed to the row's `items-<category>/` folder. Count first, decide on bulk-restore vs leave-alone after.
+
+---
+
+## 47. Profile lists v2 — orientation-aware cards (session 31)
+> ✅ Shipped — `<ProfilePoster>` primitive + 3 redesigned surfaces.
+
+The three profile sub-pages (`/profile/<handle>/suggestions/<category>`, `/bookmarks`, `/reviews`) used to render inline cards with portrait posters for every category. That looked wrong for venues, food, recipes — categories whose natural image orientation is landscape (CLAUDE.md §21). Session 31 consolidated around one shared primitive that respects orientation per the existing `isPortraitCategory` helper.
+
+### The shared primitive
+
+`components/profile/shared/ProfilePoster.tsx` — renders the item's cover with category-correct orientation. Three modes:
+
+| Mode | Use case | Portrait dims (movies/series/books) | Landscape dims (food/bars/hotels/recipes/events/theater) |
+|---|---|---|---|
+| `thumb` | Inline cell next to text (suggestions row, reviews row) | `w-[76px] h-[114px]` (2:3) | `w-[120px] h-20` (3:2) |
+| `hero` | Full-width top of a stacked card (venue suggestion card) | `w-full aspect-[2/3]` | `w-full aspect-[3/2]` |
+| `tile` | Grid cell (bookmarks grid) | `w-full aspect-[2/3]` | `w-full aspect-[3/2]` |
+
+Accepts `href` for link wrapping, `fallbackIcon` for the empty state, `overlay` slot for badges (top-rated chip, status indicator).
+
+### The three surfaces
+
+- **Suggestions** (`components/profile/suggestions/SuggestionsByCategoryPage.tsx`) — single category list, all items share `category`. Two card variants per `isPortraitCategory`: portrait categories get a row card (thumb left + info right); landscape categories get a stacked card (hero on top + info below).
+- **Bookmarks** (`components/profile/bookmarks/BookmarksCategoryPage.tsx`) — multi-category grouped grid. Each section reads `category` and chooses grid template: portrait → 2-col 2:3 tiles; landscape → 1-col on mobile / 2-col on `sm+` with 3:2 tiles (avoids cramped 140px-wide landscape thumbs on phones). Row menu hover/focus-revealed via `group-hover:opacity-100`.
+- **Reviews** (`components/profile/reviews/ReviewsCategoryPage.tsx`) — heterogeneous list, each review's `item.category` drives the thumb's orientation. Long review text gets an expand/collapse at 200 chars.
+
+### Page chrome rhythm (now consistent across all 3)
+
+- **Count strip**: previously a 52px font-bold number in a zinc-100 pill — too heavy. Now `text-2xl font-bold` next to a small label, just below the sticky back header. Reads at a glance without dominating the page.
+- **Sort pills**: previously a "Ταξινόμηση ανά" preamble + a row of `px-5 py-3 rounded-full` over-padded pills. Now bare horizontal scroller of `h-9 px-4 rounded-full` zinc-100 / zinc-900 pills, matching the design system's existing pill rhythm.
+
+### Legacy
+
+`components/profile/suggestions/OwnSuggestionCard.tsx`, `components/profile/bookmarks/BookmarkedCard.tsx`, and `components/profile/reviews/ReviewCard.tsx` (the fixed-342-width one) are kept in-tree for showcase reference — they're Figma-spec reference components, but no production code mounts them. The list pages now own their own card rendering directly.

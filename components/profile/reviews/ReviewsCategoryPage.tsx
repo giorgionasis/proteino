@@ -6,6 +6,7 @@ import Link from "next/link";
 import { RowMenu } from "@/components/profile/RowMenu";
 import { ConfirmDeleteDialog } from "@/components/profile/ConfirmDeleteDialog";
 import { DeleteSuccessDialog } from "@/components/profile/DeleteSuccessDialog";
+import { ProfilePoster } from "@/components/profile/shared/ProfilePoster";
 
 type SortKey = "recent" | "high" | "low";
 
@@ -75,33 +76,59 @@ function ReviewCard({
   onDelete: () => void;
 }) {
   const detailHref = `/${review.item.slug}`;
+  const [expanded, setExpanded] = useState(false);
+  const text = review.reflection?.trim() ?? "";
+  const TRUNCATE = 200;
+  const isLong = text.length > TRUNCATE;
+  const visible = expanded || !isLong ? text : text.slice(0, TRUNCATE).trimEnd() + "…";
 
   return (
-    <div className="rounded-2xl bg-white border border-zinc-200 overflow-hidden">
+    <div className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-zinc-100 overflow-hidden transition-shadow hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
       <div className="flex gap-4 p-4">
-        <Link href={detailHref} className="w-16 h-20 rounded-card overflow-hidden bg-zinc-100 shrink-0 active:opacity-80 transition-opacity">
-          {review.item.poster ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={review.item.poster} alt="" className="w-full h-full object-cover" />
-          ) : null}
-        </Link>
-        <div className="flex-1 min-w-0">
+        <ProfilePoster
+          category={review.item.category}
+          src={review.item.poster}
+          alt={review.item.title}
+          href={detailHref}
+          mode="thumb"
+        />
+        <div className="flex-1 min-w-0 flex flex-col gap-2">
           <div className="flex items-start justify-between gap-2">
             <Link href={detailHref} className="block flex-1 min-w-0 active:opacity-80 transition-opacity">
-              <p className="text-base font-bold text-zinc-900 leading-tight line-clamp-2">{review.item.title}</p>
+              <p className="text-[15px] font-bold text-zinc-900 leading-snug line-clamp-2">{review.item.title}</p>
             </Link>
             {isOwner && (
-              <RowMenu
-                items={[
-                  { label: "Δες το αντικείμενο", onClick: () => { window.location.href = detailHref; } },
-                  { label: "Άλλαξε βαθμολογία", onClick: () => { window.location.href = detailHref; } },
-                  { label: "Διαγραφή βαθμολογίας", onClick: onDelete, danger: true },
-                ]}
-              />
+              <div className="shrink-0 -mr-2 -mt-1">
+                <RowMenu
+                  items={[
+                    { label: "Δες το αντικείμενο", onClick: () => { window.location.href = detailHref; } },
+                    { label: "Άλλαξε βαθμολογία", onClick: () => { window.location.href = detailHref; } },
+                    { label: "Διαγραφή βαθμολογίας", onClick: onDelete, danger: true },
+                  ]}
+                />
+              </div>
             )}
           </div>
-          <div className="mt-2"><StarRow score={review.score} /></div>
-          <p className="text-[12px] text-zinc-500 mt-2">{relativeDate(review.createdAt)}</p>
+
+          <div className="flex items-center gap-2">
+            <StarRow score={review.score} />
+            <span className="w-1 h-1 rounded-full bg-zinc-300" />
+            <span className="text-[12px] text-zinc-500">{relativeDate(review.createdAt)}</span>
+          </div>
+
+          {text && (
+            <p className="text-[13px] text-zinc-700 leading-relaxed mt-0.5">
+              {visible}
+              {isLong && (
+                <button
+                  onClick={() => setExpanded((v) => !v)}
+                  className="ml-1 text-coral-600 font-semibold active:opacity-70 transition-opacity"
+                >
+                  {expanded ? "Λιγότερα" : "Περισσότερα"}
+                </button>
+              )}
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -168,52 +195,34 @@ export function ReviewsCategoryPage({ handle, isOwner, reviews }: Props) {
         </p>
       </div>
 
-      <div className="flex flex-col gap-6 pb-10">
-        <div className="mx-6 mt-6">
-          <div
-            className="flex items-center gap-2.5 rounded-[8px] px-4 py-4"
-            style={{ backgroundColor: "#F2F2F7" }}
-          >
-            <span
-              className="font-bold text-[#27272A] leading-none"
-              style={{ fontSize: 52, lineHeight: "37px" }}
-            >
+      <div className="flex flex-col gap-5 pb-10">
+        <div className="px-6 pt-6 pb-1">
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-zinc-900 leading-none tabular-nums">
               {list.length}
             </span>
-            <span className="text-base text-[#3F3F46] leading-snug" style={{ fontWeight: 500 }}>
+            <span className="text-sm text-zinc-500">
               {list.length === 1 ? "αξιολόγηση" : "αξιολογήσεις"} συνολικά
             </span>
           </div>
         </div>
 
         {list.length > 1 && (
-          <div className="flex flex-col gap-3">
-            <p className="pl-6 text-sm font-bold text-[#3F3F46]">Ταξινόμηση ανά</p>
-            <div className="overflow-x-auto pl-6 pr-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <div className="flex gap-3 w-max">
-                {SORT_OPTIONS.map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => setSort(key)}
-                    className="flex items-center justify-center px-5 py-3 rounded-full whitespace-nowrap transition-colors"
-                    style={
-                      sort === key
-                        ? { backgroundColor: "#52525B", border: "none" }
-                        : { backgroundColor: "#FFFFFF", border: "1px solid #D4D4D8" }
-                    }
-                  >
-                    <span
-                      className="text-sm leading-tight"
-                      style={{
-                        fontWeight: sort === key ? 700 : 600,
-                        color: sort === key ? "#FAFAFA" : "#3F3F46",
-                      }}
-                    >
-                      {label}
-                    </span>
-                  </button>
-                ))}
-              </div>
+          <div className="overflow-x-auto px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex gap-2 w-max">
+              {SORT_OPTIONS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setSort(key)}
+                  className={`h-9 px-4 rounded-full text-[13px] font-semibold whitespace-nowrap transition-colors ${
+                    sort === key
+                      ? "bg-zinc-900 text-white"
+                      : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
         )}

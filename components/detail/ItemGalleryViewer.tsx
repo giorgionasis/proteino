@@ -25,34 +25,43 @@ interface Props {
 
 export function ItemGalleryViewer({ images, tabs }: Props) {
   const usable = images.filter((img) => !!img?.url);
-  const [activeTab, setActiveTab] = useState<string>(tabs?.[0] ?? "");
+
+  // Only render pills for tabs that actually have ≥1 image. An item
+  // tagged with a single tab (or none) skips the tab strip entirely.
+  const populatedTabs = tabs
+    ? tabs.filter((t) => usable.some((img) => (img.tab ?? tabs[0]) === t))
+    : [];
+  const showTabs = populatedTabs.length > 1 && usable.some((img) => img.tab);
+
+  const [activeTab, setActiveTab] = useState<string>(populatedTabs[0] ?? tabs?.[0] ?? "");
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
-  if (usable.length === 0) return null;
+  // Hide the gallery when there's nothing extra to show. A single image
+  // is — by convention — already the cover/hero, so repeating it as a
+  // one-item strip is redundant. Show the strip only when there are ≥2
+  // usable photos.
+  if (usable.length < 2) return null;
 
-  const showTabs = !!tabs && tabs.length > 1 && usable.some((img) => img.tab);
   const visible = showTabs
-    ? usable.filter((img) => (img.tab ?? tabs![0]) === activeTab)
+    ? usable.filter((img) => (img.tab ?? populatedTabs[0]) === activeTab)
     : usable;
 
   return (
     <section className="space-y-5">
       {showTabs && (
         <div className="flex gap-2 overflow-x-auto px-6 no-scrollbar">
-          {tabs!.map((t) => {
-            const count = usable.filter((img) => (img.tab ?? tabs![0]) === t).length;
+          {populatedTabs.map((t) => {
+            const count = usable.filter((img) => (img.tab ?? populatedTabs[0]) === t).length;
             const active = activeTab === t;
             return (
               <button
                 key={t}
                 onClick={() => setActiveTab(t)}
-                style={{ width: 125, height: 45 }}
-                className={`flex items-center justify-center rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
+                className={`h-11 px-5 inline-flex items-center justify-center rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
                   active
                     ? "bg-zinc-900 text-white"
                     : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
                 }`}
-                disabled={count === 0}
               >
                 {t} <span className="ml-1 opacity-70">({count})</span>
               </button>
@@ -66,7 +75,7 @@ export function ItemGalleryViewer({ images, tabs }: Props) {
           <button
             key={`${img.url}-${i}`}
             onClick={() => setLightboxIdx(usable.indexOf(img))}
-            className="flex-none w-[240px] h-[160px] rounded-xl overflow-hidden bg-zinc-100 active:opacity-80 transition-opacity"
+            className="flex-none w-[280px] aspect-[3/2] rounded-xl overflow-hidden bg-zinc-100 active:opacity-80 transition-opacity"
           >
             <img
               src={img.url}

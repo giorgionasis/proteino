@@ -137,7 +137,13 @@ export default async function SuggestionDetailPage(props: { params: Promise<{ id
         coverUrl: item.cover_url,
         posterUrl: item.poster_url,
         backdropUrl: item.backdrop_url,
-        images: Array.isArray(item.images) ? item.images : [],
+        // Pass through the raw `items.images` JSONB. It's a dual-shape
+        // value (legacy array OR new object with poster/gallery/og keys),
+        // and the editor's `extractGalleryImages` handles both. The old
+        // `Array.isArray(...) ? ... : []` coercion silently dropped the
+        // gallery whenever the row used the new object shape — which is
+        // most rows, after the image pipeline runs.
+        images: item.images ?? null,
         avgRating: item.avg_rating,
         ratingCount: item.rating_count,
         suggestionCount: item.suggestion_count,

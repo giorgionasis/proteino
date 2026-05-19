@@ -9,6 +9,9 @@ import { DeleteSuccessDialog } from "@/components/profile/DeleteSuccessDialog";
 import { useToast } from "@/components/ui/Toast";
 import { statusChipLabel } from "@/lib/bookmarks/labels";
 import type { BookmarkStatus } from "@/hooks/useBookmark";
+import { ProfilePoster } from "@/components/profile/shared/ProfilePoster";
+import { isPortraitCategory } from "@/components/category/CategoryCard";
+import type { CategorySlug } from "@/types";
 
 export interface BookmarkedItem {
   id: string;
@@ -131,12 +134,12 @@ export function BookmarksCategoryPage({ handle, isOwnProfile, groups: initialGro
         <EmptyState isOwnProfile={isOwnProfile} />
       ) : (
         <div className="flex flex-col gap-6 pb-10">
-          <div className="mx-6 mt-6">
-            <div className="flex items-center gap-2.5 rounded-[8px] px-4 py-4 bg-[#F2F2F7]">
-              <span className="font-bold text-[#27272A] leading-none" style={{ fontSize: 40, lineHeight: 1 }}>
+          <div className="px-6 pt-6 pb-1">
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-zinc-900 leading-none tabular-nums">
                 {total}
               </span>
-              <span className="text-sm text-[#3F3F46]">
+              <span className="text-sm text-zinc-500">
                 {total === 1 ? "αποθηκευμένη πρόταση" : "αποθηκευμένες προτάσεις"}
               </span>
             </div>
@@ -185,44 +188,16 @@ export function BookmarksCategoryPage({ handle, isOwnProfile, groups: initialGro
                     Δεν έχεις τίποτα εδώ ακόμα.
                   </p>
                 ) : (
-                  <div className="grid grid-cols-2 gap-4 px-6">
-                    {visibleItems.map((b) => (
-                      <div key={b.id} className="relative">
-                        <Link href={b.href} className="group block">
-                          <div className="aspect-[4/5] rounded-xl bg-zinc-100 border border-zinc-200 overflow-hidden mb-2">
-                            {b.cover_url ? (
-                              /* eslint-disable-next-line @next/next/no-img-element */
-                              <img src={b.cover_url} alt={b.title} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-zinc-300 text-2xl">
-                                {g.icon}
-                              </div>
-                            )}
-                          </div>
-                          <p className="text-sm font-semibold text-zinc-800 line-clamp-2 leading-tight">{b.title}</p>
-                          {b.avg_rating > 0 && (
-                            <p className="text-xs text-amber-600 mt-1">
-                              ★ {b.avg_rating.toFixed(1)}
-                              {b.rating_count > 0 && <span className="text-zinc-400"> ({b.rating_count})</span>}
-                            </p>
-                          )}
-                        </Link>
-                        {isOwnProfile && (
-                          <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm rounded-full">
-                            <RowMenu
-                              items={[
-                                { label: "Δες το αντικείμενο", onClick: () => { window.location.href = b.href; } },
-                                b.status === "wishlist"
-                                  ? { label: `Μετακίνηση στα ${statusChipLabel(b.category, "done")}`, onClick: () => moveToStatus(b, "done") }
-                                  : { label: `Μετακίνηση στα ${statusChipLabel(b.category, "wishlist")}`, onClick: () => moveToStatus(b, "wishlist") },
-                                { label: "Αφαίρεση από αγαπημένα", onClick: () => setDeleting(b), danger: true },
-                              ]}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <BookmarksGrid
+                    items={visibleItems}
+                    category={g.category as CategorySlug}
+                    icon={g.icon}
+                    isOwnProfile={isOwnProfile}
+                    onMove={(b) =>
+                      moveToStatus(b, b.status === "wishlist" ? "done" : "wishlist")
+                    }
+                    onDelete={(b) => setDeleting(b)}
+                  />
                 )}
               </section>
             );
@@ -251,6 +226,85 @@ export function BookmarksCategoryPage({ handle, isOwnProfile, groups: initialGro
       )}
 
       {toast}
+    </div>
+  );
+}
+
+/**
+ * Orientation-aware grid for a single category section.
+ *   - portrait categories (movies/series/books): 2-column grid, 2:3 tiles
+ *   - landscape (food/bars/hotels/recipes/...): single column on mobile,
+ *     2 columns on sm+ screens, 3:2 tiles. Landscape cells are wider so
+ *     fitting two side-by-side on phones produces cramped 140px-wide thumbs.
+ */
+function BookmarksGrid({
+  items,
+  category,
+  icon,
+  isOwnProfile,
+  onMove,
+  onDelete,
+}: {
+  items: BookmarkedItem[];
+  category: CategorySlug;
+  icon: string;
+  isOwnProfile: boolean;
+  onMove: (b: BookmarkedItem) => void;
+  onDelete: (b: BookmarkedItem) => void;
+}) {
+  const portrait = isPortraitCategory(category);
+  const gridCls = portrait
+    ? "grid grid-cols-2 gap-4 px-6"
+    : "grid grid-cols-1 sm:grid-cols-2 gap-4 px-6";
+
+  return (
+    <div className={gridCls}>
+      {items.map((b) => (
+        <div key={b.id} className="relative group">
+          <ProfilePoster
+            category={category}
+            src={b.cover_url}
+            alt={b.title}
+            href={b.href}
+            mode="tile"
+            fallbackIcon={icon}
+          />
+          <div className="mt-2 px-0.5">
+            <Link
+              href={b.href}
+              className="block active:opacity-80 transition-opacity"
+            >
+              <p className="text-sm font-semibold text-zinc-900 line-clamp-2 leading-snug">
+                {b.title}
+              </p>
+            </Link>
+            {b.avg_rating > 0 && (
+              <p className="text-[11px] mt-1 flex items-center gap-1">
+                <span className="text-coral-600">★</span>
+                <span className="font-semibold text-zinc-700 tabular-nums">
+                  {b.avg_rating.toFixed(1)}
+                </span>
+                {b.rating_count > 0 && (
+                  <span className="text-zinc-400 tabular-nums">({b.rating_count})</span>
+                )}
+              </p>
+            )}
+          </div>
+          {isOwnProfile && (
+            <div className="absolute top-2 right-2 bg-white/95 backdrop-blur-sm rounded-full shadow-sm opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+              <RowMenu
+                items={[
+                  { label: "Δες το αντικείμενο", onClick: () => { window.location.href = b.href; } },
+                  b.status === "wishlist"
+                    ? { label: `Μετακίνηση στα ${statusChipLabel(b.category, "done")}`, onClick: () => onMove(b) }
+                    : { label: `Μετακίνηση στα ${statusChipLabel(b.category, "wishlist")}`, onClick: () => onMove(b) },
+                  { label: "Αφαίρεση από αγαπημένα", onClick: () => onDelete(b), danger: true },
+                ]}
+              />
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

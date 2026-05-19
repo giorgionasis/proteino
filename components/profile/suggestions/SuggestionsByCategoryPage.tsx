@@ -8,6 +8,8 @@ import { RowMenu } from "@/components/profile/RowMenu";
 import { EditSuggestionModal } from "@/components/profile/EditSuggestionModal";
 import { ConfirmDeleteDialog } from "@/components/profile/ConfirmDeleteDialog";
 import { DeleteSuccessDialog } from "@/components/profile/DeleteSuccessDialog";
+import { ProfilePoster } from "@/components/profile/shared/ProfilePoster";
+import { isPortraitCategory } from "@/components/category/CategoryCard";
 
 /* ── Sort options ─────────────────────────────────────────────── */
 
@@ -64,61 +66,102 @@ function relativeDate(iso: string): string {
 
 function SuggestionCard({
   suggestion,
+  category,
   isOwner,
   onEdit,
   onDelete,
 }: {
   suggestion: ProfileSuggestion;
+  category: CategorySlug;
   isOwner: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const { item, rating, reflection, createdAt } = suggestion;
   const detailHref = `/${item.fullSlug}`;
+  const portrait = isPortraitCategory(category);
 
-  return (
-    <div className="rounded-2xl bg-white border border-zinc-200 overflow-hidden">
-      <div className="flex gap-4 p-4">
-        <Link href={detailHref} className="w-20 h-28 rounded-card overflow-hidden bg-zinc-100 shrink-0 active:opacity-80 transition-opacity">
-          {item.poster ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={item.poster} alt="" className="w-full h-full object-cover" />
-          ) : null}
-        </Link>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <Link href={detailHref} className="block flex-1 min-w-0 active:opacity-80 transition-opacity">
-              <p className="text-base font-bold text-zinc-900 leading-tight line-clamp-2">{item.title}</p>
-            </Link>
-            {isOwner && (
-              <RowMenu
-                items={[
-                  { label: "Δες την πρόταση", onClick: () => { window.location.href = detailHref; } },
-                  { label: "Επεξεργασία", onClick: onEdit },
-                  { label: "Διαγραφή", onClick: onDelete, danger: true },
-                ]}
-              />
-            )}
-          </div>
+  const menu = isOwner && (
+    <RowMenu
+      items={[
+        { label: "Δες την πρόταση", onClick: () => { window.location.href = detailHref; } },
+        { label: "Επεξεργασία", onClick: onEdit },
+        { label: "Διαγραφή", onClick: onDelete, danger: true },
+      ]}
+    />
+  );
 
-          <div className="flex items-center gap-3 mt-1.5 text-[12px] text-zinc-500">
-            {rating > 0 && (
-              <span className="flex items-center gap-1">
-                <StarIcon />
-                <span className="font-semibold text-zinc-700">{rating}/5</span>
-              </span>
+  const meta = (
+    <div className="flex items-center gap-2 text-[12px] text-zinc-500">
+      {rating > 0 && (
+        <span className="flex items-center gap-1">
+          <StarIcon />
+          <span className="font-semibold text-zinc-800 tabular-nums">{rating.toFixed(1)}</span>
+          <span className="text-zinc-300">/</span>
+          <span className="tabular-nums">5</span>
+        </span>
+      )}
+      {rating > 0 && <span className="w-1 h-1 rounded-full bg-zinc-300" />}
+      <span>{relativeDate(createdAt)}</span>
+    </div>
+  );
+
+  // Portrait variant — poster left, info right (movies/series/books).
+  if (portrait) {
+    return (
+      <div className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-zinc-100 overflow-hidden transition-shadow hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        <div className="flex gap-4 p-4">
+          <ProfilePoster
+            category={category}
+            src={item.poster}
+            alt={item.title}
+            href={detailHref}
+            mode="thumb"
+          />
+          <div className="flex-1 min-w-0 flex flex-col gap-2">
+            <div className="flex items-start justify-between gap-2">
+              <Link href={detailHref} className="block flex-1 min-w-0 active:opacity-80 transition-opacity">
+                <p className="text-[15px] font-bold text-zinc-900 leading-snug line-clamp-2">{item.title}</p>
+              </Link>
+              {menu && <div className="shrink-0 -mr-2 -mt-1">{menu}</div>}
+            </div>
+            {meta}
+            {reflection && (
+              <p className="text-[13px] text-zinc-600 leading-relaxed line-clamp-3 mt-0.5">
+                {reflection}
+              </p>
             )}
-            <span>{relativeDate(createdAt)}</span>
           </div>
         </div>
       </div>
-      {reflection && (
-        <div className="px-4 pb-4">
-          <p className="text-[13px] text-zinc-600 italic leading-relaxed line-clamp-3 border-l-2 border-coral-600/30 pl-3">
+    );
+  }
+
+  // Landscape variant — hero on top, info below (venues / recipes / events / theater).
+  return (
+    <div className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-zinc-100 overflow-hidden transition-shadow hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+      <ProfilePoster
+        category={category}
+        src={item.poster}
+        alt={item.title}
+        href={detailHref}
+        mode="hero"
+        className="rounded-none"
+      />
+      <div className="p-4 flex flex-col gap-2">
+        <div className="flex items-start justify-between gap-2">
+          <Link href={detailHref} className="block flex-1 min-w-0 active:opacity-80 transition-opacity">
+            <p className="text-[17px] font-bold text-zinc-900 leading-snug line-clamp-2">{item.title}</p>
+          </Link>
+          {menu && <div className="shrink-0 -mr-2 -mt-1">{menu}</div>}
+        </div>
+        {meta}
+        {reflection && (
+          <p className="text-[13px] text-zinc-600 leading-relaxed line-clamp-3 mt-0.5">
             {reflection}
           </p>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -184,52 +227,35 @@ export function SuggestionsByCategoryPage({ handle, category, categoryLabel, isO
         </p>
       </div>
 
-      <div className="flex flex-col gap-6 pb-10">
-        <div className="mx-6 mt-6">
-          <div
-            className="flex items-center gap-2.5 rounded-[8px] px-4 py-4"
-            style={{ backgroundColor: "#F2F2F7" }}
-          >
-            <span
-              className="font-bold text-[#27272A] leading-none"
-              style={{ fontSize: 52, lineHeight: "37px" }}
-            >
+      <div className="flex flex-col gap-5 pb-10">
+        {/* Count strip — compact, no oversized number */}
+        <div className="px-6 pt-6 pb-1">
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-zinc-900 leading-none tabular-nums">
               {list.length}
             </span>
-            <span className="text-base text-[#3F3F46] leading-snug" style={{ fontWeight: 500 }}>
-              {list.length === 1 ? "πρόταση" : "προτάσεις"} σε <strong className="font-bold">{categoryLabel}</strong>
+            <span className="text-sm text-zinc-500">
+              {list.length === 1 ? "πρόταση" : "προτάσεις"} σε <span className="font-semibold text-zinc-700">{categoryLabel}</span>
             </span>
           </div>
         </div>
 
         {list.length > 1 && (
-          <div className="flex flex-col gap-3">
-            <p className="pl-6 text-sm font-bold text-[#3F3F46]">Ταξινόμηση ανά</p>
-            <div className="overflow-x-auto pl-6 pr-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <div className="flex gap-3 w-max">
-                {SORT_OPTIONS.map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => setSort(key)}
-                    className="flex items-center justify-center px-5 py-3 rounded-full whitespace-nowrap transition-colors"
-                    style={
-                      sort === key
-                        ? { backgroundColor: "#52525B", border: "none" }
-                        : { backgroundColor: "#FFFFFF", border: "1px solid #D4D4D8" }
-                    }
-                  >
-                    <span
-                      className="text-sm leading-tight"
-                      style={{
-                        fontWeight: sort === key ? 700 : 600,
-                        color: sort === key ? "#FAFAFA" : "#3F3F46",
-                      }}
-                    >
-                      {label}
-                    </span>
-                  </button>
-                ))}
-              </div>
+          <div className="overflow-x-auto px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex gap-2 w-max">
+              {SORT_OPTIONS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setSort(key)}
+                  className={`h-9 px-4 rounded-full text-[13px] font-semibold whitespace-nowrap transition-colors ${
+                    sort === key
+                      ? "bg-zinc-900 text-white"
+                      : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -254,6 +280,7 @@ export function SuggestionsByCategoryPage({ handle, category, categoryLabel, isO
               <SuggestionCard
                 key={s.id}
                 suggestion={s}
+                category={category}
                 isOwner={isOwner}
                 onEdit={() => setEditing(s)}
                 onDelete={() => setDeleting(s)}

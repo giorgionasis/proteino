@@ -2,10 +2,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateItem } from "@/lib/revalidate";
+import { mergeGalleryIntoImages, type GalleryImage } from "@/lib/images/gallery";
 
 export async function PUT(req: NextRequest) {
   const body = await req.json();
-  const { suggestionId, itemId, category, itemData, suggestionData, extData, metadataPatch } = body;
+  const { suggestionId, itemId, category, itemData, suggestionData, extData, metadataPatch, gallery } = body;
 
   if (!suggestionId || !itemId || !category) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -27,6 +28,36 @@ export async function PUT(req: NextRequest) {
     } else {
       mergedItemData.admin_reviewed_by = null;
     }
+  }
+
+  // Server-side gallery merge — the client sends only the admin-edited
+  // `gallery` array; the server re-reads the row's current `images` blob
+  // and merges, so pipeline-managed poster/backdrop/og keys can't be
+  // wiped by a stale client copy. Wrong-shape galleries silently coerce
+  // to an empty array — we still want to give the admin the ability to
+  // remove all gallery photos by clearing them.
+  // Reject the legacy "client computed mergedImages" path (itemData.images)
+  // so two writers can't fight over the same column.
+  if (mergedItemData && "images" in mergedItemData) {
+    delete mergedItemData.images;
+  }
+  if (Array.isArray(gallery)) {
+    const safeGallery: GalleryImage[] = (gallery as unknown[])
+      .filter((g): g is Record<string, unknown> => Boolean(g) && typeof g === "object" && typeof (g as { url?: unknown }).url === "string")
+      .map((g) => ({
+        url: String(g.url),
+        tab: typeof g.tab === "string" ? g.tab : undefined,
+        alt: typeof g.alt === "string" ? g.alt : undefined,
+        isDefault: g.isDefault === true ? true : undefined,
+      }));
+    const { data: existing } = await supabase
+      .from("items")
+      .select("images")
+      .eq("id", itemId)
+      .maybeSingle();
+    const currentImages = (existing as any)?.images ?? null;
+    const nextImages = mergeGalleryIntoImages(currentImages, safeGallery);
+    mergedItemData = { ...(mergedItemData ?? {}), images: nextImages };
   }
 
   // Merge metadataPatch into existing item.metadata before issuing the
