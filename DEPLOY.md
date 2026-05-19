@@ -14,8 +14,12 @@ Set on Vercel (or whatever runtime hosts Next.js):
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Anon key (browser-safe) |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Service-role key (server-only; never expose) |
 | `TMDB_API_KEY` | optional | Movie/series cover enrichment ([themoviedb.org](https://www.themoviedb.org/settings/api)) |
-| `GOOGLE_BOOKS_API_KEY` | optional | Books cover enrichment (works without for low volume) |
+| `GOOGLE_BOOKS_API_KEY` | optional | Books cover enrichment (works without for low volume). Slated for removal once Biblionet path is wired (CLAUDE.md §44). |
 | `GOOGLE_PLACES_API_KEY` | optional | Venue photos (food/bars/hotels) |
+| `BIBLIONET_USERNAME` | optional today, required when §44 lands | Biblionet web service username. Books enrichment + future catalog mirror. |
+| `BIBLIONET_PASSWORD` | optional today, required when §44 lands | Biblionet web service password. Treat as secret — server-only. |
+| `BIBLIONET_BASE_URL` | optional | Override Biblionet endpoint. Defaults to `https://biblionet.gr/webservice`. Set to legacy `https://biblionet.gr/wp-json/biblionetwebservice` to swap. |
+| `OPENAI_API_KEY` | optional today, required when Phase B day 1 lands | OpenAI embedding key for `text-embedding-3-small`. Used by `lib/embeddings/openai.ts`. |
 | `NEXT_PUBLIC_SITE_URL` | recommended | Canonical site origin (e.g. `https://proteino.gr`). Used by JSON-LD `@id`, sitemap loc, canonical URLs, OG `og:url`. Defaults to `https://proteino.gr` if unset. |
 | `ADMIN_DEV_BYPASS` | **must NOT be set** | If `=1` and `NODE_ENV !== production`, skips /admin auth. Refused in prod. |
 

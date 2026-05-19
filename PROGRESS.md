@@ -1,12 +1,95 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-19 (session 29 — pre-Phase-B polish sweep: 18 tasks across boundaries, legal/PWA, AI coaching, admin audit log)
+Last updated: 2026-05-19 (session 30 — Biblionet smoke test + Phase B day-by-day plan locked)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 29 (current) finished:**
+**Current state — session 30 (current) finished:**
+
+Two workstreams advanced, both **planning/scaffolding only — zero production code touched**. The smoke-test infrastructure for Biblionet is in the repo and validated against real API responses; Phase B has a concrete 5-day plan but day 1 hasn't started.
+
+### Shipped — Biblionet smoke test infrastructure
+
+- ✅ **`lib/enrichment/biblionet.ts`** — typed client wrapping all 8 web-service methods (`get_month_titles`, `get_title`, `get_contributors`, `get_title_subject`, `get_person`, `get_company`, `get_subject`, `get_language`). Single canonical `BiblionetTitle` shape (35+ fields) — both endpoints return the same payload. Env-driven auth via `BIBLIONET_USERNAME` + `BIBLIONET_PASSWORD`. 6s timeout per call. Normalisation helpers: empty-string → null, whitespace collapse, absolute image URL prefix, ISBN 10/13 classification.
+- ✅ **`scripts/test-biblionet.ts`** — exercises every endpoint with field-by-field validation. Flags: `--year`, `--month`, `--isbn`, `--title-id`, `--raw`.
+- ✅ **`scripts/test-biblionet-raw.ts`** — quick raw-JSON dumper for any endpoint. Used to discover undocumented fields.
+- ✅ **`scripts/discover-biblionet-subjects.ts`** — paginates N months of book firehose, calls `get_title_subject` per book with concurrency cap, aggregates by DDC hundred. Produces `scripts/biblionet-subjects-sample.json` design artifact.
+
+### Findings from live API (correcting / extending the docs)
+
+- All 8 endpoints work. Auth is `{ username, password, ... }` in POST JSON body (docs hinted at GET; actually everything in one POST body).
+- **`get_month_titles` returns the FULL detail payload** (Summary, PageNo, Price, Dimensions, Series, Contains, …) — not just summary fields. Mirror cost dramatically lower: ~3 calls/book (page firehose amortized + contributors + subjects).
+- **Description field is `Summary`** — not `Description` / `Plot` / `Abstract` / `Synopsis` as I initially guessed from the truncated docs example.
+- **`Category` field is uniformly `"Γενικά βιβλία"`** — useless for subcategory mapping. Granular taxonomy lives in `get_title_subject` (DDC codes).
+- **`PresentOrder` always `"1"`** — array index is real ordering. Mapper exposes `order`; raw value kept as `present_order_raw`.
+- **`ContributorFullName` has double-spaces** — normalised on read.
+- **Cover paths use `/assets/images/books/book_NNN/<uuid>.jpg`** — not `/wp-content/uploadsTitleImages/...` as docs example showed. Helper auto-prefixes host when relative.
+- **35+ bonus fields beyond the docs example:** `PageNo`, `Price`, `Cover` (binding), `Dimensions`, `Weight`, `AgeFrom/To`, `FirstPublishDate`/`CurrentPublishDate`/`FuturePublishDate`, `EditionNo`, `LanguageID` series, `PlaceID`. All wired into the canonical interface.
+
+### Subject discovery — 3-month sample (150 books, 82 distinct subjects)
+
+Our existing 11 book subcategories cover ~75% of hits. **24% gap** for: Θέατρο, Δοκίμιο, Τέχνη / Αρχιτεκτονική / Μουσική / Κινηματογράφος, Πολιτική / Κοινωνία, Επιστήμη / Υγεία, Γλώσσα / Λεξικά, Θρησκεία. Full distribution in `scripts/biblionet-subjects-sample.json` + CLAUDE.md §44.
+
+### Locked design decisions (saved to memory `feedback-books-data-source`)
+
+1. **Biblionet is the sole books data source** — drop Google Books entirely (not even as fallback).
+2. **Subtitle concat into `items.title`** as `"${Title}: ${Subtitle}"`. No separate subtitle field in Proteino model.
+3. **Multi-volume entirely in `metadata.volume.*`** — stop using `item_books.trilogy_name` / `is_trilogy` for Biblionet imports.
+4. **Covers mirrored to Supabase Storage** on import (own the asset, ~30 KB/book × 200K = ~6GB).
+5. **Subcategory comes from `get_title_subject` DDC subjects**, not the useless `Category` field. Auto-create if missing.
+
+### Parked design decisions
+
+User said "I'll decide later, will test later":
+
+1. **Subcategory taxonomy shape** — undecided between (a) expand the 11-bucket list to ~18 (add Θέατρο/Δοκίμιο/Τέχνη/Πολιτική/Επιστήμη/Γλώσσα/Θρησκεία) vs (b) two-tier UI (9 top tabs + sub-genre chips within Λογοτεχνία).
+2. **Architecture** — local catalog mirror (for fuzzy title search, since Biblionet has no text-search endpoint) vs admin-only (admin imports by TitlesID/ISBN). Decision deferred until subcategory locks.
+3. **`TitleType` filter** — proposed `Βιβλίο` only; not confirmed.
+4. **Backfill for the 1953 existing books** — match by ISBN and enrich vs import fresh.
+
+### Shipped — Phase B execution plan (5 days, locked)
+
+Concrete day-by-day plan, honors the locked offline-batch architecture from CLAUDE.md §3 layer 2:
+
+| Day | Goal | User-visible win |
+|---|---|---|
+| 1 | Item embeddings backfill via OpenAI `text-embedding-3-small` (matches `vector(1536)` schema column). Backfill 1953 items: $0.008 one-shot. `/api/recommendations/similar` endpoint. | None — infrastructure |
+| 2 | Replace hardcoded "Σχετικά" / "Από τον director" `<RelatedSections>` with `vector_similar` widget. New widget in `lib/layout/widgets.ts`. | Every detail page shows semantic-similar items. Works for guests. |
+| 3 | User embeddings with three fallback tiers (active → onboarding interests → "popular last 30d"). Supabase Edge Function `embed-users-cron` at 04:00 daily. | None |
+| 4 | Offline batch `precompute-recs-cron` at 04:30 daily → `analytics.precomputed_recs`. New `tailored_for_you` widget. | Real personalized "Tailored for You" rail. |
+| 5 | Haiku reranking on hero rec only — 2 calls/user/day. Real "Επειδή σου άρεσε X" reasoning copy. | AI-driven home complete. |
+
+**Cold-start handling locked:** pgvector here is content-based (item embeddings), not collaborative. Item-to-item wins exist day 1 without ANY user activity. User embeddings have three fallback tiers covering active / low-activity / zero-activity users.
+
+**Cost at 1000 DAU:** ~$60/month (dominated by Haiku reranking; embeddings + pgvector cron are pennies).
+
+**Decisions pending before day 1:**
+- **Embedding provider lock** — OpenAI text-embedding-3-small (recommended) vs text-embedding-3-large (needs vector(3072) migration) vs Cohere multilingual (needs vector(1024) migration). User parked.
+- **Backfill scope** — production directly ($0.008) vs dev branch first then prod (~$0.016). User parked.
+
+Full detail in CLAUDE.md §45.
+
+### Files touched (session 30)
+
+- New: `lib/enrichment/biblionet.ts`, `scripts/test-biblionet.ts`, `scripts/test-biblionet-raw.ts`, `scripts/discover-biblionet-subjects.ts`, `scripts/biblionet-subjects-sample.json`
+- Docs: CLAUDE.md (§44 Biblionet integration + §45 Phase B plan), PROGRESS.md (this entry), START.md (current state), AI.md (§4 execution plan subsection), DEPLOY.md (env vars `BIBLIONET_USERNAME` + `BIBLIONET_PASSWORD`)
+- `.env.local` — appended `BIBLIONET_USERNAME` + `BIBLIONET_PASSWORD` (gitignored)
+- Memory: `feedback_books_data_source.md` saved with locked decisions
+
+**Stats:** ~+1100 lines new code, 0 production code touched. `npx tsc --noEmit` → 0 errors on new files.
+
+### Open follow-ups (next session)
+
+- **Embedding provider + backfill scope decisions** — needed before Phase B day 1.
+- **Subcategory taxonomy decision** — needed before Biblionet production wiring.
+- **Phase B day 1** (when decisions land) — embed items, validate similarity output.
+- Everything from session 29's open list carries forward (SEO closing, admin polish, review milestones, React Compiler trial, PPR, per-category visual identity, hero vignettes, real legal copy).
+
+---
+
+**Previous state — session 29 finished:**
 
 Full pre-Phase-B polish pass — a deep audit of the codebase surfaced ~17 gaps (dead routes, missing boundaries, doc drift, native alerts, legal pages, PWA manifest, admin audit log). User picked the most impactful 18 items across three batches; all shipped. Branch `main` is 4 commits ahead of origin.
 

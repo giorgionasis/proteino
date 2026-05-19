@@ -1857,3 +1857,175 @@ Next 16 makes Turbopack the default for both `dev` and `build`. Two gotchas surf
 ### Rollback plan
 
 Single commit (`44c6c7d`). `git revert 44c6c7d && git push` restores the entire prior state — package versions, codemod transforms, manual fixes, CSS reorder, all of it. Vercel will auto-redeploy the reverted state.
+
+---
+
+## 44. Biblionet integration — typed client + smoke test (session 30, in progress)
+> ⏳ Smoke test shipped; production wiring (mirror + admin import + replacing Google Books) parked pending two design decisions. See [memory: feedback-books-data-source].
+
+Biblionet (https://biblionet.gr/webservice/) is the Greek institutional book catalog and will become Proteino's sole books data source — Google Books is being dropped entirely. Session 30 shipped the typed client + smoke tests + subject discovery; no production code is touched yet because two design decisions are still parked.
+
+### What's in the repo
+
+| File | Role |
+|---|---|
+| `lib/enrichment/biblionet.ts` | Typed client. Wraps all 8 web-service methods (`get_month_titles`, `get_title`, `get_contributors`, `get_title_subject`, `get_person`, `get_company`, `get_subject`, `get_language`). Single canonical `BiblionetTitle` shape (35+ fields). Env-driven auth via `BIBLIONET_USERNAME` + `BIBLIONET_PASSWORD`. 6s timeout per call. Normalisation helpers: empty-string → null, whitespace collapse, absolute image URL prefix (`https://biblionet.gr`), ISBN 10/13 classification. |
+| `scripts/test-biblionet.ts` | Smoke test. Exercises every endpoint: month firehose → title detail → contributors → subjects → person → company. Flags: `--year`, `--month`, `--isbn`, `--title-id`, `--raw`. |
+| `scripts/test-biblionet-raw.ts` | Raw-JSON dumper for any endpoint. Used to discover undocumented fields. |
+| `scripts/discover-biblionet-subjects.ts` | Subject discovery — paginates N months of book firehose, calls `get_title_subject` per book with concurrency cap, aggregates by DDC hundred. Produces `scripts/biblionet-subjects-sample.json`. |
+| `scripts/biblionet-subjects-sample.json` | Design artifact — 82 distinct subjects across 150 books from last 3 months, sorted by DDC. Drives the subcategory decision below. |
+
+### API findings (vs the docs)
+
+- **Auth is `{ username, password, ... }` in POST JSON body** (not Basic). The docs hinted at GET-for-auth + POST-for-details — actually everything goes in a single POST JSON body. New endpoint is `https://biblionet.gr/webservice`; legacy `/wp-json/biblionetwebservice` still works.
+- **`get_month_titles` returns the FULL detail payload** (Summary, PageNo, Price, Dimensions, Series, Contains, …), not just summary fields. One bulk page-call gets 50 books with complete metadata — mirror cost is dramatically lower than feared (~3 calls/book: page firehose amortized + `get_contributors` + `get_title_subject`).
+- **Description field is `Summary`**, not `Description`/`Plot`/`Abstract`/`Synopsis` as initially guessed from the truncated docs example.
+- **`Category` field is uniformly `"Γενικά βιβλία"`** for every book — useless for subcategory mapping. The granular taxonomy lives in `get_title_subject` (DDC-coded subjects like "Νεοελληνική ποίηση" DDC 889.1).
+- **`PresentOrder` is always `"1"`** regardless of contributor position. Array index is the real ordering — exposed as `order` on `BiblionetContributor`; raw value kept as `present_order_raw` for transparency.
+- **`ContributorFullName` contains double-spaces** ("Enrique  Papatino"). Normalised on read.
+- **Cover paths use `/assets/images/books/book_NNN/<uuid>.jpg`** (not `/wp-content/uploadsTitleImages/...` as docs example showed). `absoluteImageUrl` helper handles both — prepends host when relative.
+- **35+ bonus fields beyond the docs example:** `PageNo`, `Price`, `Cover` (binding type), `Dimensions`, `Weight`, `AgeFrom/To`, `FirstPublishDate/CurrentPublishDate/FuturePublishDate`, `EditionNo`, `LanguageID`/`LanguageOriginalID`/`LanguageTranslatedFromID`, `PlaceID`. All wired into the canonical interface.
+
+### Locked design decisions
+
+Saved to memory `feedback-books-data-source`:
+
+- **Biblionet is the sole books data source.** Drop Google Books entirely (not even as fallback). All new books integration code goes through `lib/enrichment/biblionet.ts` only. `lib/enrichment/google-books.ts` and the books branches of `/api/ai/match` + `/api/admin/enrich` are slated for removal once the Biblionet path is shipped.
+- **Subtitle concat into `items.title`** — `"${Title}: ${Subtitle}"` when non-empty. No separate subtitle field in the Proteino model. There is no bibliographic subtitle styling; the whole thing is the canonical title.
+- **Multi-volume entirely in `metadata.volume.*`** — stop using `item_books.trilogy_name` / `is_trilogy` for Biblionet imports. Those two columns are effectively deprecated for new books.
+- **Covers mirrored to Supabase Storage** on import (own the asset; ~30 KB/book × 200K books = ~6GB). Don't hotlink Biblionet — too fragile.
+- **Subcategory comes from `get_title_subject` DDC subjects**, NOT the `Category` field (which is uniformly Γενικά). Auto-create the subcategory if missing.
+
+### Subject distribution (from `scripts/biblionet-subjects-sample.json`)
+
+3-month sample, 150 books, 82 distinct subjects. Maps to existing 11 subcategories cover ~75% of hits:
+
+| Existing subcategory | Biblionet DDC subjects | Sample hits |
+|---|---|---|
+| Παιδικά | 899.91 (Μεταφρ. παιδικά), 889.91 (Ελλην. παιδικά), 372.8 (Παιδικές δραστηριότητες), 398.21 (Παραμύθια), 263.93 | 43 |
+| Μυθιστόρημα | 889.3 (Νεοελλ. πεζογραφία — Μυθιστόρημα/Νουβέλα/Διήγημα), 833/843/853/863/813 (foreign translations) | 31 |
+| Ποίηση | 889.1 | 16 |
+| Ιστορία | 900-999 (Ιστορία, Ελλάς Επανάσταση 1821, …) | 14 |
+| Ψυχολογία | 150, 155.4, 156, 150.195, 616.898 2 | 7 |
+| Φιλοσοφία | 190, 181.9, 188 (Στωϊκή), 133.9 (Διαλογισμός), 104 | 6 |
+| Αυτοβιογραφία | 920 | 3 |
+| Self-help | 158, 303.34 (Ηγεσία) | 2 |
+| Sci-Fi | 808.838 766 (Φανταστική), 808.838 738 (Λογοτεχνία τρόμου) | 2 |
+| Θρίλερ | 808.838 72 (Αστυνομική) | 1 |
+| Business | — | 0 |
+
+Gaps in our taxonomy (~24% of sample, ~36 books):
+- **Θέατρο** — 862, 889.2 (theater plays)
+- **Δοκίμιο / Lectures** — 080, 889.4
+- **Τέχνη / Αρχιτεκτονική / Μουσική / Κινηματογράφος** — 700, 720, 750, 780, 791
+- **Πολιτική / Κοινωνία** — 300, 320, 327, 340, 303
+- **Επιστήμη / Υγεία** — 516, 613
+- **Γλώσσα / Λεξικά** — 480, 483
+- **Θρησκεία** — 263, 294
+- **Παιδαγωγική** — 370
+
+### Parked design decisions
+
+These block production wiring of the Biblionet path. User said "I'll decide later":
+
+1. **Subcategory taxonomy shape.** Two options on the table:
+   - **(a) Expand to ~18 subcategories** — add 7 new buckets (Θέατρο, Δοκίμιο, Τέχνη, Πολιτική/Κοινωνία, Επιστήμη/Υγεία, Γλώσσα, Θρησκεία). Category-page tabs split into 2 rows. Every Biblionet book has a home.
+   - **(b) Two-tier UI** — 9 top tabs (Λογοτεχνία · Παιδικά · Ιστορία · Ψυχολογία · Φιλοσοφία · Τέχνη · Πολιτική · Επιστήμη · Self-help) + sub-genre chip filters within Λογοτεχνία (Μυθιστόρημα/Ποίηση/Θέατρο/Sci-Fi/Θρίλερ/Δοκίμιο).
+   Both options work off the same DDC crosswalk; only UI differs.
+2. **Architecture — local mirror vs admin-only.** Biblionet has NO text-search endpoint; the user-submission flow needs a local catalog mirror (paginated `get_month_titles` initial bulk + daily `lastupdate` delta) to enable fuzzy title search. Decision deferred until subcategory taxonomy is locked.
+3. **`TitleType` filter** — proposed default: only `Βιβλίο` (skip `Περιοδικό`/`CD`/`DVD`). Not confirmed.
+4. **Backfill strategy for 1953 existing books** — match by ISBN and enrich, or import fresh from Biblionet.
+
+### Env vars
+
+```
+BIBLIONET_USERNAME=...
+BIBLIONET_PASSWORD=...
+BIBLIONET_BASE_URL=...   # optional — defaults to https://biblionet.gr/webservice
+```
+
+Already added to `.env.local` (gitignored). Will need to land in Vercel env when the path is wired up.
+
+---
+
+## 45. Phase B execution plan — pgvector recommendations (locked session 30, not started)
+> 📋 5-day day-by-day plan. Honors locked offline-batch architecture from §3 layer 2: nightly Edge Function computes embeddings + `analytics.precomputed_recs`; online home reads precomputed in <100ms with zero LLM at request time.
+
+Phase B is the biggest user-visible unblock left. Currently the platform is positioned as an "AI-driven recommendation platform" but the home page renders static carousels — Phase B fixes that. Plan locked after cold-start concerns surfaced in session 30 (legitimate concern; pgvector here is content-based, not collaborative, so item-item works day 1 with zero user activity).
+
+### Day 1 — Item embeddings
+**Goal:** every item has a 1536-dim embedding in `items.embedding`.
+
+- Lock embedding provider: **OpenAI `text-embedding-3-small`** ($0.02/1M tokens, 1536-dim — matches existing schema column).
+- New `lib/embeddings/openai.ts` — `embedText(text)` → `number[]`, batches up to 100 per call.
+- New `scripts/embed-items.ts` — backfills all 1953 items. Composes input text per category:
+  - Movies/Series: `title + original_title + plot + cast + genres + director`
+  - Books: `title + author + plot + subjects` (Biblionet later)
+  - Food/Bars: `title + cuisine + type + description + city`
+  - Recipes: `title + ingredients + origin + tips`
+- Cost: ~1953 items × 200 tokens avg = ~400K tokens = **$0.008 one-shot**.
+- Wire `app/api/recommendations/similar/route.ts` — pgvector cosine, returns top-N.
+
+### Day 2 — Item-to-item carousels on detail pages
+**Goal:** day-1 user-visible win, works even for guests (no user activity required).
+
+- Replace hardcoded "Σχετικά" / "Από τον ίδιο director" `<RelatedSections>` blocks (§38) with a new `vector_similar_items` rule type — pulls from `/similar` with cosine filter.
+- Add `vector_similar` widget to `lib/layout/widgets.ts` for both detail pages and `static_carousel` on home.
+- Wire into the 9 detail components. Existing `<CarouselPortrait>` / `<CarouselLandscape>` consume unchanged.
+
+### Day 3 — User embeddings + offline batch infrastructure
+**Goal:** every user has an embedding; nightly cron updates them.
+
+- Migration: `analytics.user_embeddings` (one row per user, vector(1536), computed_at). Or column on `users.embedding` (already exists per §5).
+- `lib/embeddings/user.ts`:
+  - Active users (≥3 bookmarks OR ≥3 ratings in last 30d): weighted average of interacted-item embeddings (rating ×3, bookmark ×2, suggestion ×3, view ×1).
+  - Low-activity users: average of top-N items in their onboarding categories — **cold-start fallback**.
+  - Zero-activity / zero-onboarding legacy K2 users: fallback to "popular last 30d" cluster center.
+- Supabase Edge Function `embed-users-cron`:
+  - Daily at 04:00.
+  - Recomputes embeddings for users with new activity in last 24h.
+  - One-shot backfill for existing 627 users on first run.
+- Cost: 627 users × ~50 tokens = ~30K tokens = **$0.0006 one-shot**. Daily cron ~$0.01/month.
+
+### Day 4 — Precompute "Tailored for You" → online table
+**Goal:** the offline → online handoff per the locked architecture.
+
+- Migration: `analytics.precomputed_recs` (`user_id`, `item_id`, `score`, `rank`, `reason_seed`, `computed_at`).
+- Supabase Edge Function `precompute-recs-cron`:
+  - Daily at 04:30 (after user embeddings finish).
+  - For each user with `last_login_at` in last 30d: pgvector top-50 cosine, excluding bookmarked/rated/own-suggested.
+  - Writes ~50 rows per active user. Indexed on `(user_id, rank)` — `SELECT WHERE user_id=X ORDER BY rank LIMIT 5` is <10ms.
+- New widget `tailored_for_you` in `lib/layout/widgets.ts`. Registered-audience-only. Reads from `precomputed_recs`.
+
+### Day 5 — Haiku reranking + reasoning copy
+**Goal:** the "Επειδή σου άρεσε X" subtitle becomes real (§3 layer 3).
+
+- `app/api/recommendations/rerank/route.ts` — takes `userId`, fetches their precomputed top-50, fetches their last 5 high-rated items, sends to Haiku with prompt: "rerank these 50 to top-5 + 1-line Greek reasoning referencing user's taste".
+- Cap: 2 calls/user/day. Cached in `analytics.rerank_cache` for 24h.
+- Wire onto the **first card only** of "Tailored for You" rail + the "AI-personalized chips" on home.
+- Cost: ~$0.001/rerank × 2/day × 1000 active users = ~$2/day at scale (~3-5% of revenue per the §3 cost target).
+
+### Cost projection at 1000 DAU
+
+| Item | Cost |
+|---|---|
+| Item embeddings backfill | $0.008 one-shot |
+| User embeddings backfill | $0.0006 one-shot |
+| Daily user embedding refresh | ~$0.01/month |
+| Daily precompute cron | $0 (pure pgvector, no LLM) |
+| Haiku reranking @ 2/user/day | ~$2/day → $60/month |
+| **Total monthly** | **~$60/month** |
+
+### Cold-start handling (concern raised + resolved)
+
+The concern: "users haven't interacted enough yet; recommendations won't have signal". Resolution:
+- **Day 1-2 wins are content-based, not collaborative.** Item-to-item similarity works with zero user activity. The "more like Sapiens" carousel needs only item embeddings.
+- **User embeddings have three fallback tiers** (above) — every user gets a usable embedding from day 3 forward.
+- **Quality grows organically** as users bookmark/rate. The architecture starts simple and gets better.
+
+### Decisions pending before day 1
+
+1. **Embedding provider lock** — OpenAI text-embedding-3-small (recommended, matches schema, $0.02/1M) vs text-embedding-3-large ($0.13/1M, needs migration to vector(3072)) vs Cohere multilingual ($0.10/1M, needs migration to vector(1024)).
+2. **Backfill scope** — production directly ($0.008, embeddings sit idle until day 2) vs dev branch first then prod (~$0.016, validates similarity output before any user sees it).
+
+Both parked — user said "decide later, will test later". No code starts until these land.
