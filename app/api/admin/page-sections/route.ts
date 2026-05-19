@@ -15,6 +15,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidateCategory, revalidateHome } from "@/lib/revalidate";
 import { WIDGET_REGISTRY, isWidgetSingleton } from "@/lib/layout/widgets";
+import {
+  executeWithAuditFallback,
+  getAdminAuditUserId,
+  resolveAdminUserMap,
+} from "@/lib/admin/audit";
 
 const VALID_CONTEXTS = new Set(["home", "category", "suggestions"]);
 const VALID_AUDIENCES = new Set(["all", "registered", "guest"]);
@@ -32,7 +37,7 @@ export async function GET(req: NextRequest) {
   const sb = createAdminClient();
   let q = (sb.from("page_sections") as any)
     .select(
-      "id, section_type, collection_id, widget_key, context, category, display_order, audience, config, is_active, valid_from, valid_until, created_at, modified_at, collection:collections(id, type, title, title_specific, alias, image_url, source_category, tags, is_published)"
+      "id, section_type, collection_id, widget_key, context, category, display_order, audience, config, is_active, valid_from, valid_until, created_at, modified_at, modified_by, collection:collections(id, type, title, title_specific, alias, image_url, source_category, tags, is_published)"
     )
     .eq("context", context)
     .order("display_order");
@@ -40,10 +45,25 @@ export async function GET(req: NextRequest) {
   if (context === "home") q = q.is("category", null);
   else if (category) q = q.eq("category", category);
 
-  const { data, error } = await q;
+  let { data, error } = await q;
+  // Pre-040 fallback: retry without modified_by if the column is missing.
+  if (error && (error as { code?: string }).code === "42703") {
+    let retry = (sb.from("page_sections") as any)
+      .select(
+        "id, section_type, collection_id, widget_key, context, category, display_order, audience, config, is_active, valid_from, valid_until, created_at, modified_at, collection:collections(id, type, title, title_specific, alias, image_url, source_category, tags, is_published)"
+      )
+      .eq("context", context)
+      .order("display_order");
+    if (context === "home") retry = retry.is("category", null);
+    else if (category) retry = retry.eq("category", category);
+    ({ data, error } = await retry);
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ sections: data ?? [] });
+  const rows = (data ?? []) as Array<{ modified_by?: string | null }>;
+  const userMap = await resolveAdminUserMap(sb, rows);
+
+  return NextResponse.json({ sections: data ?? [], userMap });
 }
 
 export async function POST(req: NextRequest) {
@@ -131,8 +151,14 @@ export async function POST(req: NextRequest) {
     finalOrder = currentMax + 10;
   }
 
-  const { data, error } = await (sb.from("page_sections") as any)
-    .insert({
+  const userId = await getAdminAuditUserId();
+  const { data, error } = await executeWithAuditFallback(
+    (stamped) =>
+      (sb.from("page_sections") as any)
+        .insert(stamped)
+        .select()
+        .single(),
+    {
       context,
       category: context === "home" ? null : category,
       section_type,
@@ -142,9 +168,9 @@ export async function POST(req: NextRequest) {
       config: config ?? {},
       display_order: finalOrder,
       is_active: true,
-    })
-    .select()
-    .single();
+    },
+    userId,
+  );
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

@@ -1,6 +1,12 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateFrontend } from "@/lib/revalidate";
+import {
+  executeManyWithAuditFallback,
+  executeWithAuditFallback,
+  getAdminAuditUserId,
+  resolveAdminUserMap,
+} from "@/lib/admin/audit";
 
 const GREEK_TO_LATIN: Record<string, string> = {
   "α":"a","β":"v","γ":"g","δ":"d","ε":"e","ζ":"z","η":"i","θ":"th",
@@ -50,7 +56,13 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await q;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(data);
+    // Pull modified_by ids off the embedded collection rows so the
+    // manager UI can render an "edited by X" footer without a follow-up
+    // roundtrip.
+    const collectionRows = ((data ?? []) as Array<{ collections?: { modified_by?: string | null } | null }>)
+      .map((p) => p.collections ?? {});
+    const userMap = await resolveAdminUserMap(supabase, collectionRows);
+    return NextResponse.json({ placements: data ?? [], userMap });
   }
 
   // List view: all collections + their placements.
@@ -121,8 +133,14 @@ export async function POST(req: NextRequest) {
     finalAlias = `${baseAlias}-${++i}`;
   }
 
-  const { data: created, error: insertErr } = await (supabase.from("collections") as any)
-    .insert({
+  const userId = await getAdminAuditUserId();
+  const { data: created, error: insertErr } = await executeWithAuditFallback<any>(
+    (stamped) =>
+      (supabase.from("collections") as any)
+        .insert(stamped)
+        .select("*")
+        .single(),
+    {
       type,
       title: title.trim(),
       title_specific: title_specific?.trim() || null,
@@ -136,9 +154,9 @@ export async function POST(req: NextRequest) {
       valid_from: valid_from || null,
       valid_until: valid_until || null,
       target_audience,
-    })
-    .select("*")
-    .single();
+    },
+    userId,
+  );
 
   if (insertErr || !created) {
     return NextResponse.json({ error: insertErr?.message ?? "insert failed" }, { status: 500 });
@@ -169,7 +187,11 @@ export async function POST(req: NextRequest) {
   }
 
   if (rows.length > 0) {
-    const { error: pErr } = await (supabase.from("page_sections") as any).insert(rows);
+    const { error: pErr } = await executeManyWithAuditFallback(
+      (stamped) => (supabase.from("page_sections") as any).insert(stamped),
+      rows,
+      userId,
+    );
     if (pErr) {
       // Roll back the collection so we don't leave orphans
       await supabase.from("collections").delete().eq("id", created.id);

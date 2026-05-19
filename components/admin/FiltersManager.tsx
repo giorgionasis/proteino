@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CATEGORIES } from "@/constants/categories";
+import { RowAuditFooter } from "@/components/admin/ui/RowAuditFooter";
+import type { AdminUserMap } from "@/lib/admin/audit";
 
 const WIDGET_LABELS: Record<string, string> = {
   "dropdown":         "Dropdown (single-select)",
@@ -33,6 +35,10 @@ interface FilterRow {
   is_quick: boolean;
   display_order: number;
   is_published: boolean;
+  /** Audit stamps from migration 040. Optional — silently absent before
+   *  migration is applied or for rows never edited. */
+  modified_at?: string | null;
+  modified_by?: string | null;
 }
 
 interface SettingsRow {
@@ -46,6 +52,7 @@ const DEFAULT_TAB = CATEGORIES[0].slug;
 export function FiltersManager() {
   const [activeCategory, setActiveCategory] = useState<string>(DEFAULT_TAB);
   const [filters, setFilters] = useState<FilterRow[]>([]);
+  const [userMap, setUserMap] = useState<AdminUserMap>({});
   const [settings, setSettings] = useState<SettingsRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +74,13 @@ export function FiltersManager() {
       ]);
       const fData = await fRes.json();
       const sData = await sRes.json();
-      setFilters(Array.isArray(fData) ? fData : []);
+      const filterRows: FilterRow[] = Array.isArray(fData)
+        ? (fData as FilterRow[])
+        : Array.isArray(fData?.filters)
+          ? (fData.filters as FilterRow[])
+          : [];
+      setFilters(filterRows);
+      setUserMap((fData?.userMap ?? {}) as AdminUserMap);
       setSettings(sData ?? null);
     } catch (e: any) {
       setError(e.message ?? String(e));
@@ -218,6 +231,7 @@ export function FiltersManager() {
                 <FilterRowItem
                   key={row.id}
                   row={row}
+                  userMap={userMap}
                   isFirst={idx === 0}
                   isLast={idx === filters.length - 1}
                   busy={busyId === row.id}
@@ -416,8 +430,9 @@ function FiltersExplorer({ category }: { category: string }) {
 
 /* ─── Row ──────────────────────────────────────────────────── */
 
-function FilterRowItem({ row, isFirst, isLast, busy, onMoveUp, onMoveDown, onToggleQuick, onTogglePublish, onLabelChange, onRemove, onEditOptions }: {
+function FilterRowItem({ row, userMap, isFirst, isLast, busy, onMoveUp, onMoveDown, onToggleQuick, onTogglePublish, onLabelChange, onRemove, onEditOptions }: {
   row: FilterRow;
+  userMap: AdminUserMap;
   isFirst: boolean;
   isLast: boolean;
   busy: boolean;
@@ -471,6 +486,15 @@ function FilterRowItem({ row, isFirst, isLast, busy, onMoveUp, onMoveDown, onTog
           onBlur={(e) => onLabelChange(e.target.value.trim())}
           className="w-full px-2 py-1 text-sm font-medium text-zinc-800 bg-transparent border border-transparent rounded hover:bg-zinc-50 focus:outline-none focus:bg-white focus:border-zinc-300"
         />
+        {row.modified_at && (
+          <div className="px-2 mt-0.5">
+            <RowAuditFooter
+              modifiedAt={row.modified_at}
+              modifiedById={row.modified_by}
+              userMap={userMap}
+            />
+          </div>
+        )}
       </div>
 
       {/* Quick toggle */}

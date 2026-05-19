@@ -7,8 +7,10 @@ import { AdminPanel } from "@/components/admin/ui/AdminPanel";
 import { AdminRow, AdminActionButton } from "@/components/admin/ui/AdminRow";
 import { AdminEmpty } from "@/components/admin/ui/AdminEmpty";
 import { MomentEditDrawer } from "@/components/admin/MomentEditDrawer";
+import { RowAuditFooter } from "@/components/admin/ui/RowAuditFooter";
 import { useToast } from "@/components/ui/Toast";
 import type { MomentRow, PredicateSchema } from "@/lib/moments";
+import type { AdminUserMap } from "@/lib/admin/audit";
 
 /**
  * /admin/moments — list + inline edit drawer.
@@ -50,9 +52,10 @@ interface Props {
   initialMoments:   MomentRow[];
   initialStats:     Record<string, { fires: number; ctaClicks: number; dismissed: number }>;
   predicateSchemas: Record<string, PredicateSchema>;
+  userMap?:         AdminUserMap;
 }
 
-export function MomentsManager({ initialMoments, initialStats, predicateSchemas }: Props) {
+export function MomentsManager({ initialMoments, initialStats, predicateSchemas, userMap }: Props) {
   const { show, toast } = useToast();
   const router  = useRouter();
   const [rows,    setRows]    = useState<MomentRow[]>(initialMoments);
@@ -222,6 +225,19 @@ export function MomentsManager({ initialMoments, initialStats, predicateSchemas 
                     m.variant_group ? `group: ${m.variant_group}` : null,
                     typeof m.display?.delay_ms === "number" ? `delay ${m.display.delay_ms}ms` : null,
                   ].filter(Boolean).join(" · ");
+                  const audit = (
+                    <RowAuditFooter
+                      modifiedAt={m.modified_at}
+                      modifiedById={m.modified_by}
+                      userMap={userMap}
+                    />
+                  );
+                  const metaNode = meta || m.modified_at ? (
+                    <span className="flex items-center gap-2 flex-wrap">
+                      {meta && <span>{meta}</span>}
+                      {audit}
+                    </span>
+                  ) : undefined;
                   return (
                     <AdminRow
                       key={m.id}
@@ -238,7 +254,7 @@ export function MomentsManager({ initialMoments, initialStats, predicateSchemas 
                           )}
                         </span>
                       }
-                      meta={meta || undefined}
+                      meta={metaNode}
                       actions={
                         <>
                           <AdminActionButton

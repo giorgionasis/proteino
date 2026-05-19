@@ -1,5 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 
+/** Lightweight shape of an admin user as needed by the audit footer. */
+export interface AdminUserStub {
+  id:           string;
+  handle:       string | null;
+  display_name: string | null;
+}
+
+/** Map keyed by user id → minimal display info. Used by `<RowAuditFooter>`. */
+export type AdminUserMap = Record<string, AdminUserStub>;
+
 /**
  * Resolves the auth user id of the admin currently calling an admin
  * route. Returns null if there is no session — the caller should
@@ -54,6 +64,51 @@ export async function executeWithAuditFallback<T>(
   const first = await runner(stamped);
   if (first.error && first.error.code === "42703") {
     return runner(basePatch);
+  }
+  return first;
+}
+
+/**
+ * Resolve the `modified_by` ids on a list of rows into an
+ * `AdminUserMap`. Use this from server components feeding the manager
+ * UIs so they can pass a static map down rather than each row firing
+ * its own lookup. Safe to call with rows that don't have stamps yet —
+ * returns an empty map.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function resolveAdminUserMap<T extends { modified_by?: string | null }>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: any,
+  rows: T[],
+): Promise<AdminUserMap> {
+  const ids = Array.from(
+    new Set(rows.map((r) => r.modified_by).filter((v): v is string => !!v)),
+  );
+  if (ids.length === 0) return {};
+  const { data } = await sb
+    .from("users")
+    .select("id, handle, display_name")
+    .in("id", ids);
+  const map: AdminUserMap = {};
+  for (const u of (data ?? []) as AdminUserStub[]) {
+    map[u.id] = u;
+  }
+  return map;
+}
+
+/**
+ * Batch variant — stamps every row in the array, retries the whole
+ * insert without stamps if Postgres complains about a missing column.
+ */
+export async function executeManyWithAuditFallback<T>(
+  runner: (stamped: Record<string, unknown>[]) => Promise<{ data: T | null; error: { code?: string; message: string } | null }>,
+  baseRows: Record<string, unknown>[],
+  userId: string | null,
+): Promise<{ data: T | null; error: { code?: string; message: string } | null }> {
+  const stamped = baseRows.map((row) => withAuditStamps(row, userId));
+  const first = await runner(stamped);
+  if (first.error && first.error.code === "42703") {
+    return runner(baseRows);
   }
   return first;
 }

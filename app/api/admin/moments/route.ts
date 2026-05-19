@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { executeWithAuditFallback, getAdminAuditUserId } from "@/lib/admin/audit";
 
 /**
  * Admin moments CRUD — list + create.
@@ -47,7 +48,11 @@ export async function POST(req: NextRequest) {
   if (!row.trigger_event)  return NextResponse.json({ error: "trigger_event required" }, { status: 400 });
 
   const sb = createAdminClient();
-  const { data, error } = await (sb.from("moments") as any).insert(row).select("*").single();
+  const userId = await getAdminAuditUserId();
+  const { data, error } = await executeWithAuditFallback(
+    (stamped) => (sb.from("moments") as any).insert(stamped).select("*").single(),
+    row, userId,
+  );
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }

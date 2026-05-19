@@ -48,6 +48,9 @@ export interface PageSectionRow {
   valid_until: string | null;
   created_at: string;
   modified_at: string;
+  /** Audit stamp from migration 040. Null when never edited since the
+   *  migration was applied, or when the column hasn't been added yet. */
+  modified_by?: string | null;
 }
 
 /* ─── Resolver output ───────────────────────────────────────────────── */

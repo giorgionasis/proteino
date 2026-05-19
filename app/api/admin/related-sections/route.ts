@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidateCategory } from "@/lib/revalidate";
+import { executeWithAuditFallback, getAdminAuditUserId } from "@/lib/admin/audit";
 
 const VALID_CATEGORIES = new Set([
   "books", "movies", "series", "food", "recipes",
@@ -58,8 +59,14 @@ export async function POST(req: NextRequest) {
     ? (typeof radius_km === "number" && radius_km > 0 ? radius_km : 1.0)
     : null;
 
-  const { data, error } = await (sb.from("related_sections_config") as any)
-    .insert({
+  const userId = await getAdminAuditUserId();
+  const { data, error } = await executeWithAuditFallback(
+    (stamped) =>
+      (sb.from("related_sections_config") as any)
+        .insert(stamped)
+        .select()
+        .single(),
+    {
       category,
       field: field.trim(),
       title_template,
@@ -68,9 +75,9 @@ export async function POST(req: NextRequest) {
       display_order: typeof display_order === "number" ? display_order : 0,
       is_active: typeof is_active === "boolean" ? is_active : true,
       radius_km: resolvedRadius,
-    })
-    .select()
-    .single();
+    },
+    userId,
+  );
 
   if (error) {
     // UNIQUE(category, field) violation → 23505. Surface as 409.

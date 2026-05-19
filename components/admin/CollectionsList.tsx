@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CATEGORIES } from "@/constants/categories";
 import { AdminTabs } from "./AdminTabs";
+import { RowAuditFooter } from "@/components/admin/ui/RowAuditFooter";
+import type { AdminUserMap } from "@/lib/admin/audit";
 
 type Context = "home" | "category";
 type CollectionType = "card" | "carousel";
@@ -20,6 +22,10 @@ interface CollectionRow {
   item_limit: number;
   is_published: boolean;
   target_audience: "all" | "registered" | "guest";
+  /** Audit stamps from migration 040 — optional, may be absent before
+   *  migration is applied. */
+  modified_at?: string | null;
+  modified_by?: string | null;
 }
 
 interface PlacementRow {
@@ -44,6 +50,7 @@ const TABS: { label: string; value: string; icon?: string }[] = [
 export function CollectionsList() {
   const [activeTab, setActiveTab] = useState<string>("home");
   const [rows, setRows] = useState<PlacementRow[]>([]);
+  const [userMap, setUserMap] = useState<AdminUserMap>({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -60,7 +67,15 @@ export function CollectionsList() {
       if (category) url.searchParams.set("category", category);
       const res = await fetch(url.toString());
       const data = await res.json();
-      if (Array.isArray(data)) setRows(data);
+      // Endpoint returns either a raw array (legacy shape) or
+      // `{ placements, userMap }` (since session 31). Handle both.
+      if (Array.isArray(data)) {
+        setRows(data);
+        setUserMap({});
+      } else {
+        setRows(Array.isArray(data?.placements) ? data.placements : []);
+        setUserMap((data?.userMap ?? {}) as AdminUserMap);
+      }
     } finally {
       setLoading(false);
     }
@@ -143,6 +158,7 @@ export function CollectionsList() {
               <Row
                 key={row.id}
                 row={row}
+                userMap={userMap}
                 idx={idx}
                 isFirst={idx === 0}
                 isLast={idx === rows.length - 1}
@@ -169,8 +185,9 @@ export function CollectionsList() {
 
 /* ─── Row ──────────────────────────────────────────────────── */
 
-function Row({ row, isFirst, isLast, busy, onMoveUp, onMoveDown, onTogglePublish }: {
+function Row({ row, userMap, isFirst, isLast, busy, onMoveUp, onMoveDown, onTogglePublish }: {
   row: PlacementRow;
+  userMap: AdminUserMap;
   idx: number;
   isFirst: boolean;
   isLast: boolean;
@@ -240,6 +257,15 @@ function Row({ row, isFirst, isLast, busy, onMoveUp, onMoveDown, onTogglePublish
           <span className="mx-1.5 text-zinc-300">·</span>
           <span>tags: {tagsLabel}</span>
         </p>
+        {c.modified_at && (
+          <p className="mt-0.5">
+            <RowAuditFooter
+              modifiedAt={c.modified_at}
+              modifiedById={c.modified_by}
+              userMap={userMap}
+            />
+          </p>
+        )}
       </div>
 
       {/* Publish toggle */}

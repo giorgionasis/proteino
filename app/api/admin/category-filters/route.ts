@@ -1,8 +1,16 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateCategory } from "@/lib/revalidate";
+import {
+  executeWithAuditFallback,
+  getAdminAuditUserId,
+  resolveAdminUserMap,
+} from "@/lib/admin/audit";
 
 // GET /api/admin/category-filters?category=movies
+// Returns `{ filters, userMap }` since session 31 — `userMap` keyed by
+// `modified_by` id so the admin UI can render audit footers without a
+// follow-up roundtrip. The shape was a bare array before.
 export async function GET(req: NextRequest) {
   const sb = createAdminClient();
   const url = new URL(req.url);
@@ -13,7 +21,9 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  const rows = (data ?? []) as Array<{ modified_by?: string | null }>;
+  const userMap = await resolveAdminUserMap(sb, rows);
+  return NextResponse.json({ filters: data ?? [], userMap });
 }
 
 // POST /api/admin/category-filters
@@ -34,8 +44,14 @@ export async function POST(req: NextRequest) {
     .limit(1);
   const next = ((maxRow as any)?.[0]?.display_order ?? -1) + 1;
 
-  const { data, error } = await (sb.from("category_filters") as any)
-    .insert({
+  const userId = await getAdminAuditUserId();
+  const { data, error } = await executeWithAuditFallback(
+    (stamped) =>
+      (sb.from("category_filters") as any)
+        .insert(stamped)
+        .select("*")
+        .single(),
+    {
       category,
       filter_id: filter_id.trim(),
       label: label.trim(),
@@ -45,9 +61,9 @@ export async function POST(req: NextRequest) {
       is_quick: !!body.is_quick,
       display_order: next,
       is_published: true,
-    })
-    .select("*")
-    .single();
+    },
+    userId,
+  );
 
   if (error) {
     if ((error as any).code === "23505") {

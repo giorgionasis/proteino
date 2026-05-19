@@ -37,6 +37,14 @@ const nextConfig = {
   // PackFileCache ENOENT bug — Turbopack uses a different storage model,
   // so the workaround is no longer needed.
   turbopack: {},
+
+  // React Compiler (stable as of 1.0.0). Auto-memoizes components +
+  // hooks at build time; removes most of the codebase's hand-rolled
+  // useMemo / useCallback / React.memo boilerplate. The compiler is
+  // conservative — it bails out on components it can't safely analyze
+  // instead of crashing. Enabled as part of session 31's cleanup pass.
+  // Promoted from `experimental.reactCompiler` to top-level in Next 16.
+  reactCompiler: true,
 };
 
 export default nextConfig;

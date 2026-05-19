@@ -30,6 +30,8 @@ import { SectionPickerModal } from "./SectionPickerModal";
 import { SectionConfigDrawer } from "./SectionConfigDrawer";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { RowAuditFooter } from "@/components/admin/ui/RowAuditFooter";
+import type { AdminUserMap } from "@/lib/admin/audit";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -72,6 +74,7 @@ export function LayoutManager() {
   const [pageKey, setPageKey] = useState<string>("cat:movies");
   const [audience, setAudience] = useState<AdminPreviewAudience>("all");
   const [sections, setSections] = useState<ApiSectionRow[]>([]);
+  const [userMap, setUserMap] = useState<AdminUserMap>({});
   const [loading, setLoading] = useState(true);
   const [savingReorder, setSavingReorder] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -106,9 +109,11 @@ export function LayoutManager() {
       const res = await fetch(url.toString(), { cache: "no-store" });
       const data = await res.json();
       setSections((data?.sections ?? []) as ApiSectionRow[]);
+      setUserMap((data?.userMap ?? {}) as AdminUserMap);
     } catch (e) {
       console.error("[LayoutManager] load failed", e);
       setSections([]);
+      setUserMap({});
     } finally {
       setLoading(false);
     }
@@ -271,6 +276,7 @@ export function LayoutManager() {
                       key={s.id}
                       row={s}
                       busy={busyId === s.id}
+                      userMap={userMap}
                       onToggleActive={() => toggleActive(s)}
                       onChangeAudience={(a) => changeRowAudience(s, a)}
                       onDelete={() => handleDelete(s)}
@@ -382,6 +388,7 @@ function PagePicker({ selected, onSelect }: { selected: string; onSelect: (k: st
 function SortableSection({
   row,
   busy,
+  userMap,
   onToggleActive,
   onChangeAudience,
   onDelete,
@@ -390,6 +397,7 @@ function SortableSection({
 }: {
   row: ApiSectionRow;
   busy: boolean;
+  userMap: AdminUserMap;
   onToggleActive: () => void;
   onChangeAudience: (a: LayoutAudience) => void;
   onDelete: () => void;
@@ -463,6 +471,16 @@ function SortableSection({
               <span className="text-zinc-500 truncate" title={JSON.stringify(row.config)}>
                 {summarizeConfig(row.config)}
               </span>
+            </>
+          )}
+          {row.modified_at && (
+            <>
+              <span className="text-zinc-300">·</span>
+              <RowAuditFooter
+                modifiedAt={row.modified_at}
+                modifiedById={row.modified_by}
+                userMap={userMap}
+              />
             </>
           )}
         </div>

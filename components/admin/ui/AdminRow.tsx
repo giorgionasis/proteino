@@ -1,6 +1,6 @@
 "use client";
 
-import { ButtonHTMLAttributes, ReactNode, forwardRef } from "react";
+import { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 
 /**
@@ -104,34 +104,33 @@ export function AdminRow({
 /* ── Action button — paired with AdminRow ────────────────────────── */
 
 interface AdminActionButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  ref?: React.Ref<HTMLButtonElement>;
   tone?: "neutral" | "danger" | "primary";
   label?: string;
 }
 
-export const AdminActionButton = forwardRef<HTMLButtonElement, AdminActionButtonProps>(
-  function AdminActionButton({ tone = "neutral", label, className, children, ...props }, ref) {
-    return (
-      <button
-        ref={ref}
-        type="button"
-        title={label}
-        aria-label={label}
-        className={cn(
-          "h-7 min-w-7 px-1.5 inline-flex items-center justify-center gap-1",
-          "rounded-md text-xs font-medium",
-          "transition-colors disabled:opacity-30 disabled:cursor-not-allowed",
-          tone === "neutral" && "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200/60",
-          tone === "danger"  && "text-zinc-400 hover:text-red-600 hover:bg-red-50",
-          tone === "primary" && "text-coral-600 hover:bg-coral-100",
-          className,
-        )}
-        {...props}
-      >
-        {children}
-      </button>
-    );
-  },
-);
+export function AdminActionButton({ ref, tone = "neutral", label, className, children, ...props }: AdminActionButtonProps) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      title={label}
+      aria-label={label}
+      className={cn(
+        "h-7 min-w-7 px-1.5 inline-flex items-center justify-center gap-1",
+        "rounded-md text-xs font-medium",
+        "transition-colors disabled:opacity-30 disabled:cursor-not-allowed",
+        tone === "neutral" && "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200/60",
+        tone === "danger"  && "text-zinc-400 hover:text-red-600 hover:bg-red-50",
+        tone === "primary" && "text-coral-600 hover:bg-coral-100",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
 
 /* ── Action select (hover-revealed dropdown) ─────────────────────── */
 /* Used for "Move under…" pickers etc. Looks like an action button but */

@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PREDICATE_SCHEMAS } from "@/lib/moments";
 import type { MomentRow } from "@/lib/moments";
 import { MomentsManager } from "@/components/admin/MomentsManager";
+import { resolveAdminUserMap } from "@/lib/admin/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -37,11 +38,14 @@ export default async function MomentsAdminPage() {
     if (e.dismissed_at) stats[e.moment_id].dismissed++;
   }
 
+  const userMap = await resolveAdminUserMap(sb, moments);
+
   return (
     <MomentsManager
       initialMoments={moments}
       initialStats={stats}
       predicateSchemas={PREDICATE_SCHEMAS}
+      userMap={userMap}
     />
   );
 }

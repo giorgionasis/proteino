@@ -65,9 +65,9 @@ export async function GET(req: Request) {
   }
 
   const [moments, pageSections, collections, related, filters] = await Promise.all([
-    fetchPerTable<{ id: string; name: string; modified_at: string; modified_by: string | null }>(
+    fetchPerTable<{ id: string; key: string; label: string | null; modified_at: string; modified_by: string | null }>(
       "moments",
-      "id, name, modified_at, modified_by",
+      "id, key, label, modified_at, modified_by",
     ),
     fetchPerTable<{
       id: string; widget_key: string | null; section_type: string; context: string;
@@ -76,17 +76,17 @@ export async function GET(req: Request) {
       "page_sections",
       "id, widget_key, section_type, context, category, modified_at, modified_by",
     ),
-    fetchPerTable<{ id: string; name: string; modified_at: string; modified_by: string | null }>(
+    fetchPerTable<{ id: string; title: string; title_specific: string | null; modified_at: string; modified_by: string | null }>(
       "collections",
-      "id, name, modified_at, modified_by",
+      "id, title, title_specific, modified_at, modified_by",
     ),
     fetchPerTable<{ id: string; category: string; field: string; modified_at: string; modified_by: string | null }>(
       "related_sections_config",
       "id, category, field, modified_at, modified_by",
     ),
-    fetchPerTable<{ id: string; category: string; field_label: string | null; modified_at: string; modified_by: string | null }>(
+    fetchPerTable<{ id: string; category: string; label: string | null; modified_at: string; modified_by: string | null }>(
       "category_filters",
-      "id, category, field_label, modified_at, modified_by",
+      "id, category, label, modified_at, modified_by",
     ),
   ]);
 
@@ -94,7 +94,7 @@ export async function GET(req: Request) {
     ...moments.map((m): AuditEntry => ({
       kind: "moment",
       id: m.id,
-      label: m.name,
+      label: m.label || m.key,
       modified_at: m.modified_at,
       modified_by_id: m.modified_by,
       modified_by: null,
@@ -110,7 +110,7 @@ export async function GET(req: Request) {
     ...collections.map((c): AuditEntry => ({
       kind: "collection",
       id: c.id,
-      label: c.name,
+      label: c.title_specific ? `${c.title} — ${c.title_specific}` : c.title,
       modified_at: c.modified_at,
       modified_by_id: c.modified_by,
       modified_by: null,
@@ -126,7 +126,7 @@ export async function GET(req: Request) {
     ...filters.map((f): AuditEntry => ({
       kind: "category_filter",
       id: f.id,
-      label: `${f.category} · ${f.field_label ?? "—"}`,
+      label: `${f.category} · ${f.label ?? "—"}`,
       modified_at: f.modified_at,
       modified_by_id: f.modified_by,
       modified_by: null,
