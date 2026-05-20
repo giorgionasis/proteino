@@ -37,6 +37,7 @@ export function CategoryDetail({ categoryId, categoryName, subcategories: initia
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  const [reassignFor, setReassignFor] = useState<SubcategoryRow | null>(null);
 
   async function patch(id: string, patch: Record<string, any>) {
     setBusy(id);
@@ -108,10 +109,7 @@ export function CategoryDetail({ categoryId, categoryName, subcategories: initia
 
   async function deleteRow(row: SubcategoryRow) {
     if (row.itemCount > 0) {
-      show(
-        `Δεν διαγράφεται: ${row.itemCount} items χρησιμοποιούν αυτή τη subcategory. Ανάθεσέ τα κάπου αλλού πρώτα.`,
-        { tone: "error" }
-      );
+      setReassignFor(row);
       return;
     }
     if (!confirm(`Διαγραφή "${row.name}";`)) return;
@@ -124,6 +122,47 @@ export function CategoryDetail({ categoryId, categoryName, subcategories: initia
       return;
     }
     setRows((r) => r.filter((x) => x.id !== row.id));
+  }
+
+  async function reassignAndDelete(source: SubcategoryRow, targetId: string) {
+    setBusy(source.id);
+    setError(null);
+    try {
+      const rRes = await fetch(`/api/admin/subcategories/${source.id}/reassign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetId }),
+      });
+      if (!rRes.ok) {
+        const e = await rRes.json();
+        setError(e.error || "Reassign failed");
+        return;
+      }
+      const { reassigned } = await rRes.json();
+
+      const dRes = await fetch(`/api/admin/subcategories/${source.id}`, { method: "DELETE" });
+      if (!dRes.ok) {
+        const e = await dRes.json();
+        setError(e.error || "Delete failed");
+        return;
+      }
+
+      // Local state: drop source, bump target's count by what we just moved.
+      setRows((r) =>
+        r
+          .filter((x) => x.id !== source.id)
+          .map((x) =>
+            x.id === targetId ? { ...x, itemCount: x.itemCount + (reassigned ?? 0) } : x,
+          ),
+      );
+      setReassignFor(null);
+      show(
+        `Μεταφέρθηκαν ${reassigned ?? 0} items στο "${rows.find((r) => r.id === targetId)?.name ?? "target"}" και διαγράφηκε το "${source.name}".`,
+        { tone: "success" },
+      );
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function createNew() {
@@ -353,8 +392,8 @@ export function CategoryDetail({ categoryId, categoryName, subcategories: initia
                       </button>
                       <button
                         onClick={() => deleteRow(row)}
-                        disabled={isBusy || row.itemCount > 0}
-                        title={row.itemCount > 0 ? `${row.itemCount} items χρησιμοποιούν αυτή τη subcategory` : "Διαγραφή"}
+                        disabled={isBusy}
+                        title={row.itemCount > 0 ? `${row.itemCount} items — θα ζητηθεί reassign` : "Διαγραφή"}
                         className="px-2 py-1 text-xs text-red-500 hover:text-red-700 disabled:opacity-30"
                       >
                         Delete
@@ -367,7 +406,114 @@ export function CategoryDetail({ categoryId, categoryName, subcategories: initia
           </tbody>
         </table>
       </div>
+
+      {reassignFor && (
+        <ReassignDialog
+          source={reassignFor}
+          candidates={rows.filter((r) => r.id !== reassignFor.id)}
+          busy={busy === reassignFor.id}
+          onClose={() => setReassignFor(null)}
+          onConfirm={(targetId) => reassignAndDelete(reassignFor, targetId)}
+        />
+      )}
+
       {toast}
+    </div>
+  );
+}
+
+/* ── Reassign-and-delete dialog ───────────────────────────────── */
+
+function ReassignDialog({
+  source,
+  candidates,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  source: SubcategoryRow;
+  candidates: SubcategoryRow[];
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (targetId: string) => void;
+}) {
+  const [targetId, setTargetId] = useState<string>(candidates[0]?.id ?? "");
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6"
+      onClick={busy ? undefined : onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl max-w-md w-full"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
+          <h3 className="text-lg font-bold text-zinc-800">Reassign + Διαγραφή</h3>
+          <button
+            onClick={busy ? undefined : onClose}
+            disabled={busy}
+            className="text-zinc-400 hover:text-zinc-700 text-xl leading-none disabled:opacity-40"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-zinc-700">
+            <strong>{source.itemCount}</strong> items χρησιμοποιούν τη subcategory{" "}
+            <strong>"{source.name}"</strong>. Διάλεξε πού θα μεταφερθούν πριν τη
+            διαγραφή.
+          </p>
+
+          {candidates.length === 0 ? (
+            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
+              Δεν υπάρχει άλλη subcategory σε αυτή την κατηγορία. Δημιούργησε μια
+              νέα πρώτα ή ανάθεσε τα items χειροκίνητα.
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-medium text-zinc-700 mb-1">
+                Target subcategory
+              </label>
+              <select
+                value={targetId}
+                onChange={(e) => setTargetId(e.target.value)}
+                disabled={busy}
+                className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:border-zinc-400 disabled:opacity-50"
+              >
+                {candidates.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} {c.itemCount > 0 ? `· ${c.itemCount} items` : "· κενή"}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-zinc-500 mt-1.5">
+                Όλα τα {source.itemCount} items θα μεταφερθούν εκεί και η{" "}
+                <span className="font-mono">{source.slug || source.name}</span> θα
+                διαγραφεί.
+              </p>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={onClose}
+              disabled={busy}
+              className="px-4 py-2 text-sm text-zinc-600 hover:text-zinc-800 disabled:opacity-50"
+            >
+              Άκυρο
+            </button>
+            <button
+              onClick={() => targetId && onConfirm(targetId)}
+              disabled={busy || !targetId || candidates.length === 0}
+              className="px-5 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-40"
+            >
+              {busy ? "Μεταφορά…" : "Reassign + Διαγραφή"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
