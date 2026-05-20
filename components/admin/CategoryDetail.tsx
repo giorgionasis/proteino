@@ -8,6 +8,7 @@ interface SubcategoryRow {
   id: string;
   name: string;
   slug: string;
+  descriptionSeo: string | null;
   isPublished: boolean;
   displayOrder: number;
   itemCount: number;
@@ -31,8 +32,7 @@ interface Props {
 export function CategoryDetail({ categoryId, categoryName, subcategories: initial, stats }: Props) {
   const { show, toast } = useToast();
   const [rows, setRows] = useState(initial);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
+  const [editing, setEditing] = useState<SubcategoryRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -56,13 +56,27 @@ export function CategoryDetail({ categoryId, categoryName, subcategories: initia
     return true;
   }
 
-  async function saveName(id: string) {
-    if (!editName.trim()) return;
-    const ok = await patch(id, { name: editName.trim() });
+  async function saveEdit(
+    id: string,
+    next: { name: string; slug: string; descriptionSeo: string | null },
+  ): Promise<boolean> {
+    const ok = await patch(id, {
+      name: next.name,
+      slug: next.slug,
+      description_seo: next.descriptionSeo,
+    });
     if (ok) {
-      setRows((r) => r.map((x) => (x.id === id ? { ...x, name: editName.trim() } : x)));
-      setEditingId(null);
+      setRows((r) =>
+        r.map((x) =>
+          x.id === id
+            ? { ...x, name: next.name, slug: next.slug, descriptionSeo: next.descriptionSeo }
+            : x,
+        ),
+      );
+      setEditing(null);
+      show("Αποθηκεύτηκε", { tone: "success" });
     }
+    return ok;
   }
 
   async function togglePublished(row: SubcategoryRow) {
@@ -187,7 +201,8 @@ export function CategoryDetail({ categoryId, categoryName, subcategories: initia
       {
         id: created.id,
         name: created.name,
-        slug: "",
+        slug: created.slug ?? "",
+        descriptionSeo: null,
         isPublished: true,
         displayOrder: r.length > 0 ? Math.max(...r.map((x) => x.displayOrder)) + 1 : 0,
         itemCount: 0,
@@ -311,46 +326,21 @@ export function CategoryDetail({ categoryId, categoryName, subcategories: initia
             )}
 
             {rows.map((row, idx) => {
-              const isEditing = editingId === row.id;
               const isBusy = busy === row.id;
 
               return (
                 <tr key={row.id} className="border-b border-zinc-100 hover:bg-zinc-50/50 transition-colors">
                   <td className="px-3 py-3 text-zinc-400 text-sm">{idx + 1}</td>
                   <td className="px-6 py-3">
-                    {isEditing ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") saveName(row.id);
-                            else if (e.key === "Escape") setEditingId(null);
-                          }}
-                          autoFocus
-                          className="px-3 py-1 border border-emerald-400 rounded text-sm focus:outline-none focus:border-emerald-600 min-w-[280px]"
-                        />
-                        <button
-                          onClick={() => saveName(row.id)}
-                          disabled={isBusy}
-                          className="text-xs text-emerald-600 font-semibold hover:underline"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => setEditingId(null)}
-                          className="text-xs text-zinc-500 hover:text-zinc-700"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-zinc-800">{row.name}</span>
-                        <span className="text-xs text-zinc-400 font-mono">{row.slug}</span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-zinc-800">{row.name}</span>
+                      <span className="text-xs text-zinc-400 font-mono">{row.slug}</span>
+                      {row.descriptionSeo && (
+                        <span className="text-[10px] uppercase text-emerald-600 font-semibold tracking-wide">
+                          · SEO
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-3 text-center text-sm text-zinc-600">{row.itemCount}</td>
                   <td className="px-6 py-3 text-center">
@@ -384,7 +374,7 @@ export function CategoryDetail({ categoryId, categoryName, subcategories: initia
                         ▼
                       </button>
                       <button
-                        onClick={() => { setEditingId(row.id); setEditName(row.name); }}
+                        onClick={() => setEditing(row)}
                         disabled={isBusy}
                         className="px-2 py-1 text-xs text-zinc-600 hover:text-zinc-900 disabled:opacity-50"
                       >
@@ -414,6 +404,15 @@ export function CategoryDetail({ categoryId, categoryName, subcategories: initia
           busy={busy === reassignFor.id}
           onClose={() => setReassignFor(null)}
           onConfirm={(targetId) => reassignAndDelete(reassignFor, targetId)}
+        />
+      )}
+
+      {editing && (
+        <SubcategoryEditor
+          row={editing}
+          busy={busy === editing.id}
+          onClose={() => setEditing(null)}
+          onSave={(next) => saveEdit(editing.id, next)}
         />
       )}
 
@@ -510,6 +509,178 @@ function ReassignDialog({
               className="px-5 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-40"
             >
               {busy ? "Μεταφορά…" : "Reassign + Διαγραφή"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Full subcategory editor ──────────────────────────────────── */
+
+const GREEK_TO_LATIN: Record<string, string> = {
+  α: "a", β: "v", γ: "g", δ: "d", ε: "e", ζ: "z", η: "i", θ: "th",
+  ι: "i", κ: "k", λ: "l", μ: "m", ν: "n", ξ: "x", ο: "o", π: "p",
+  ρ: "r", σ: "s", ς: "s", τ: "t", υ: "y", φ: "f", χ: "ch", ψ: "ps", ω: "o",
+  ά: "a", έ: "e", ή: "i", ί: "i", ό: "o", ύ: "y", ώ: "o", ϊ: "i", ϋ: "y",
+  ΐ: "i", ΰ: "y",
+};
+
+function slugifyClient(text: string): string {
+  return text
+    .toLowerCase()
+    .split("")
+    .map((c) => GREEK_TO_LATIN[c] || c)
+    .join("")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function SubcategoryEditor({
+  row,
+  busy,
+  onClose,
+  onSave,
+}: {
+  row: SubcategoryRow;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (next: { name: string; slug: string; descriptionSeo: string | null }) => Promise<boolean>;
+}) {
+  const [name, setName] = useState(row.name);
+  const [slug, setSlug] = useState(row.slug);
+  const [descriptionSeo, setDescriptionSeo] = useState(row.descriptionSeo ?? "");
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const trimmedName = name.trim();
+  const trimmedSlug = slug.trim();
+  const trimmedSeo = descriptionSeo.trim();
+  const dirty =
+    trimmedName !== row.name ||
+    trimmedSlug !== row.slug ||
+    trimmedSeo !== (row.descriptionSeo ?? "");
+  const canSave = !busy && dirty && trimmedName.length > 0 && trimmedSlug.length > 0;
+
+  async function handleSave() {
+    setLocalError(null);
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(trimmedSlug)) {
+      setLocalError("Το slug πρέπει να είναι πεζά + αριθμοί + παύλες (π.χ. mystery-thriller).");
+      return;
+    }
+    await onSave({
+      name: trimmedName,
+      slug: trimmedSlug,
+      descriptionSeo: trimmedSeo === "" ? null : trimmedSeo,
+    });
+  }
+
+  function regenerateSlug() {
+    const next = slugifyClient(trimmedName || row.name);
+    setSlug(next);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6"
+      onClick={busy ? undefined : onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-zinc-800">Επεξεργασία subcategory</h3>
+            <p className="text-xs text-zinc-500">{row.itemCount} items σε αυτή τη subcategory</p>
+          </div>
+          <button
+            onClick={busy ? undefined : onClose}
+            disabled={busy}
+            className="text-zinc-400 hover:text-zinc-700 text-xl leading-none disabled:opacity-40"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          {localError && (
+            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+              {localError}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-zinc-700 mb-1">Όνομα</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={busy}
+              autoFocus
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 disabled:opacity-50"
+            />
+            <p className="text-xs text-zinc-500 mt-1">
+              Πώς εμφανίζεται στις σελίδες κατηγοριών (ελληνικά).
+            </p>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-medium text-zinc-700">Slug</label>
+              <button
+                type="button"
+                onClick={regenerateSlug}
+                disabled={busy}
+                className="text-[11px] text-zinc-600 hover:text-zinc-900 disabled:opacity-40"
+              >
+                ↻ Δημιουργία από όνομα
+              </button>
+            </div>
+            <input
+              type="text"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              disabled={busy}
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm font-mono focus:outline-none focus:border-zinc-400 disabled:opacity-50"
+            />
+            <p className="text-xs text-zinc-500 mt-1">
+              Χρησιμοποιείται στα URL της κατηγορίας. Πεζά + αριθμοί + παύλες. Πρέπει να
+              είναι μοναδικό μέσα σε αυτή την κατηγορία.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-zinc-700 mb-1">
+              Περιγραφή SEO <span className="text-zinc-400 font-normal">(προαιρετικό)</span>
+            </label>
+            <textarea
+              value={descriptionSeo}
+              onChange={(e) => setDescriptionSeo(e.target.value)}
+              disabled={busy}
+              rows={3}
+              placeholder="Σύντομη περιγραφή για search engines + κορυφή σελίδας."
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 disabled:opacity-50 resize-none"
+            />
+            <p className="text-xs text-zinc-500 mt-1">
+              ~150-160 χαρακτήρες προτεινόμενα. Κενό = καμία.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-zinc-200">
+            <button
+              onClick={onClose}
+              disabled={busy}
+              className="px-4 py-2 text-sm text-zinc-600 hover:text-zinc-800 disabled:opacity-50"
+            >
+              Άκυρο
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!canSave}
+              className="px-5 py-2 text-sm font-medium text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 disabled:opacity-40"
+            >
+              {busy ? "Αποθήκευση…" : "Αποθήκευση"}
             </button>
           </div>
         </div>

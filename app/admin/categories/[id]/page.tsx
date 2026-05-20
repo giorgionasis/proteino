@@ -26,7 +26,7 @@ export default async function CategoryDetailPage(props: { params: Promise<{ id: 
   // Fetch subcategories with item counts (using rpc-like nested select)
   const { data: subcategoriesRaw } = await supabase
     .from("subcategories")
-    .select("id, name, slug, is_published, display_order")
+    .select("id, name, slug, description_seo, is_published, display_order")
     .eq("category", categoryId)
     .order("display_order", { ascending: true });
 
@@ -70,6 +70,7 @@ export default async function CategoryDetailPage(props: { params: Promise<{ id: 
     id: s.id,
     name: s.name,
     slug: s.slug,
+    descriptionSeo: (s.description_seo as string | null) ?? null,
     isPublished: s.is_published,
     displayOrder: s.display_order,
     itemCount: itemCounts[s.id] ?? 0,

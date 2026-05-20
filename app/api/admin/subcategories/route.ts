@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       display_order: maxOrder + 1,
       is_published: true,
     })
-    .select("id, category, name")
+    .select("id, category, name, slug")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
