@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-19 (session 31 — cleanup pass: forwardRef sweep, audit POST stamps + manager UI footers, React Compiler beta on. **Image-wipe bug fix:** admin save was silently wiping `items.images` JSONB; §46 documents save path. **Profile lists v2** §47: orientation-aware cards across suggestions/bookmarks/reviews via new `<ProfilePoster>` primitive)
+**Last meaningful update:** 2026-05-20 (session 32 — 4 quick wins: image-wipe damage scan (`scripts/scan-image-wipe.ts`, prod scope = 1 row), per-category review milestones (`category_review_count_eq` predicate + `/api/reviews` payload extension), `useMemo`/`useCallback` sweep (90 sites across 45 files → 0; React Compiler auto-memoizes), streak-window review milestones (`reviews_this_week_eq` + `reviews_this_month_eq` predicates + `{week_count}` / `{month_count}` placeholders))
 
 ---
 

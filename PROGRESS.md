@@ -1,12 +1,57 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-19 (session 31 — cleanup pass + image-wipe bug fix + profile lists v2)
+Last updated: 2026-05-20 (session 32 — image-wipe damage scan + per-category review milestones + useMemo/useCallback sweep + streak-window predicates)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 31 (current) finished:**
+**Current state — session 32 (current) finished:**
+
+Focused follow-up session, all picked items shipped (4 commits, all green). No new migrations.
+
+### Shipped — image-wipe damage scan (`scripts/scan-image-wipe.ts`)
+
+Tool that finds items whose `items.images.poster` or `images.backdrop` is missing but the corresponding pipeline-generated files still exist in `media/items/<id>/` — the deterministic fingerprint of a wipe (CLAUDE.md §46). Dry-run by default; `--apply` bulk-restores by merging fresh URLs into the existing JSONB (preserves gallery + already-populated slots; refetches each row immediately before write).
+
+**First run against prod:** 1955 items, 3 with pipeline storage folders, **1 wiped row** (`movies/vatikano-aporritoi-fakeloi`). Scope much smaller than feared — session 31's fix had already stopped new wipes. Left the affected row as-is (user chose to leave it; legacy `poster_url` still half-renders the page). Scan tool stays in-repo for future vigilance.
+
+### Shipped — per-category review milestones (`category_review_count_eq` predicate)
+
+Mirrors `category_bookmark_count_eq` for the `review_published` trigger. Single combined predicate so per-category milestones are one moment row, not two. Args: `n` (required) + `category` (optional — empty fires at the same count in any category, with `{category}` resolving to whatever the user just reviewed).
+
+`/api/reviews` writes the matching payload — resolves the item's category and counts the user's non-hidden reviews scoped to that category via `reviews INNER JOIN items`. `buildVars` receives `category` so admin copy can use `{category}` / `{category_noun}` / `{category_article}` / `{category_list_noun}` placeholders. Admin form auto-renders via the registry schema endpoint — no UI changes. Not seeded by default; admin composes in `/admin/moments`. Documented in CLAUDE.md §42.
+
+### Shipped — `useMemo` / `useCallback` sweep now that React Compiler is on
+
+The 90 manual memoization sites identified in session 31 all gone. Mechanical sweep via `scripts/sweep-memo-callback.js` (committed; handles trailing commas in deps spreads, TS return-type annotations between `)` and `=>`, and unused React import cleanup). Custom hooks + 35 components touched, 42 `useCallback` + 37 `useMemo` collapsed to plain arrow functions, direct expressions, or IIFEs for block-bodied memos. `useImperativeHandle` / `useRef` / `useState` / `useEffect` untouched (not memoization). All 8 `useImperativeHandle` calls in SuggestionEditor preserved.
+
+`npx tsc --noEmit` → 0 errors. `npx next build` → 112 routes generated, 0 Compiler bailouts.
+
+### Shipped — streak-window review milestones (`reviews_this_week_eq` + `reviews_this_month_eq`)
+
+Two predicates fire when the user just hit the N-th review inside a trailing 7-day / 30-day window. `/api/reviews` now does a single `SELECT created_at` query and buckets into total + this-week + this-month counts in JS (cheaper than 3 round-trips for typical N ≤ 50 reviews per user). All three land in `payload`; week + month flow through `buildVars` `extra` so admin copy can use `{week_count}` / `{month_count}` alongside `{count}` (still total).
+
+Not seeded — admin composes via `/admin/moments`. CLAUDE.md §42 documents the trigger combos and a scaling note (add a `(user_id, created_at)` index if any single user passes a few hundred reviews — the existing `(user_id, item_id)` btree handles `WHERE user_id = X` but row-filters created_at).
+
+### Files touched (session 32)
+
+- New code: `scripts/scan-image-wipe.ts`, `scripts/sweep-memo-callback.js`
+- Refactored: `lib/moments/registry.ts` (+3 predicates: `category_review_count_eq`, `reviews_this_week_eq`, `reviews_this_month_eq`), `app/api/reviews/route.ts` (payload extension — category + scoped count + week/month counts via single timestamp fetch), 45 files swept of `useMemo`/`useCallback`
+- Docs: CLAUDE.md §42 (rewritten "open polish" subsection — per-category + streak-window predicates fully documented), PROGRESS.md (this entry), START.md (current state + next step)
+
+**Stats:** zero new migrations. 4 commits (`c5b44c7` scan tool, `0e76510` per-category predicate, `321a069` memo sweep, `a387c8a` streak predicates). `npx tsc --noEmit` → 0 errors. `npx next build` → green.
+
+### Open follow-ups (next session)
+
+- **Phase B day 1** — still blocked on the same two decisions from session 30 (embedding provider lock + backfill scope). Plan locked in CLAUDE.md §45.
+- **Biblionet subcategory taxonomy decision** — still blocked on user (expand to ~18 vs two-tier). Plan in CLAUDE.md §44.
+- **SEO closing** (§39 gaps): admin field additions for `contentRating` / `isbn` / `numberOfEpisodes` / `starRating` / `openingHours` / `organizer` / recipe video; sitemap-index split when corpus passes 5K items; image sitemap extension; `noindex` on thin pages; canonical URLs on category + profile pages; K2 → new URL 301 redirect map.
+- Carry forward: real legal copy on `/terms` + `/privacy`, hero images, drop legacy `ratings`/`comments` tables, per-category visual identity.
+
+---
+
+**Previous state — session 31 finished:**
 
 Three workstreams advanced in one long session: a planned **cleanup pass**, an **unplanned critical bug fix** (admin save was silently wiping `items.images` JSONB on rows with the new dual-shape — discovered investigating a single missing-images report, but the bug was systemic), and a follow-up **profile lists redesign**.
 
