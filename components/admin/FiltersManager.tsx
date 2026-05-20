@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CATEGORIES } from "@/constants/categories";
 import { RowAuditFooter } from "@/components/admin/ui/RowAuditFooter";
+import { CombinatorialExplorer } from "@/components/admin/CombinatorialExplorer";
 import type { AdminUserMap } from "@/lib/admin/audit";
 
 const WIDGET_LABELS: Record<string, string> = {
@@ -199,7 +200,7 @@ export function FiltersManager() {
       </div>
 
       {view === "explorer" ? (
-        <FiltersExplorer category={activeCategory} />
+        <CombinatorialExplorer category={activeCategory} />
       ) : (
       <div className="grid grid-cols-[1fr_280px] gap-6 items-start">
         {/* List */}
@@ -287,142 +288,6 @@ export function FiltersManager() {
           <PhonePreview filters={filters} hasNearby={!!settings?.has_nearby} />
         </div>
       </div>
-      )}
-    </div>
-  );
-}
-
-/* ─── Filters Explorer ──────────────────────────────────────── */
-
-interface ExplorerCounts {
-  total: number;
-  subcategories: { id: string; slug: string; name: string; count: number }[];
-  regions: { id: string; name: string; count: number }[];
-}
-
-function FiltersExplorer({ category }: { category: string }) {
-  const [data, setData] = useState<ExplorerCounts | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setErr(null);
-    fetch(`/api/admin/filters/counts?category=${encodeURIComponent(category)}`)
-      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
-      .then(({ ok, d }) => {
-        if (cancelled) return;
-        if (!ok) setErr(d.error ?? "Σφάλμα");
-        else setData(d as ExplorerCounts);
-      })
-      .catch((e) => { if (!cancelled) setErr(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [category]);
-
-  function recommend(count: number): { card: boolean; carousel: boolean; tip: string } {
-    if (count > 10) return { card: true, carousel: false, tip: "Άρκετα για Card" };
-    if (count >= 4) return { card: false, carousel: true, tip: "Carousel μέγεθος" };
-    return { card: false, carousel: false, tip: "Πολύ λίγα — όχι ορατό" };
-  }
-
-  if (loading) {
-    return <div className="text-sm text-zinc-500">Φόρτωση...</div>;
-  }
-  if (err) {
-    return <div className="text-sm text-red-600">{err}</div>;
-  }
-  if (!data) return null;
-
-  return (
-    <div className="space-y-6">
-      {/* Total */}
-      <div className="flex items-center gap-3 px-5 py-4 bg-zinc-50 rounded-xl border border-zinc-200">
-        <span className="text-3xl font-bold text-zinc-800 leading-none">{data.total}</span>
-        <span className="text-sm text-zinc-600">δημοσιευμένες προτάσεις σε αυτή την κατηγορία</span>
-      </div>
-
-      {/* Subcategories */}
-      <div>
-        <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-3">
-          Subcategories <span className="text-zinc-400 font-normal normal-case">— ποιες έχουν αρκετά για να βγουν σε Card/Carousel</span>
-        </h2>
-        {data.subcategories.length === 0 ? (
-          <p className="text-xs text-zinc-500">Καμία subcategory με δημοσιευμένα items.</p>
-        ) : (
-          <div className="border border-zinc-200 rounded-xl overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-zinc-50 border-b border-zinc-200">
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase">Subcategory</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-zinc-500 uppercase">Items</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-zinc-500 uppercase">Recommendation</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.subcategories.map((s) => {
-                  const rec = recommend(s.count);
-                  return (
-                    <tr key={s.id} className="border-b border-zinc-100 last:border-b-0">
-                      <td className="px-4 py-2.5 text-sm text-zinc-800">{s.name}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold text-zinc-700">{s.count}</td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center justify-center gap-2">
-                          <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                            rec.card ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-400"
-                          }`}>{rec.card ? "✓ Card" : "Card"}</span>
-                          <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                            rec.carousel ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-400"
-                          }`}>{rec.carousel ? "✓ Carousel" : "Carousel"}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Regions (venues only — empty array for non-venues) */}
-      {data.regions.length > 0 && (
-        <div>
-          <h2 className="text-sm font-bold text-zinc-700 uppercase tracking-wide mb-3">
-            Regions <span className="text-zinc-400 font-normal normal-case">— πού συγκεντρώνονται</span>
-          </h2>
-          <div className="border border-zinc-200 rounded-xl overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-zinc-50 border-b border-zinc-200">
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-zinc-500 uppercase">Region</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-zinc-500 uppercase">Items</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-zinc-500 uppercase">Recommendation</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.regions.slice(0, 12).map((r) => {
-                  const rec = recommend(r.count);
-                  return (
-                    <tr key={r.id} className="border-b border-zinc-100 last:border-b-0">
-                      <td className="px-4 py-2.5 text-sm text-zinc-800">{r.name}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold text-zinc-700">{r.count}</td>
-                      <td className="px-4 py-2.5 text-center">
-                        <span className="text-[11px] text-zinc-500">{rec.tip}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {data.regions.length > 12 && (
-              <div className="px-4 py-2 bg-zinc-50 text-[11px] text-zinc-500 text-center">
-                +{data.regions.length - 12} ακόμα regions
-              </div>
-            )}
-          </div>
-        </div>
       )}
     </div>
   );
