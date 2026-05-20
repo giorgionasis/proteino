@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 export const revalidate = 60;
 
 import { CATEGORIES } from "@/constants/categories";
+import { getCategoryResolved } from "@/lib/categories-meta";
 import { CategoryPageShell } from "@/components/category/CategoryPageShell";
 import type { CategorySlug } from "@/types";
 import type { CategoryItem } from "@/components/category/CategoryCard";
@@ -33,7 +34,11 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   const params = await props.params;
   const cat = CATEGORIES.find((c) => c.slug === params.category);
   if (!cat) return {};
-  return { title: `${cat.labelEl} — Proteino` };
+  // Read DB-overlaid label when present so admin renames surface in
+  // the browser tab without redeploy.
+  const resolved = await getCategoryResolved(cat.slug);
+  const label = resolved?.labelEl ?? cat.labelEl;
+  return { title: `${label} — Proteino` };
 }
 
 export interface FilterData {
@@ -42,15 +47,15 @@ export interface FilterData {
 }
 
 const EXT_SELECT: Record<CategorySlug, string> = {
-  books: "item_books(writer, publication, publication_year, language, pages)",
-  movies: "item_movies(director, release_date, channel, duration_min, actors)",
-  series: "item_series(director, channel, seasons, actors)",
+  books: "item_books(writer, publication, publication_year, language, pages, is_trilogy)",
+  movies: "item_movies(director, release_date, end_date, country, language, channel, duration_min, actors, awards)",
+  series: "item_series(director, release_date, end_date, country, language, channel, seasons, actors, awards)",
   food: "item_food(cuisine, type, address, region_id, lat, lng, delivery_links)",
-  recipes: "item_recipes(level, channel)",
+  recipes: "item_recipes(level, channel, origin, nutrition, yields, calories, duration)",
   bars: "item_bars(type, address, region_id, lat, lng)",
-  hotels: "item_hotels(type, address, region_id, lat, lng, price_range)",
-  theater: "item_theater(type, address, region_id, lat, lng, name_place, director, writer, actors)",
-  events: "item_events(event_type, address, region_id, lat, lng, name_place, performers)",
+  hotels: "item_hotels(type, address, region_id, lat, lng, price_range, facilities)",
+  theater: "item_theater(type, address, region_id, lat, lng, name_place, director, writer, actors, dates, year, price)",
+  events: "item_events(event_type, address, region_id, lat, lng, name_place, performers, dates, status, price)",
 };
 
 const GENERIC_TAGS: Record<string, string[]> = {
@@ -88,6 +93,49 @@ function stringifyActors(actors: any): string | undefined {
       .join(", ");
   }
   return JSON.stringify(actors);
+}
+
+/** Normalize the `item_recipes.nutrition` jsonb into the same flag set
+ *  the seeded `diet` filter uses. Mirrors RecipeDetail.tsx's reading
+ *  conventions (covers `dairy_free` / `milk:false` / `no_milk`). */
+function normalizeDietFlags(nutrition: any): string[] {
+  if (!nutrition || typeof nutrition !== "object") return [];
+  const flags: string[] = [];
+  if (nutrition.vegan) flags.push("vegan");
+  if (nutrition.dairy_free || nutrition.milk === false || nutrition.no_milk) flags.push("no_milk");
+  if (nutrition.sugar_free || nutrition.sugar === false || nutrition.no_sugar) flags.push("no_sugar");
+  return flags;
+}
+
+/** Extract an array of ISO date strings from the category extension's
+ *  `dates` jsonb. Accepts an array of strings, objects with `date`
+ *  /`start`/`startDate`, or a single string — silently drops anything
+ *  it can't parse. Used by the `when` filter for theater + events. */
+function extractEventDates(dates: any): string[] {
+  if (!dates) return [];
+  const raw = Array.isArray(dates) ? dates : [dates];
+  const out: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry === "string") {
+      out.push(entry);
+      continue;
+    }
+    if (entry && typeof entry === "object") {
+      const candidate = entry.date ?? entry.start ?? entry.startDate ?? entry.from ?? null;
+      if (typeof candidate === "string") out.push(candidate);
+    }
+  }
+  return out;
+}
+
+/** Hot-path check used by the awards filter. Matches both the
+ *  array-of-strings and object-of-booleans shapes — same logic as
+ *  `getActiveAmenities` for hotel facilities. */
+function hasAnyAward(awards: any): boolean {
+  if (!awards) return false;
+  if (Array.isArray(awards)) return awards.length > 0;
+  if (typeof awards === "object") return Object.keys(awards).length > 0;
+  return false;
 }
 
 function mapItem(item: any, category: CategorySlug): CategoryItem {
@@ -162,6 +210,7 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
       result.hotelType = ext?.type || undefined;
       result.area = extractArea(ext?.address);
       result.regionId = ext?.region_id || undefined;
+      result.priceRange = ext?.price_range || undefined;
       break;
     case "theater":
       result.subcategory = ext?.type || tags[0] || "Θέατρο";
@@ -169,12 +218,14 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
       result.regionId = ext?.region_id || undefined;
       result.director = ext?.director || undefined;
       result.actors = stringifyActors(ext?.actors);
+      result.dates = extractEventDates(ext?.dates);
       break;
     case "events":
       result.subcategory = ext?.event_type || tags[0] || "Εκδήλωση";
       result.area = extractArea(ext?.address);
       result.regionId = ext?.region_id || undefined;
       result.actors = stringifyActors(ext?.performers);
+      result.dates = extractEventDates(ext?.dates);
       break;
     case "movies":
       result.year = ext?.release_date ? new Date(ext.release_date).getFullYear() : undefined;
@@ -183,12 +234,16 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
       result.director = ext?.director || undefined;
       result.duration_min = ext?.duration_min || undefined;
       result.actors = stringifyActors(ext?.actors);
+      result.hasAwards = hasAnyAward(ext?.awards);
       break;
     case "series":
       result.year = ext?.release_date ? new Date(ext.release_date).getFullYear() : undefined;
       result.platform = ext?.channel || undefined;
       result.channel = ext?.channel || undefined;
       result.actors = stringifyActors(ext?.actors);
+      result.endDate = ext?.end_date ?? null;
+      result.seasons = typeof ext?.seasons === "number" ? ext.seasons : undefined;
+      result.hasAwards = hasAnyAward(ext?.awards);
       break;
     case "books":
       result.year = ext?.publication_year ?? undefined;
@@ -198,6 +253,8 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
     case "recipes":
       result.subcategory = tags[0] || ext?.level || "Συνταγή";
       result.level = ext?.level || undefined;
+      result.origin = ext?.origin || undefined;
+      result.diet = normalizeDietFlags(ext?.nutrition);
       break;
   }
 

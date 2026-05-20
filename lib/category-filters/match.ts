@@ -63,16 +63,21 @@ export function matchesFilter(
       return ciEq(item.subcategory, v);
 
     case "writer":
+      // String[] = OR semantics — match if writer contains any of the selected names.
+      if (arr.length > 0) return arr.some((x) => ciIncludes(item.writer, x));
       return ciIncludes(item.writer, v);
 
     case "publisher":
+      if (arr.length > 0) return arr.some((x) => ciIncludes(item.publisher, x));
       return ciIncludes(item.publisher, v);
 
     case "director":
+      if (arr.length > 0) return arr.some((x) => ciIncludes(item.director, x));
       return ciIncludes(item.director, v);
 
     case "actor":
     case "performer":
+      if (arr.length > 0) return arr.some((x) => ciIncludes(item.actors, x));
       return ciIncludes(item.actors, v);
 
     case "region":
@@ -92,11 +97,60 @@ export function matchesFilter(
       return ciEq(item.area, v);
 
     case "awards":
-      // Awards picker is grouped + complex — current behaviour is
-      // "selection is irrelevant to filtering, just shows the option
-      // in the UI". Preserved from the original implementation.
-      if (arr.length > 0) return true;
-      return true;
+      // `item_*.awards` jsonb is admin-entered free-form (see
+      // lib/awards.ts header comment) — there's no reliable way to
+      // match against specific entries in the AWARDS_TAXONOMY. The
+      // pragmatic compromise: when nothing is selected, pass
+      // everything; when anything is selected, filter to items that
+      // have *some* award on record. Better than the original
+      // always-pass while the jsonb is still unstandardized.
+      if (arr.length === 0) return true;
+      return !!item.hasAwards;
+
+    case "characteristics": {
+      // Series-only segmented filter — completed / single_season /
+      // true_story. AND semantics: every checked trait must apply.
+      if (arr.length === 0) return true;
+      return arr.every((trait) => {
+        if (trait === "completed") return !!item.endDate;
+        if (trait === "single_season") return item.seasons === 1;
+        if (trait === "true_story") {
+          return item.tags?.some((t) => /αληθιν|true.?story/i.test(t)) ?? false;
+        }
+        return true;
+      });
+    }
+
+    case "origin":
+      if (arr.length > 0) return arr.some((x) => ciEq(item.origin, x));
+      return ciEq(item.origin, v);
+
+    case "diet": {
+      // Recipes — AND semantics: vegan + no_milk → must be both.
+      if (arr.length === 0) return true;
+      if (!item.diet || item.diet.length === 0) return false;
+      return arr.every((d) => item.diet!.includes(d));
+    }
+
+    case "when": {
+      // Theater + events — relative-window segmented filter.
+      const sel = v && v !== "" ? v : arr[0];
+      if (!sel || sel === "all") return true;
+      if (!item.dates || item.dates.length === 0) return false;
+      const now = new Date();
+      const horizonDays = sel === "this_week" ? 7 : sel === "this_month" ? 30 : null;
+      if (horizonDays == null) return true;
+      const horizon = new Date(now.getTime() + horizonDays * 24 * 60 * 60 * 1000);
+      return item.dates.some((d) => {
+        const dt = new Date(d);
+        if (Number.isNaN(dt.getTime())) return false;
+        return dt >= now && dt <= horizon;
+      });
+    }
+
+    case "price":
+      if (arr.length > 0) return arr.some((p) => ciEq(item.priceRange, p));
+      return ciEq(item.priceRange, v);
 
     case "platform":
       if (arr.length > 0) return arr.some((p) => ciIncludes(item.channel, p));

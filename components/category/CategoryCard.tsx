@@ -39,6 +39,30 @@ export interface CategoryItem {
   hotelType?:        string;
   channel?:          string;
   tags?:             string[];
+  /** Series only — populated from `item_series.end_date`. Truthy
+   *  value means the show finished its run, which drives the
+   *  `characteristics.completed` filter. */
+  endDate?:          string | null;
+  /** Series only — drives `characteristics.single_season` filter. */
+  seasons?:          number;
+  /** Recipes only — normalized dietary flags from `nutrition` jsonb:
+   *  any of "vegan" / "no_milk" / "no_sugar". Drives the `diet` filter. */
+  diet?:             string[];
+  /** Recipes only — drives the `origin` filter (a single string
+   *  like "Ελληνική" / "Ιταλική"). */
+  origin?:           string;
+  /** Theater + events — array of ISO date strings extracted from
+   *  the category extension's `dates` jsonb. Drives the `when`
+   *  filter (this_week / this_month). */
+  dates?:            string[];
+  /** Hotels only — raw price band from `item_hotels.price_range`,
+   *  matched literally by the `price` filter. */
+  priceRange?:       string;
+  /** Movies + series — truthy when `item_*.awards` jsonb has any
+   *  content. Drives the `awards` filter, which currently filters
+   *  to "has any award on record" rather than matching against the
+   *  free-form taxonomy. */
+  hasAwards?:        boolean;
   /** Original suggester — populates the avatar overlay on landscape
    *  cards and (when tapped) opens ProfilePopup. Optional because not
    *  every item has a suggestion attached. */

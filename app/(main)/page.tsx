@@ -29,6 +29,7 @@ import { fetchTonightAirings, type TonightAiring } from "@/lib/movies-tonight";
 import { getRegionMatchSet } from "@/lib/regions";
 import { getFollowedSet } from "@/lib/follows";
 import { resolvePageLayout } from "@/lib/layout/resolver";
+import { getCategoriesResolved } from "@/lib/categories-meta";
 import { renderHomeSection } from "@/lib/layout/home-bridge";
 
 export const metadata: Metadata = { title: "Proteino" };
@@ -351,7 +352,7 @@ export default async function HomePage() {
 
   const regionMatchSet = await getRegionMatchSet(sb, viewerRegionId);
 
-  const [food, movies, series, books, recipes, topUsers, chips, feedItems, collections, tonight, layoutSections, suggestionCount] =
+  const [food, movies, series, books, recipes, topUsers, chips, feedItems, collections, tonight, layoutSections, suggestionCount, resolvedCategories] =
     await Promise.all([
       // Bigger fetch limits so static_carousel widgets with custom limits
       // still have material to slice. Each fetcher returns at most the
@@ -372,6 +373,7 @@ export default async function HomePage() {
         viewerAudience: isRegistered ? "registered" : "guest",
       }),
       fetchPublishedSuggestionCount(),
+      getCategoriesResolved(),
     ]);
 
   // Layout-driven path. Legacy hardcoded path falls back when the
@@ -386,6 +388,11 @@ export default async function HomePage() {
             food, movies, series, books, recipes,
             topUsers, chips, feedItems, tonight,
             suggestionCount,
+            resolvedCategories: resolvedCategories.map((c) => ({
+              slug: c.slug,
+              labelEl: c.labelEl,
+              isNavPublished: c.isNavPublished,
+            })),
           })
         )}
       </div>

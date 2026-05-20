@@ -43,6 +43,10 @@ export interface HomeRenderContext {
   feedItems: SuggestionFeedItem[];
   tonight: TonightAiring[];
   suggestionCount: number;
+  /** Admin-editable category metadata from `lib/categories-meta.ts`.
+   *  Optional so older callers (e.g. preview tooling) still compile;
+   *  when omitted, `<CategoryTiles>` falls back to its hardcoded ROWS. */
+  resolvedCategories?: { slug: string; labelEl: string; isNavPublished: boolean }[];
 }
 
 const PORTRAIT_CATEGORIES = new Set(["movies", "series", "books"]);
@@ -99,7 +103,7 @@ function renderHomeSectionInner(section: RenderedSection, ctx: HomeRenderContext
     case "hero_discover":     return <HeroDiscover key={section.row.id} suggestionCount={ctx.suggestionCount} />;
     case "hero_suggest":      return <HeroSuggest key={section.row.id} />;
     case "hero_personalise":  return <HeroPersonalise key={section.row.id} />;
-    case "category_tiles":    return <CategoryTiles key={section.row.id} />;
+    case "category_tiles":    return <CategoryTiles key={section.row.id} categories={ctx.resolvedCategories} />;
     case "how_it_works":      return <HowItWorks key={section.row.id} />;
     case "register_promo":    return <RegisterPromo key={section.row.id} />;
     case "support_section":   return <SupportSection key={section.row.id} />;

@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-20 (session 33 — admin gaps audit pass 1: subcategory delete-with-reassign dialog, full editor drawer (name + slug + SEO), combinatorial Explorer with live count + Card/Carousel recommendation; `matchesFilter` extracted to `lib/category-filters/match.ts` as the SSoT for public + admin filtering. CLAUDE.md §48 documents the admin gap-audit pattern.)
+**Last meaningful update:** 2026-05-21 (session 34 — Explorer expansion §49: matchesFilter coverage for 8 silent no-op filters (awards / characteristics / origin / diet / when × 2 / price), admin-only ADMIN_FACETS registry with 7 facet kinds (chips / searchable-chips / year-range / range / amenities / tag-pattern / boolean / text), searchable combobox for open sets, tag-pattern characteristics per category, Save-as-Collection deeplink. Admin gap C closed via §50: `category_meta` table + resolver overlay on `constants/categories.ts` for editable label / icon / order / nav-visibility.)
 
 ---
 
@@ -2198,4 +2198,189 @@ The admin endpoint (`POST /api/admin/explorer/query`) does its own slim `mapItem
 
 ### What's still open on the categories surface
 
-- **Category metadata editor** (gap C from the session 33 audit). The 9 category slugs (movies/books/food/…) are hardcoded in `CATEGORY_META` and `CATEGORY_NAMES`. The `categories` table exists in DB but no admin UI manages it. "Επεξεργασία" on `/admin/categories` just navigates to the subcategory list. Deferred — needs either a small migration to add label/icon columns or shifting CATEGORY_META into DB. Worth doing once admin needs a 10th category or localized labels.
+- ~~**Category metadata editor** (gap C from the session 33 audit).~~ **Closed session 34** — see §50. `category_meta` table + resolver overlay; admin can rename label / change icon / reorder / hide from nav without code change.
+
+---
+
+## 49. Explorer expansion — matchesFilter coverage + ADMIN_FACETS registry + Save-as-Collection deeplink (session 34)
+> ✅ Shipped — public-side filter correctness restored, admin Explorer gains 7 facet kinds, every category has characteristics + a searchable picker for people/country/language.
+
+### Class A — `matchesFilter` coverage (`lib/category-filters/match.ts`)
+
+8 seeded `category_filters` rows used to no-op silently because `matchesFilter` had no case for them (default `return true`). Public users clicked, filter UI rendered, nothing was filtered. Now wired:
+
+| Filter | Category | Match logic |
+|---|---|---|
+| `awards` | movies, series | `arr.length > 0 → !!item.hasAwards`. The `item_*.awards` jsonb is admin-entered free-form (lib/awards.ts header note) — taxonomy-specific matching isn't reliable; "has any award on record" is the honest compromise until the jsonb is normalised. |
+| `characteristics` | series | AND semantics. `completed` → `endDate` truthy, `single_season` → `seasons === 1`, `true_story` → `tags.some(t => /αληθιν\|true.?story/i.test(t))`. |
+| `origin` | recipes | `ciEq(item.origin, sel)`. |
+| `diet` | recipes | AND semantics. Diet flags normalized from `nutrition` jsonb via `normalizeDietFlags()` covering `vegan` / (`dairy_free` ‖ `milk:false` ‖ `no_milk`) / (`sugar_free` ‖ `sugar:false` ‖ `no_sugar`). |
+| `when` | theater, events | Horizon match against `dates[]` extracted from jsonb (this_week = 7d, this_month = 30d). |
+| `price` | hotels | `ciEq(item.priceRange, sel)`. |
+| `writer` / `publisher` / `director` / `actor` / `performer` | various | Extended to handle `string[]` selections with OR semantics, on top of legacy single-string ciIncludes path. Enables multi-select in the Explorer's searchable picker without breaking the public single-string path. |
+
+`CategoryItem` extended with: `endDate?: string \| null`, `seasons?: number`, `diet?: string[]`, `origin?: string`, `dates?: string[]`, `priceRange?: string`, `hasAwards?: boolean`. Both public `mapItem` (in `app/(main)/[category]/page.tsx`) and the admin Explorer route's slim mapper populate these. Both EXT_SELECTs fetch the new columns: `country` / `language` / `end_date` / `dates` / `awards` / `facilities` / `nutrition` / `origin` / `seasons` / `is_trilogy` (books).
+
+### Class B — admin-only `ADMIN_FACETS` registry (`lib/category-filters/admin-facets.ts`)
+
+Declarative per-category catalogue of admin-only facets — knobs that exist as ext-table columns but aren't published as public `category_filters` rows. Single source of truth shared between server (`app/api/admin/explorer/query/route.ts`) and client (`components/admin/CombinatorialExplorer.tsx`).
+
+#### `AdminFacetKind` ladder
+
+| Kind | Render | Match | When to use |
+|---|---|---|---|
+| `chips` | Show all distincts as chips | `arr.some(ciEq(ext[field], _))` | Small fixed enum (status, price band). |
+| `searchable-chips` | Typeahead combobox + selected-chip stack | Same as `chips` | Large open set (countries / languages / actor names / writers) — admin shouldn't scroll 200 chips. |
+| `year-range` | Bucket chips (1970s / 1980s / …) | Year coerced from date/int, `arr.some(min ≤ y ≤ max)` | Decade filters. |
+| `range` | Bucket chips | Same as year-range | Generic numeric (pages / calories / seasons / yields / price). |
+| `amenities` | Multi-select chips from HOTEL_AMENITY_CHOICES | AND semantics — `parseAmenities(ext.facilities) ⊇ selection` | Hotel facilities jsonb. |
+| `tag-pattern` | Bucket chips with bucket-defined labels | Buckets carry `patterns: string[]` (regex). OR across buckets, regex tested against `metadata.tags` (passed via `ext.tags`). | Characteristics like "based on true events", "sequel", "boutique hotel" — fuzzy semantic tags. |
+| `boolean` | Single toggle chip | `!!ext[field]` | Column truthiness (e.g. books `is_trilogy`). |
+| `text` | Free-text input | ciIncludes | Last-resort fallback when nothing better fits. |
+
+#### Per-category facet catalogue
+
+Movies + series both share characteristics buckets (sequel / prequel / remake / based_on_true / biographical / trilogy / adapted_book) with Greek + English regex alternates per bucket so admin doesn't have to bet which spelling lives in the data.
+
+| Category | Facets |
+|---|---|
+| movies | country (searchable) · language (searchable) · decade · characteristics (tag-pattern) |
+| series | + seasons range + characteristics |
+| books | language (searchable) · pages range · decade · **is_trilogy (boolean)** · characteristics (bestseller / classic / adapted to film / young adult / kids / award-winning) |
+| recipes | yields · calories · origin (searchable) · channel (searchable) · characteristics (quick / healthy / traditional / party / kids / comfort) |
+| food | characteristics only (vegan-friendly / family / romantic / brunch / late-night / view / terrace / BYOB) |
+| bars | type (searchable) · characteristics |
+| hotels | facilities (amenities) · price band · characteristics (pet-friendly / family / romantic / business / boutique / eco / beachfront / mountain / ski / adults-only / all-inclusive) |
+| theater | year · director (searchable, admin-only — not in public seed) · writer (searchable) · price · characteristics |
+| events | status (searchable) · price · characteristics |
+
+#### Server payload extension
+
+`POST /api/admin/explorer/query` response gained:
+
+- `distincts: Record<facet.id, string[]>` — values for `chips` / `searchable-chips` / `amenities` facets, computed over the full mapped set so chip options don't disappear when admin tightens selection.
+- `peopleDistincts: Record<filter_id, string[]>` — distinct values for FREE-TEXT public filters (director / actor / writer / publisher / performer). Flattens jsonb actor/performer arrays via `entry.name ?? entry.label ?? entry.fullName`. Enables the same searchable combobox UX for public-filter blocks.
+- `matchedIds: string[]` — list of matching item IDs (for future Save-as-Collection matched-list handoff).
+
+`tag-pattern` requires `metadata.tags` available on the row. Achieved by shallow-cloning the ext object inside the route and attaching `tags = r.metadata?.tags ?? []` before adding to the parallel `exts[]` array. The matcher reads `ext.tags` without knowing about the wrapping.
+
+#### `<SearchableChips>` combobox (in `CombinatorialExplorer.tsx`)
+
+Renders selected items as removable chips above the input. Typing filters the dropdown via case-insensitive substring; first 30 distincts shown by default, more reachable by typing. `onMouseDown + preventDefault` on options so clicks register before the input's onBlur (which would otherwise hide the dropdown); 200ms `setTimeout` on blur catches tab-out. Used for both admin-facet `searchable-chips` and the public-filter people fields when `peopleDistincts[filter_id]` is non-empty.
+
+### Save-as-Collection deeplink
+
+`buildCollectionDeeplink(category, selections, adminSelections, matchCount, facets)` in `CombinatorialExplorer.tsx`:
+
+- Sub-category picks (`genre` / `type` / `cuisine` / `event_type`) → `tags[]` URL param (CollectionEditor preview server filters by tags)
+- Public-filter picks with clean ext-column targets — mapping: `platform → channel`, `writer / publisher → publication / director / level / property_type → type / origin` — emit as `ExtFilter[]`
+- Admin-facet `chips` / `searchable-chips` → `ExtFilter[]`
+- Admin-facet `text` → `ExtFilter[]` (single)
+- **Skipped** (can't express as `{field, value}`): region anchors, range / year-range buckets, amenities, tag-pattern, awards, characteristics, diet, when, hotel price band, duration
+
+URL: `/admin/content/collections/new?source_category=…&tags=…&filters=…&title_specific=…&from_explorer=<count>`.
+
+`<CollectionEditor>` gains `origin?: { source: "explorer"; matchCount: number }` prop. When set, a coral banner renders at the top: "Από Explorer · N matched · Τα chip picks πέρασαν" + an explicit list of what didn't carry, so admin knows to re-add manually.
+
+### Decisions locked
+
+- **`tag-pattern` is admin-only by default.** Characteristics are intentionally not auto-seeded as public `category_filters` rows — the same buckets might be valuable on the user-facing side too, but each promotion needs a deliberate decision per category (and a public widget for the picker UI; today the Explorer renders it as plain chips).
+- **`searchable-chips` over `chips` when distincts > ~15.** Hardcoded threshold isn't enforced — admin chooses per facet. Most country / language / actor / writer / origin / type columns are searchable; most status / price-band / decade columns are plain chips. Keeps both UIs sharp.
+- **Distincts computed over the full mapped set, not the matched subset.** If admin picks "Greece" + then opens the country picker again, all options stay visible — narrowing the set as admin tightens selection would make the picker feel broken.
+- **AND vs OR semantics by kind.** Amenities, diet, characteristics within a single facet: OR (any match). Across different facets: AND (all must match). Predictable mental model.
+
+### Files
+
+- New: `lib/category-filters/admin-facets.ts`
+- Refactored: `lib/category-filters/match.ts`, `app/api/admin/explorer/query/route.ts`, `components/admin/CombinatorialExplorer.tsx`, `components/admin/CollectionEditor.tsx`, `app/admin/content/collections/new/page.tsx`, `components/category/CategoryCard.tsx`, `app/(main)/[category]/page.tsx`
+
+### Open follow-ups
+
+- **Carry matched item IDs into CollectionEditor.** Today only filters carry; matched IDs land in `response.matchedIds` but aren't threaded to the editor. Could pre-seed a "manual list" mode showing exactly the Explorer's match set so admin can hand-curate from there.
+- **Promote useful admin facets to public.** Hotels.characteristics (pet-friendly / family / romantic) and food.characteristics (vegan-friendly / brunch / view) are vibes end-users would want. Each needs a `category_filters` row + a tag-pattern public widget + frontend rendering. Decide which based on coverage signal from Explorer distinct counts.
+- **Filter coverage QA pass.** With the 8 newly-real filters live on the public side, sanity-check the seeded filter widgets render expected counts. A few combinations (theater × when=this_month, recipes × diet × origin) deserve a manual spot-check before declaring done.
+
+---
+
+## 50. Admin-editable category metadata via `category_meta` resolver (session 34)
+> ✅ Shipped — migration 041 + resolver + admin UI. Slug + capability flags stay code-coupled by design.
+
+### The decision
+
+`constants/categories.ts` has 27 consumers. Three layers of data live there:
+
+| Layer | Examples | Editable from admin? |
+|---|---|---|
+| Slug | `"movies"`, `"books"` | **No** — route segments (`/[category]`), API param keys, `items.category` FK string, switch-case keys in 50+ files. Renaming = URL migration + redirect map + data migration + breaks SEO. |
+| Capability flags | `hasMap`, `hasTrailer`, `hasDelivery`, `hasTicketLink`, `hasPriceRange`, `hasNearbyActivities` | **No** — gate conditional component imports + render logic. Toggling `hasMap=true` on a category without lat/lng would render a broken map. |
+| Display layer | `labelEl` (Greek label), `icon` (emoji), implicit array order | **Yes** — pure presentation. |
+
+Session 34 makes the display layer DB-editable; slugs + capability flags stay in code.
+
+### `category_meta` table (migration 041)
+
+```sql
+CREATE TABLE category_meta (
+  slug              text PRIMARY KEY,         -- joins to constant via slug
+  display_label_el  text,                     -- Greek display label override
+  icon              text,                     -- emoji override
+  display_order     int  NOT NULL DEFAULT 0,
+  is_nav_published  bool NOT NULL DEFAULT true,
+  modified_at       timestamptz,
+  modified_by       uuid REFERENCES users(id)
+);
+```
+
+**Why `category_meta` not `categories`** — the legacy `categories` table from `supabase/migrations/001_initial_schema.sql` (`id uuid PK / name / alias / description_seo / parent_id`) already owns that name with a CMS-catalog shape. First migration attempt used `CREATE TABLE IF NOT EXISTS categories ...` which was a no-op (table existed), then the index on the new `display_order` column choked because the column never landed. Renamed to dodge.
+
+Seeded with the current 9 defaults from the code constant. `ON CONFLICT DO NOTHING` preserves admin edits if the migration is re-run.
+
+### Resolver (`lib/categories-meta.ts`)
+
+```ts
+getCategoriesResolved(): Promise<ResolvedCategory[]>   // all 9, DB-overlaid + sorted
+getCategoryResolved(slug):  Promise<ResolvedCategory | null>  // single lookup
+getNavPublishedCategories(): Promise<ResolvedCategory[]>      // only is_nav_published
+```
+
+Merge rules:
+- Slug + capability flags always come from `CATEGORIES` constant.
+- `labelEl` / `icon` come from DB row when present, else constant fallback.
+- `display_order` from DB row when present, else `1000 + arrayIndex` (un-edited rows sort after edited ones in their original code order).
+- Migration not applied / outage / empty seed → returns constants unchanged with `isNavPublished = true`. Null-safe; never blanks the UI.
+
+### Admin API
+
+- `GET /api/admin/categories` → `{ categories: ResolvedCategory[] }`
+- `PATCH /api/admin/categories/[slug]` — partial update of `display_label_el` / `icon` / `display_order` / `is_nav_published`. UPSERT so a slug added to the code constant after seeding gets a row on first edit.
+- `POST /api/admin/categories/reorder` — batch upsert with `display_order = (i+1)*10`. Bounded by 9 rows; sequential upserts fine.
+
+All writes call `revalidatePath("/")` + `revalidatePath("/admin")` + `revalidatePath("/admin/categories")`.
+
+### Admin UI (`<CategoriesTable>`)
+
+- Reorder via ▲/▼ arrows per row. Optimistic local reorder + batch POST.
+- Nav-visibility toggle (emerald pill / zinc-300 when off).
+- "Edit" opens a modal with `name + icon` editable. Slug is rendered locked (`px-3 py-2 bg-zinc-50 font-mono`) with a "locked — route-coupled" caption. Yellow note at the bottom of the modal documents the slug + capability-flag constraint.
+- "Υποκατηγορίες →" link still navigates to the subcategory list (session 33's surface).
+- `<CategoryEditor>` sub-component, not extracted because it's used in exactly one place.
+
+### Consumer wiring
+
+- **Home `<CategoryTiles>`** — accepts optional `categories?: { slug, labelEl, isNavPublished }[]` prop. When passed, renders only `isNavPublished` ones in `display_order`; when omitted (showcase, standalone), falls back to the legacy hardcoded `ROWS`. `HomeRenderContext` gains `resolvedCategories?`; the home page (`app/(main)/page.tsx`) fetches via `getCategoriesResolved()` and threads through.
+- **Category page `generateMetadata`** — reads `getCategoryResolved(slug)` and uses the overlaid `labelEl` for the browser tab title. Admin rename surfaces in the next request without redeploy.
+- **Other 25 `CATEGORIES` consumers** — profile pages, search, admin FiltersManager, admin SuggestionEditor — still read the constant. Acceptable for now; they'll pick up admin edits as each consumer migrates to the resolver. Top-impact paths (home tiles + category page title) covered.
+
+### Why we didn't fully DB-back everything
+
+Two reasons. (1) Slugs aren't a labels problem; they're a routes problem. Editing them DB-side would require a synchronous URL migration + redirect map for the existing audience. Days of work plus SEO risk. (2) Capability flags read at module top (e.g. `if (cat.hasMap) import("./MapView")`) — moving them to a DB-resolved field means every consumer either becomes async or pre-fetches at request time, doubling the surface area for marginal payoff. The flags rarely change. When they do, it's a deliberate engineering decision tied to component composition, not a content edit.
+
+### Future ceiling raise
+
+If admin starts asking for capability-flag edits ("turn on map for theater?"), the path is:
+1. Add the flag column to `category_meta` (additive migration).
+2. Update the resolver to overlay the flag.
+3. Audit every conditional import / render keyed on the flag — guarantee that flipping the flag doesn't break anything (e.g. lat/lng data exists for the category).
+4. Document the constraint per flag (e.g. "hasMap requires every published item in the category to have lat/lng").
+
+Likely a multi-session project. Not worth doing until the demand surfaces.

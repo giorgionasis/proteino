@@ -84,9 +84,15 @@ function slugify(text: string): string {
 
 interface Props {
   initial?: Partial<CollectionFormData> & { id?: string };
+  /** Surfaced when the editor was opened from a deeplink — e.g. from
+   *  the admin Explorer's "Δημιούργησε Collection" button. Renders a
+   *  banner explaining what carried over and which Explorer picks
+   *  (ranges, decade, facilities, regions) could NOT be translated to
+   *  the ext-filter shape. */
+  origin?: { source: "explorer"; matchCount: number };
 }
 
-export function CollectionEditor({ initial }: Props) {
+export function CollectionEditor({ initial, origin }: Props) {
   const router = useRouter();
   const [form, setForm] = useState<CollectionFormData>(() => ({ ...EMPTY, ...initial } as CollectionFormData));
   const [saving, setSaving] = useState(false);
@@ -181,6 +187,18 @@ export function CollectionEditor({ initial }: Props) {
 
   return (
     <div>
+      {origin?.source === "explorer" && (
+        <div className="mb-4 border border-coral-200 bg-coral-50 rounded-xl p-3 flex items-start gap-3">
+          <span className="text-coral-700 text-base leading-none mt-0.5">⇢</span>
+          <div className="text-xs text-zinc-700">
+            <strong className="text-zinc-900">Από Explorer</strong> · {origin.matchCount} items στο preview matched.
+            Τα chip picks πέρασαν (source category, tags, ext filters).
+            <span className="block text-[11px] text-zinc-500 mt-0.5">
+              Δεν περάσανε: region anchors, range buckets (decade, σελίδες, σεζόν, calories), facilities, awards, characteristics, diet, when, hotel price band, duration. Πρόσθεσέ τα χειροκίνητα αν τα χρειάζεσαι.
+            </span>
+          </div>
+        </div>
+      )}
       {/* Breadcrumb + actions */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2 text-sm">

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { matchesFilter } from "@/lib/category-filters/match";
+import {
+  ADMIN_FACETS,
+  matchesAdminFacet,
+  parseAmenities,
+} from "@/lib/category-filters/admin-facets";
 import { pickCoverUrl } from "@/lib/images/gallery";
 import type { CategoryItem } from "@/components/category/CategoryCard";
 import type { CategorySlug } from "@/types";
@@ -36,15 +41,15 @@ const VALID_CATEGORIES: CategorySlug[] = [
 ];
 
 const EXT_SELECT: Record<CategorySlug, string> = {
-  books:   "item_books(writer, publication, publication_year, language, pages)",
-  movies:  "item_movies(director, release_date, channel, duration_min, actors)",
-  series:  "item_series(director, channel, seasons, actors)",
+  books:   "item_books(writer, publication, publication_year, language, pages, is_trilogy)",
+  movies:  "item_movies(director, release_date, end_date, country, language, channel, duration_min, actors, awards)",
+  series:  "item_series(director, release_date, end_date, country, language, channel, seasons, actors, awards)",
   food:    "item_food(cuisine, type, address, region_id, lat, lng, delivery_links)",
-  recipes: "item_recipes(level, channel)",
+  recipes: "item_recipes(level, channel, origin, nutrition, yields, calories, duration)",
   bars:    "item_bars(type, address, region_id, lat, lng)",
-  hotels:  "item_hotels(type, address, region_id, lat, lng, price_range)",
-  theater: "item_theater(type, address, region_id, lat, lng, name_place, director, writer, actors)",
-  events:  "item_events(event_type, address, region_id, lat, lng, name_place, performers)",
+  hotels:  "item_hotels(type, address, region_id, lat, lng, price_range, facilities)",
+  theater: "item_theater(type, address, region_id, lat, lng, name_place, director, writer, actors, dates, year, price)",
+  events:  "item_events(event_type, address, region_id, lat, lng, name_place, performers, dates, status, price)",
 };
 
 const EXT_KEY: Record<CategorySlug, string> = {
@@ -74,6 +79,44 @@ function extractArea(address: string | null | undefined): string | undefined {
 function stripPrefix(slug: string): string {
   const i = slug.indexOf("/");
   return i >= 0 ? slug.slice(i + 1) : slug;
+}
+
+/** Same diet / dates / awards helpers as the public mapper — duplicated
+ *  rather than imported because the public page lives under `app/(main)`
+ *  and pulling helpers across that boundary would entangle the bundle.
+ *  Tiny enough that the duplication cost is lower than the coupling
+ *  cost; if either ever grows, hoist to lib/ together. */
+function normalizeDietFlags(nutrition: any): string[] {
+  if (!nutrition || typeof nutrition !== "object") return [];
+  const flags: string[] = [];
+  if (nutrition.vegan) flags.push("vegan");
+  if (nutrition.dairy_free || nutrition.milk === false || nutrition.no_milk) flags.push("no_milk");
+  if (nutrition.sugar_free || nutrition.sugar === false || nutrition.no_sugar) flags.push("no_sugar");
+  return flags;
+}
+
+function extractEventDates(dates: any): string[] {
+  if (!dates) return [];
+  const raw = Array.isArray(dates) ? dates : [dates];
+  const out: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry === "string") {
+      out.push(entry);
+      continue;
+    }
+    if (entry && typeof entry === "object") {
+      const candidate = entry.date ?? entry.start ?? entry.startDate ?? entry.from ?? null;
+      if (typeof candidate === "string") out.push(candidate);
+    }
+  }
+  return out;
+}
+
+function hasAnyAward(awards: any): boolean {
+  if (!awards) return false;
+  if (Array.isArray(awards)) return awards.length > 0;
+  if (typeof awards === "object") return Object.keys(awards).length > 0;
+  return false;
 }
 
 function mapItem(row: any, category: CategorySlug, subcategoryName: string | undefined): CategoryItem {
@@ -123,6 +166,7 @@ function mapItem(row: any, category: CategorySlug, subcategoryName: string | und
       result.hotelType = ext?.type || undefined;
       result.area = extractArea(ext?.address);
       result.regionId = ext?.region_id || undefined;
+      result.priceRange = ext?.price_range || undefined;
       break;
     case "theater":
       result.subcategory = ext?.type || subcategoryName || tags[0] || "Θέατρο";
@@ -130,12 +174,14 @@ function mapItem(row: any, category: CategorySlug, subcategoryName: string | und
       result.regionId = ext?.region_id || undefined;
       result.director = ext?.director || undefined;
       result.actors = stringifyActors(ext?.actors);
+      result.dates = extractEventDates(ext?.dates);
       break;
     case "events":
       result.subcategory = ext?.event_type || subcategoryName || tags[0] || "Εκδήλωση";
       result.area = extractArea(ext?.address);
       result.regionId = ext?.region_id || undefined;
       result.actors = stringifyActors(ext?.performers);
+      result.dates = extractEventDates(ext?.dates);
       break;
     case "movies":
       result.year = ext?.release_date ? new Date(ext.release_date).getFullYear() : undefined;
@@ -144,12 +190,16 @@ function mapItem(row: any, category: CategorySlug, subcategoryName: string | und
       result.director = ext?.director || undefined;
       result.duration_min = ext?.duration_min || undefined;
       result.actors = stringifyActors(ext?.actors);
+      result.hasAwards = hasAnyAward(ext?.awards);
       break;
     case "series":
       result.year = ext?.release_date ? new Date(ext.release_date).getFullYear() : undefined;
       result.platform = ext?.channel || undefined;
       result.channel = ext?.channel || undefined;
       result.actors = stringifyActors(ext?.actors);
+      result.endDate = ext?.end_date ?? null;
+      result.seasons = typeof ext?.seasons === "number" ? ext.seasons : undefined;
+      result.hasAwards = hasAnyAward(ext?.awards);
       break;
     case "books":
       result.year = ext?.publication_year ?? undefined;
@@ -159,6 +209,8 @@ function mapItem(row: any, category: CategorySlug, subcategoryName: string | und
     case "recipes":
       result.subcategory = subcategoryName || tags[0] || ext?.level || "Συνταγή";
       result.level = ext?.level || undefined;
+      result.origin = ext?.origin || undefined;
+      result.diet = normalizeDietFlags(ext?.nutrition);
       break;
   }
 
@@ -168,6 +220,10 @@ function mapItem(row: any, category: CategorySlug, subcategoryName: string | und
 interface ExplorerRequestBody {
   category?: unknown;
   filters?: unknown;
+  /** Admin-only Class B facets — country / language / decade / amenities
+   *  / etc. Keyed by facet id, values mirror the public filter shape
+   *  (string or string[]). See ADMIN_FACETS for the catalogue. */
+  adminFacets?: unknown;
   /** When the admin has set min_rating in the picker. */
   minRating?: unknown;
   /** Sort key for the sample preview. Defaults to `rating_count desc`. */
@@ -228,6 +284,13 @@ export async function POST(req: NextRequest) {
     else if (Array.isArray(v) && v.every((x) => typeof x === "string")) filters[k] = v as string[];
   }
 
+  const adminFacetsRaw = (body.adminFacets ?? {}) as Record<string, unknown>;
+  const adminSelections: Record<string, string | string[]> = {};
+  for (const [k, v] of Object.entries(adminFacetsRaw)) {
+    if (typeof v === "string") adminSelections[k] = v;
+    else if (Array.isArray(v) && v.every((x) => typeof x === "string")) adminSelections[k] = v as string[];
+  }
+
   const minRating = typeof body.minRating === "number" && body.minRating > 0 ? body.minRating : null;
   const sampleSort = body.sample === "rating" ? "rating" : body.sample === "newest" ? "newest" : "popular";
 
@@ -256,21 +319,117 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  /** ext payload kept parallel to `mapped` so the admin-facet matcher
+   *  can read raw extension columns (country, language, facilities, …)
+   *  that `CategoryItem` doesn't carry. Index alignment is enforced by
+   *  building both arrays inside the same map iteration. The
+   *  `tag-pattern` admin facet kind also needs the row's tags — those
+   *  live on `metadata.tags`, not on the ext, so we shallow-copy the
+   *  ext and attach `tags` for the matcher's convenience. */
+  const exts: any[] = [];
   const mapped: CategoryItem[] = (rawItems ?? []).map((r: any) => {
     const subName = Array.isArray(r.subcategories) ? r.subcategories[0]?.name : r.subcategories?.name;
+    const rawExt: any = Array.isArray(r[EXT_KEY[category]]) ? r[EXT_KEY[category]][0] : r[EXT_KEY[category]];
+    const tags: string[] = Array.isArray(r.metadata?.tags) ? r.metadata.tags : [];
+    const ext: any = { ...(rawExt ?? {}), tags };
+    exts.push(ext);
     return mapItem(r, category, subName);
   });
 
+  const facets = ADMIN_FACETS[category] ?? [];
+
   // Apply each selected filter. Empty values are no-ops by convention
   // inside matchesFilter — we still hand them in so the predicate sees
-  // a consistent shape.
-  const matched = mapped.filter((it) => {
+  // a consistent shape. Admin-only facets run as a second pass against
+  // the parallel ext array.
+  const matchedIdx: number[] = [];
+  for (let i = 0; i < mapped.length; i++) {
+    const it = mapped[i];
+    let ok = true;
     for (const [filterId, value] of Object.entries(filters)) {
-      if (!matchesFilter(it, filterId, value, category, regionDescendants)) return false;
+      if (!matchesFilter(it, filterId, value, category, regionDescendants)) {
+        ok = false;
+        break;
+      }
     }
-    if (minRating !== null && (it.avg_rating ?? 0) < minRating) return false;
-    return true;
-  });
+    if (!ok) continue;
+    for (const f of facets) {
+      const sel = adminSelections[f.id];
+      if (sel === undefined) continue;
+      if (!matchesAdminFacet(f, sel, exts[i])) {
+        ok = false;
+        break;
+      }
+    }
+    if (!ok) continue;
+    if (minRating !== null && (it.avg_rating ?? 0) < minRating) continue;
+    matchedIdx.push(i);
+  }
+  const matched: CategoryItem[] = matchedIdx.map((i) => mapped[i]);
+
+  // Distincts for facets that need server-derived option lists.
+  // Computed over the FULL mapped set (not the matched subset) so
+  // chip options don't disappear when the admin tightens selection.
+  // - `chips` / `searchable-chips`: distinct string values from the
+  //   ext column; client decides between full-render and combobox.
+  // - `amenities`: derived from facilities jsonb, used to dim chips
+  //   that have zero coverage in the data.
+  // - `tag-pattern`: no distincts (buckets are static), but the
+  //   client computes per-bucket counts via the matcher to label chips.
+  const distincts: Record<string, string[]> = {};
+  for (const f of facets) {
+    if (f.kind === "chips" || f.kind === "searchable-chips") {
+      const set = new Set<string>();
+      for (const ext of exts) {
+        const v = ext?.[f.field];
+        if (typeof v === "string" && v.trim()) set.add(v.trim());
+      }
+      distincts[f.id] = Array.from(set).sort((a, b) => a.localeCompare(b, "el"));
+    } else if (f.kind === "amenities") {
+      const set = new Set<string>();
+      for (const ext of exts) {
+        for (const a of parseAmenities(ext?.[f.field])) set.add(a);
+      }
+      distincts[f.id] = Array.from(set).sort();
+    }
+  }
+
+  // Distincts for FREE-TEXT public filters (director / actor /
+  // performer / writer / publisher). These exist on the public side as
+  // `search-dropdown` widgets, but the Explorer renders them as text
+  // inputs today — admin types blind. Surfacing distincts lets the
+  // client offer the same searchable picker UX as admin-facet
+  // searchable-chips. Names are flattened from the actor/performer
+  // jsonb arrays where applicable.
+  const peopleDistincts: Record<string, string[]> = {};
+  function collectPeopleColumn(col: string, dst: Set<string>) {
+    for (const ext of exts) {
+      const v = ext?.[col];
+      if (typeof v === "string" && v.trim()) dst.add(v.trim());
+      else if (Array.isArray(v)) {
+        for (const entry of v) {
+          if (typeof entry === "string" && entry.trim()) dst.add(entry.trim());
+          else if (entry && typeof entry === "object") {
+            const nm = (entry as any).name ?? (entry as any).label ?? (entry as any).fullName;
+            if (typeof nm === "string" && nm.trim()) dst.add(nm.trim());
+          }
+        }
+      }
+    }
+  }
+  const PEOPLE_FIELDS_BY_CATEGORY: Record<CategorySlug, Array<{ filterId: string; column: string }>> = {
+    movies:  [{ filterId: "director", column: "director" }, { filterId: "actor", column: "actors" }],
+    series:  [{ filterId: "director", column: "director" }, { filterId: "actor", column: "actors" }],
+    books:   [{ filterId: "writer",   column: "writer"   }, { filterId: "publisher", column: "publication" }],
+    theater: [{ filterId: "director", column: "director" }, { filterId: "actor", column: "actors" }],
+    events:  [{ filterId: "performer", column: "performers" }],
+    food: [], recipes: [], bars: [], hotels: [],
+  };
+  for (const f of PEOPLE_FIELDS_BY_CATEGORY[category]) {
+    const set = new Set<string>();
+    collectPeopleColumn(f.column, set);
+    peopleDistincts[f.filterId] = Array.from(set).sort((a, b) => a.localeCompare(b, "el"));
+  }
 
   // Sort the sample.
   const matchedSorted = [...matched];
@@ -309,5 +468,8 @@ export async function POST(req: NextRequest) {
     total: mapped.length,
     count: matched.length,
     sample,
+    distincts,
+    peopleDistincts,
+    matchedIds: matched.map((it) => it.id),
   });
 }

@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import {
+  ADMIN_FACETS,
+  HOTEL_AMENITY_CHOICES,
+  type AdminFacet,
+} from "@/lib/category-filters/admin-facets";
+import type { CategorySlug } from "@/types";
 
 /**
  * Combinatorial admin Explorer — pick subcategory × region × every
@@ -53,9 +59,16 @@ interface SampleItem {
 }
 
 interface QueryResult {
-  total:  number;
-  count:  number;
-  sample: SampleItem[];
+  total:           number;
+  count:           number;
+  sample:          SampleItem[];
+  distincts:       Record<string, string[]>;
+  /** Distinct values for FREE_TEXT public filters (director / actor /
+   *  performer / writer / publisher) extracted from the candidate
+   *  rows. Keyed by public filter_id. Used to power the searchable
+   *  picker that replaces the old blind-typing text input. */
+  peopleDistincts: Record<string, string[]>;
+  matchedIds:      string[];
 }
 
 const VENUE_CATEGORIES = new Set(["food", "bars", "hotels", "theater", "events"]);
@@ -97,6 +110,7 @@ export function CombinatorialExplorer({ category }: { category: string }) {
   const [subcategories, setSubcategories]   = useState<SubcategoryRow[]>([]);
   const [topLevelRegions, setTopLevelRegions] = useState<RegionRow[]>([]);
   const [selections, setSelections]         = useState<Record<string, string | string[]>>({});
+  const [adminSelections, setAdminSelections] = useState<Record<string, string | string[]>>({});
   const [minRating, setMinRating]           = useState<number>(0);
 
   const [result, setResult]   = useState<QueryResult | null>(null);
@@ -104,9 +118,12 @@ export function CombinatorialExplorer({ category }: { category: string }) {
   const [running, setRunning] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
+  const adminFacets: AdminFacet[] = ADMIN_FACETS[category as CategorySlug] ?? [];
+
   // Reset picks when category changes.
   useEffect(() => {
     setSelections({});
+    setAdminSelections({});
     setMinRating(0);
     setResult(null);
   }, [category]);
@@ -156,15 +173,20 @@ export function CombinatorialExplorer({ category }: { category: string }) {
       void runQuery();
     }, 250);
     return () => clearTimeout(handle);
-    // selections + minRating + category drive the query
-  }, [selections, minRating, category, loading]);
+    // selections + adminSelections + minRating + category drive the query
+  }, [selections, adminSelections, minRating, category, loading]);
 
   async function runQuery() {
     try {
       const res = await fetch("/api/admin/explorer/query", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ category, filters: selections, minRating: minRating || null }),
+        body:    JSON.stringify({
+          category,
+          filters: selections,
+          adminFacets: adminSelections,
+          minRating: minRating || null,
+        }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -202,13 +224,37 @@ export function CombinatorialExplorer({ category }: { category: string }) {
     });
   }
 
+  function toggleAdminMulti(facetId: string, optionId: string) {
+    setAdminSelections((prev) => {
+      const cur = prev[facetId];
+      const arr = Array.isArray(cur) ? cur : (typeof cur === "string" && cur ? [cur] : []);
+      const next = arr.includes(optionId) ? arr.filter((x) => x !== optionId) : [...arr, optionId];
+      const out = { ...prev };
+      if (next.length === 0) delete out[facetId];
+      else out[facetId] = next;
+      return out;
+    });
+  }
+
+  function setAdminText(facetId: string, value: string) {
+    setAdminSelections((prev) => {
+      const out = { ...prev };
+      if (!value.trim()) delete out[facetId];
+      else out[facetId] = value.trim();
+      return out;
+    });
+  }
+
   function clearAll() {
     setSelections({});
+    setAdminSelections({});
     setMinRating(0);
   }
 
   const activeCount =
-    Object.keys(selections).length + (minRating > 0 ? 1 : 0);
+    Object.keys(selections).length +
+    Object.keys(adminSelections).length +
+    (minRating > 0 ? 1 : 0);
 
   if (loading) {
     return <div className="text-sm text-zinc-500">Φόρτωση...</div>;
@@ -320,6 +366,28 @@ export function CombinatorialExplorer({ category }: { category: string }) {
             }
 
             if (FREE_TEXT_FILTERS.has(f.filter_id) || f.options.length === 0) {
+              const people = result?.peopleDistincts?.[f.filter_id];
+              // Searchable picker when the server returned distincts
+              // for this people field. Free-text fallback only when
+              // there's no usable autocomplete data.
+              if (people && people.length > 0) {
+                const sel = selections[f.filter_id];
+                const arr = Array.isArray(sel) ? sel : sel ? [sel] : [];
+                return (
+                  <PickerBlock
+                    key={f.id}
+                    label={f.label}
+                    hint={`${people.length} distinct στο dataset. Πολλαπλή επιλογή = OR.`}
+                  >
+                    <SearchableChips
+                      options={people}
+                      selected={arr}
+                      onToggle={(opt) => toggleMulti(f.filter_id, opt)}
+                      placeholder={f.placeholder ?? "Αναζήτηση..."}
+                    />
+                  </PickerBlock>
+                );
+              }
               const currentValue =
                 typeof selections[f.filter_id] === "string" ? (selections[f.filter_id] as string) : "";
               return (
@@ -357,6 +425,35 @@ export function CombinatorialExplorer({ category }: { category: string }) {
             );
           })}
 
+        {/* Admin-only facets — surfaces columns from the extension
+            tables that don't have a public `category_filters` row.
+            Distinct option values for `chips` come from the server
+            payload (`result.distincts`) so the picker auto-adapts to
+            whatever's actually in the DB. */}
+        {adminFacets.length > 0 && (
+          <div className="border-t border-zinc-100 pt-4 space-y-5">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-coral-700">
+                Admin-only facets
+              </p>
+              <p className="text-[10px] text-zinc-400 mt-0.5">
+                Columns από τα extension tables που δεν είναι published ως category_filters.
+              </p>
+            </div>
+
+            {adminFacets.map((f) => (
+              <AdminFacetPicker
+                key={f.id}
+                facet={f}
+                value={adminSelections[f.id]}
+                distinct={result?.distincts?.[f.id] ?? []}
+                onToggle={(opt) => toggleAdminMulti(f.id, opt)}
+                onSetText={(v) => setAdminText(f.id, v)}
+              />
+            ))}
+          </div>
+        )}
+
         {activeCount > 0 && (
           <button
             onClick={clearAll}
@@ -382,16 +479,27 @@ export function CombinatorialExplorer({ category }: { category: string }) {
             <Recommendation count={result?.count ?? 0} />
           </div>
 
-          {/* Save → opens collection editor pointed at this category. */}
+          {/* Save → opens collection editor with picked filters carried
+              over as a partial CollectionFormData (source_category +
+              tags + ext filters + title hint). Range / decade /
+              facilities picks can't be expressed as ExtFilter and are
+              skipped — the banner inside the editor tells the admin
+              which ones didn't carry. */}
           <div className="border-t border-zinc-200 pt-3">
             <Link
-              href={`/admin/content/collections/new?source_category=${encodeURIComponent(category)}`}
+              href={buildCollectionDeeplink(
+                category,
+                selections,
+                adminSelections,
+                result?.count ?? 0,
+                adminFacets,
+              )}
               className="block text-center px-3 py-2 text-xs font-semibold rounded bg-zinc-900 text-white hover:bg-zinc-800"
             >
-              Δημιούργησε Collection για αυτή την κατηγορία →
+              Δημιούργησε Collection με αυτά τα picks →
             </Link>
             <p className="text-[10px] text-zinc-500 mt-1.5 text-center">
-              Άνοιγμα editor με preset category. Τα picks του Explorer δεν περνάνε ακόμα.
+              Τα chip picks (genre/type/platform/country/…) μεταφέρονται· τα range/decade/facilities δεν.
             </p>
           </div>
         </div>
@@ -511,4 +619,347 @@ function pickSubFilterId(category: string, filters: FilterRow[]): string {
 
 function isSubFilterId(category: string, id: string): boolean {
   return id === pickSubFilterId(category, []) || ["genre", "event_type", "cuisine", "type"].includes(id);
+}
+
+/** Translate Explorer picks into a CollectionEditor deeplink with a
+ *  pre-populated `initial` partial. The semantics:
+ *
+ *  - Sub-category picks (genre / type / cuisine / event_type) carry as
+ *    `tags[]` — items are tag-filtered server-side by the collection
+ *    preview endpoint.
+ *  - Public-filter picks with a clean ext-column target (platform →
+ *    channel, writer, publisher → publication, director, level,
+ *    property_type → type, origin) carry as `ExtFilter[]`.
+ *  - Picks without a single-string ExtFilter equivalent (region IDs,
+ *    duration buckets, awards picker, characteristics checkboxes,
+ *    diet multi-flags, when segments, hotel price band, delivery,
+ *    actor/performer jsonb) are skipped — listed in the banner so the
+ *    admin knows to re-add manually if needed.
+ *  - Admin facets: `chips` and `text` kinds carry directly. `range`,
+ *    `year-range`, and `amenities` don't fit `{field, value}` and are
+ *    skipped. */
+function buildCollectionDeeplink(
+  category: string,
+  selections: Record<string, string | string[]>,
+  adminSelections: Record<string, string | string[]>,
+  matchCount: number,
+  facets: AdminFacet[],
+): string {
+  const SUB_FILTER_IDS = new Set(["genre", "type", "cuisine", "event_type"]);
+  const PUBLIC_TO_EXT: Record<string, string> = {
+    platform:      "channel",
+    writer:        "writer",
+    publisher:     "publication",
+    director:      "director",
+    level:         "level",
+    property_type: "type",
+    origin:        "origin",
+  };
+  const PUBLIC_SKIP = new Set([
+    "region", "duration", "awards", "characteristics", "diet",
+    "when", "price", "delivery", "actor", "performer",
+  ]);
+
+  const tags: string[] = [];
+  const ext: { field: string; value: string }[] = [];
+
+  for (const [fid, v] of Object.entries(selections)) {
+    if (SUB_FILTER_IDS.has(fid)) {
+      const arr = Array.isArray(v) ? v : v ? [v] : [];
+      for (const x of arr) if (typeof x === "string" && x) tags.push(x);
+      continue;
+    }
+    if (PUBLIC_SKIP.has(fid)) continue;
+    const target = PUBLIC_TO_EXT[fid];
+    if (!target) continue;
+    const arr = Array.isArray(v) ? v : v ? [v] : [];
+    for (const x of arr) {
+      if (typeof x === "string" && x) ext.push({ field: target, value: x });
+    }
+  }
+
+  for (const f of facets) {
+    const sel = adminSelections[f.id];
+    if (sel === undefined) continue;
+    if (f.kind === "chips" || f.kind === "searchable-chips") {
+      const arr = Array.isArray(sel) ? sel : [sel];
+      for (const x of arr) {
+        if (typeof x === "string" && x) ext.push({ field: f.field, value: x });
+      }
+    } else if (f.kind === "text") {
+      const v = typeof sel === "string" ? sel : Array.isArray(sel) ? sel[0] : "";
+      if (v) ext.push({ field: f.field, value: v });
+    }
+    // range / year-range / amenities / tag-pattern → cannot express as
+    // a single {field, value} pair, skip. The banner inside
+    // CollectionEditor lists what didn't carry.
+  }
+
+  const params = new URLSearchParams();
+  params.set("source_category", category);
+  if (tags.length > 0) params.set("tags", JSON.stringify(tags));
+  if (ext.length > 0) params.set("filters", JSON.stringify(ext));
+
+  // Title hint — admin can edit. Just enough to identify the collection.
+  const titleBits = [...tags.slice(0, 2), ...ext.slice(0, 2).map((e) => e.value)];
+  if (titleBits.length > 0) {
+    params.set("title_specific", titleBits.join(" · "));
+  }
+  params.set("from_explorer", String(matchCount));
+  return `/admin/content/collections/new?${params.toString()}`;
+}
+
+/** Render one admin-only facet picker. Dispatches on facet.kind. */
+function AdminFacetPicker({
+  facet,
+  value,
+  distinct,
+  onToggle,
+  onSetText,
+}: {
+  facet:    AdminFacet;
+  value:    string | string[] | undefined;
+  distinct: string[];
+  onToggle: (opt: string) => void;
+  onSetText: (v: string) => void;
+}) {
+  const arr = Array.isArray(value) ? value : value ? [value] : [];
+
+  if (facet.kind === "text") {
+    const current = typeof value === "string" ? value : "";
+    return (
+      <PickerBlock label={facet.label} hint={facet.hint ?? "Free-text ciIncludes match."}>
+        <input
+          type="text"
+          value={current}
+          onChange={(e) => onSetText(e.target.value)}
+          placeholder="πχ όνομα..."
+          className="w-full px-3 py-1.5 border border-zinc-200 rounded text-sm focus:outline-none focus:border-zinc-400"
+        />
+      </PickerBlock>
+    );
+  }
+
+  if (facet.kind === "chips") {
+    if (distinct.length === 0) {
+      return (
+        <PickerBlock label={facet.label} hint={facet.hint} dim>
+          <span className="text-xs text-zinc-400 italic">
+            Κανένα published item δεν έχει τιμή σε αυτό το πεδίο.
+          </span>
+        </PickerBlock>
+      );
+    }
+    return (
+      <PickerBlock label={facet.label} hint={facet.hint ?? `${distinct.length} distinct values.`}>
+        <div className="flex flex-wrap gap-1.5">
+          {distinct.map((opt) => (
+            <ChipButton key={opt} active={arr.includes(opt)} onClick={() => onToggle(opt)}>
+              {opt}
+            </ChipButton>
+          ))}
+        </div>
+      </PickerBlock>
+    );
+  }
+
+  if (facet.kind === "searchable-chips") {
+    if (distinct.length === 0) {
+      return (
+        <PickerBlock label={facet.label} hint={facet.hint} dim>
+          <span className="text-xs text-zinc-400 italic">
+            Κανένα published item δεν έχει τιμή σε αυτό το πεδίο.
+          </span>
+        </PickerBlock>
+      );
+    }
+    return (
+      <PickerBlock label={facet.label} hint={facet.hint ?? `${distinct.length} distinct στο dataset.`}>
+        <SearchableChips
+          options={distinct}
+          selected={arr}
+          onToggle={onToggle}
+          placeholder="Αναζήτηση..."
+        />
+      </PickerBlock>
+    );
+  }
+
+  if (facet.kind === "tag-pattern") {
+    // Buckets ARE the options — each chip wraps a regex pattern that
+    // matches against the row's tags. No distincts needed (the option
+    // list is static); selection semantics are OR.
+    const buckets = facet.buckets ?? [];
+    if (buckets.length === 0) return null;
+    return (
+      <PickerBlock label={facet.label} hint={facet.hint ?? "OR — match στα metadata.tags με regex."}>
+        <div className="flex flex-wrap gap-1.5">
+          {buckets.map((b) => (
+            <ChipButton key={b.id} active={arr.includes(b.id)} onClick={() => onToggle(b.id)}>
+              {b.label}
+            </ChipButton>
+          ))}
+        </div>
+      </PickerBlock>
+    );
+  }
+
+  if (facet.kind === "boolean") {
+    // Single-toggle chip. We use "yes" as the selection marker so the
+    // facet shows up as "active" in the URL state once toggled.
+    const active = arr.length > 0;
+    return (
+      <PickerBlock label={facet.label} hint={facet.hint ?? `Φιλτράρει σε rows με ${facet.field} = truthy.`}>
+        <div className="flex flex-wrap gap-1.5">
+          <ChipButton active={active} onClick={() => onToggle("yes")}>
+            {active ? "✓ Ενεργό" : "Ενεργοποίηση"}
+          </ChipButton>
+        </div>
+      </PickerBlock>
+    );
+  }
+
+  if (facet.kind === "amenities") {
+    const choices = HOTEL_AMENITY_CHOICES;
+    const presentSet = new Set(distinct.map((d) => d.toLowerCase()));
+    return (
+      <PickerBlock
+        label={facet.label}
+        hint="AND semantics — ένα item πρέπει να έχει ΟΛΕΣ τις τσεκαρισμένες παροχές."
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {choices.map((c) => {
+            const present = presentSet.has(c.id);
+            return (
+              <ChipButton
+                key={c.id}
+                active={arr.includes(c.id)}
+                onClick={() => onToggle(c.id)}
+              >
+                <span className={present ? "" : "opacity-50"}>{c.label}</span>
+              </ChipButton>
+            );
+          })}
+        </div>
+      </PickerBlock>
+    );
+  }
+
+  // range / year-range — bucket chips
+  const buckets = facet.buckets ?? [];
+  if (buckets.length === 0) return null;
+  return (
+    <PickerBlock label={facet.label} hint={facet.hint ?? "Range buckets — OR semantics."}>
+      <div className="flex flex-wrap gap-1.5">
+        {buckets.map((b) => (
+          <ChipButton key={b.id} active={arr.includes(b.id)} onClick={() => onToggle(b.id)}>
+            {b.label}
+          </ChipButton>
+        ))}
+      </div>
+    </PickerBlock>
+  );
+}
+
+/** Multi-select typeahead combobox.
+ *
+ *  Selected items render as removable chips above the input. Typing
+ *  filters the dropdown (case-insensitive substring) and shows up to
+ *  the first 30 matches — admin can always type more to narrow. The
+ *  whole point is admin shouldn't scroll 200 country chips: they type
+ *  "ger" and pick Germany.
+ *
+ *  Uses onMouseDown + preventDefault on options so click registers
+ *  before the input's onBlur fires (which would otherwise hide the
+ *  dropdown). 200ms onBlur delay catches the case where the user
+ *  tabs out before clicking. */
+function SearchableChips({
+  options,
+  selected,
+  onToggle,
+  placeholder,
+  maxRows = 30,
+}: {
+  options:     string[];
+  selected:    string[];
+  onToggle:    (opt: string) => void;
+  placeholder?: string;
+  maxRows?:    number;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen]   = useState(false);
+
+  const filtered = (() => {
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      return options.slice(0, maxRows);
+    }
+    return options
+      .filter((o) => o.toLowerCase().includes(q))
+      .slice(0, maxRows);
+  })();
+
+  return (
+    <div>
+      {/* Selected chips */}
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {selected.map((s) => (
+            <span
+              key={s}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-zinc-900 text-white text-[12px] font-medium"
+            >
+              {s}
+              <button
+                onClick={() => onToggle(s)}
+                className="text-white/70 hover:text-white text-base leading-none -mr-0.5"
+                aria-label={`Αφαίρεση ${s}`}
+              >×</button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Search input + dropdown */}
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 200)}
+          placeholder={placeholder ?? `Αναζήτηση...`}
+          className="w-full px-3 py-1.5 border border-zinc-200 rounded text-sm focus:outline-none focus:border-zinc-400"
+        />
+        {open && (
+          <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto border border-zinc-200 rounded bg-white shadow-lg">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-zinc-400 italic">
+                Κανένα match για "{query}"
+              </div>
+            ) : (
+              filtered.map((o) => {
+                const isSelected = selected.includes(o);
+                return (
+                  <button
+                    key={o}
+                    onMouseDown={(e) => { e.preventDefault(); onToggle(o); }}
+                    className={`block w-full text-left px-3 py-1.5 text-xs ${isSelected ? "bg-coral-50 text-coral-700 font-medium" : "hover:bg-zinc-50 text-zinc-700"}`}
+                  >
+                    {isSelected && <span className="mr-1.5">✓</span>}
+                    {o}
+                  </button>
+                );
+              })
+            )}
+            {!query && options.length > maxRows && (
+              <div className="px-3 py-1.5 text-[10px] text-zinc-400 border-t border-zinc-100">
+                Πληκτρολόγησε για να βρεις τα υπόλοιπα {options.length - maxRows} ({options.length} σύνολο).
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
