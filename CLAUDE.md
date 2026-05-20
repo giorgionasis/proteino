@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-20 (session 32 — 4 quick wins: image-wipe damage scan (`scripts/scan-image-wipe.ts`, prod scope = 1 row), per-category review milestones (`category_review_count_eq` predicate + `/api/reviews` payload extension), `useMemo`/`useCallback` sweep (90 sites across 45 files → 0; React Compiler auto-memoizes), streak-window review milestones (`reviews_this_week_eq` + `reviews_this_month_eq` predicates + `{week_count}` / `{month_count}` placeholders))
+**Last meaningful update:** 2026-05-20 (session 33 — admin gaps audit pass 1: subcategory delete-with-reassign dialog, full editor drawer (name + slug + SEO), combinatorial Explorer with live count + Card/Carousel recommendation; `matchesFilter` extracted to `lib/category-filters/match.ts` as the SSoT for public + admin filtering. CLAUDE.md §48 documents the admin gap-audit pattern.)
 
 ---
 
@@ -2144,3 +2144,58 @@ Accepts `href` for link wrapping, `fallbackIcon` for the empty state, `overlay` 
 ### Legacy
 
 `components/profile/suggestions/OwnSuggestionCard.tsx`, `components/profile/bookmarks/BookmarkedCard.tsx`, and `components/profile/reviews/ReviewCard.tsx` (the fixed-342-width one) are kept in-tree for showcase reference — they're Figma-spec reference components, but no production code mounts them. The list pages now own their own card rendering directly.
+
+
+---
+
+## 48. Admin gap-audit pattern + categories surface (session 33)
+> ✅ Shipped — three closed gaps on `/admin/categories/<id>` + a new combinatorial Explorer at `/admin/filters` → Explorer tab.
+
+### The pattern
+
+When a user reports an admin bug, treat it as a sample of a class — not a singleton. The `feedback-admin-gaps-audit` memory captures the working rule: before fixing the reported symptom, audit the surrounding feature for dead controls, half-finished editors, inconsistent flows, and missing combinatorial views. Then call out the gaps in the response and ask which to prioritise — don't silently bundle. The user is building a platform a non-engineer must run on; gappy admin flows compound.
+
+Session 33 was a clean example: one reported issue ("edit doesn't work") surfaced three distinct problems (dead Edit navigation, disabled-with-no-feedback Delete button, name-only inline rename) plus a missing combinatorial view on the Explorer. All four diagnosed before any patches landed.
+
+### `/admin/categories/<id>` subcategory row — what each control does now
+
+| Affordance | Behavior |
+|---|---|
+| Drag arrows ▲▼ | Patches `display_order` only (swap-with-neighbor in a single round-trip pair) |
+| Published toggle (green/grey dot) | Patches `is_published` only |
+| `Επεξεργασία` | Opens `<SubcategoryEditor>` drawer — name + slug + SEO description (see below) |
+| `Delete` | Click always fires. If `itemCount === 0` → `confirm()` prompt → DELETE. If `itemCount > 0` → opens `<ReassignDialog>` with a target subcategory dropdown of the other subs in the same category; confirm calls reassign then DELETE in two visible steps. Single-subcategory edge case shows a "create another first" warning. |
+| `· SEO` chip (next to name) | Surfaces whether `description_seo` is non-null — scan-the-table coverage indicator |
+
+### `<SubcategoryEditor>` drawer (session 33)
+
+Fields: `name` (Greek), `slug` (lowercase-kebab), `description_seo` (nullable textarea). The slug has a `↻ Δημιουργία από όνομα` button that runs the same Greek-to-Latin slugifier as the POST route (so admin renames don't drift). PATCH endpoint preflights slug uniqueness and returns the conflicting sibling's name on collision — a 23505 from PostgREST would be opaque ("duplicate key value violates unique constraint"); the preflight produces "slug 'X' already used by 'Y'" instead.
+
+The inline name-only rename + `editName` / `editingId` state + `saveName` helper are gone. One editor, one place.
+
+### `POST /api/admin/subcategories/[id]/reassign`
+
+Body: `{ targetId }`. Validates both subs exist and share `category` (no cross-category moves). Returns `{ reassigned: number }`. Separate from the DELETE so the client can show two-step progress + degrade gracefully if either step fails. Not transactional — if reassign succeeds and delete fails the items are now under the new sub (acceptable outcome) and the source row stays; admin sees the error and can retry delete.
+
+### Combinatorial Explorer (`/admin/filters` → Explorer tab)
+
+Replaces the previous single-axis Explorer (subcategory + region counts as separate tables). Lets admin pick any combination of:
+
+- **Subcategory** — auto-mapped to the right filter_id per category (`genre` for movies/series/books, `cuisine` for food, `event_type` for events, `type` for bars/hotels/theater/recipes). Source: `/api/admin/subcategories`.
+- **Region** — top-level regions only (server expands to all descendants, matching the public picker). Venue categories only.
+- **Min rating** — `0` / `≥ 3.5` / `≥ 4.0` / `≥ 4.5`.
+- **Every published `category_filter`** for the current category, rendered as a chip-strip of its `options[]`. Free-text filters (`writer` / `publisher` / `director` / `actor` / `performer`) render as text inputs with `ciIncludes` matching. Complex filters (`awards` / `price` / `season` / `epoch`) surface as informational chips marked "skipped" — explicit rather than silently broken.
+
+Live count debounces 250ms. Recommendation thresholds: `≥ 11 → Card`, `4–10 → Carousel`, `1–3 → too few`, `0 → no match`. Sample preview is a 3×4 grid of the top items by popularity (rating_count desc, avg_rating tiebreak), with title + ★ rating overlay and click-through to the public detail page.
+
+**Save-as-Collection** — the button currently deeplinks `/admin/content/collections/new?source_category=<cat>` (pre-sets category only). Carrying picked filters + matched item IDs into the CollectionEditor is the natural follow-up; requires translating `category_filters`-style filter IDs into the CollectionEditor's `ExtFilter[]` shape (different vocabulary).
+
+### `lib/category-filters/match.ts` — single source of truth
+
+`matchesFilter`, `ciEq`, `ciIncludes` extracted from `CategoryPageShell.tsx` into a shared pure-function module so the public category page and the admin Explorer endpoint produce **byte-identical** filter results. Adding a new user-facing filter now means: add a case to `matchesFilter`, add a column to `CategoryItem` (built in `app/(main)/[category]/page.tsx:mapItem`), and the Explorer picks it up automatically once an admin publishes a `category_filters` row with the matching `filter_id`.
+
+The admin endpoint (`POST /api/admin/explorer/query`) does its own slim `mapItem` over the same `EXT_SELECT` shape because the public page's mapper pulls suggester avatars + carousel hydration the Explorer doesn't need. If a third caller appears, extract the mapper too.
+
+### What's still open on the categories surface
+
+- **Category metadata editor** (gap C from the session 33 audit). The 9 category slugs (movies/books/food/…) are hardcoded in `CATEGORY_META` and `CATEGORY_NAMES`. The `categories` table exists in DB but no admin UI manages it. "Επεξεργασία" on `/admin/categories` just navigates to the subcategory list. Deferred — needs either a small migration to add label/icon columns or shifting CATEGORY_META into DB. Worth doing once admin needs a 10th category or localized labels.

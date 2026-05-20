@@ -1,12 +1,67 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-20 (session 32 — image-wipe damage scan + per-category review milestones + useMemo/useCallback sweep + streak-window predicates)
+Last updated: 2026-05-20 (session 33 — admin gaps audit pass 1: subcategory delete-with-reassign + full editor drawer + combinatorial Explorer)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 32 (current) finished:**
+**Current state — session 33 (current) finished:**
+
+User flagged three dead/half-finished flows on the admin categories surface and a missing combinatorial filter view on the Explorer. All three closed; saved a `feedback-admin-gaps-audit` memory so future admin work always opens with a full-flow audit before patching the symptom.
+
+### Shipped — subcategory delete-with-reassign (commit `6e5692d`)
+
+The Delete button on `/admin/categories/<id>` was `disabled={... || row.itemCount > 0}`. Toast that would have explained the constraint lived behind the same `onClick` the disabled state was suppressing → admin saw a grey button doing nothing. Fixed:
+
+- New endpoint `POST /api/admin/subcategories/[id]/reassign` — bulk-updates items to a target subcategory, validates same-category, returns moved count.
+- Delete button always clickable. When itemCount > 0, opens a dialog with target-subcategory dropdown of the other subs. Confirm → reassign → delete in two visible steps. Half-failure surfaces the right message.
+- Backdrop click + close locked during in-flight request. Single-subcategory category shows "create another first" warning + disables confirm.
+
+### Shipped — full subcategory editor (commit `80cfe32`)
+
+The inline "Επεξεργασία" only ever edited the Greek `name`. The `subcategories` table has name + slug + `description_seo` (since migration 001), but only the first was reachable from the admin UI. Now:
+
+- PATCH `/api/admin/subcategories/[id]` extended with `slug` (lowercase-kebab validation, uniqueness preflight that returns the conflicting sibling's name on collision) + `description_seo` (nullable; "" or null both clear it).
+- New `<SubcategoryEditor>` drawer in `CategoryDetail.tsx` — name + slug + SEO textarea + a "↻ Δημιουργία από όνομα" button that runs the same Greek-to-Latin slugifier as the POST route.
+- Page server fetch + `SubcategoryRow` shape gain `descriptionSeo`. POST returns `slug` so freshly-created rows open the editor with the auto-generated value visible.
+- Row gets a `· SEO` chip next to the name when description_seo is set — scannable coverage at a glance.
+- Inline-rename flow + `saveName` helper removed. One editor, one place.
+
+### Shipped — combinatorial Explorer (commit `89a4501`)
+
+The old `FiltersExplorer` showed subcategory + region counts as separate tables — admin couldn't ask "movies × Netflix × sci-fi × rating ≥ 4.5?", which is the question that drives Card / Carousel / Collection decisions. New:
+
+- `matchesFilter` + `ciEq` + `ciIncludes` extracted from `CategoryPageShell.tsx` into `lib/category-filters/match.ts`. **Single source of truth** shared by the public category pages and the new admin endpoint — keeps explorer counts and public-page filtering byte-identical.
+- `POST /api/admin/explorer/query` — fetches every published item in the category + its extension row + subcategory join, maps to the same `CategoryItem` shape the public page builds (slim mapper, no suggester avatars), runs `matchesFilter` row-by-row, returns `{ total, count, sample[12] }`. Region anchors expand to all descendants server-side.
+- `<CombinatorialExplorer>` (`components/admin/CombinatorialExplorer.tsx`) replaces `FiltersExplorer`. One chip-strip per published `category_filter` row (auto-detects sub-mapped filter ids per category), plus Subcategory + Region + Min-rating pickers. Live count + Card / Carousel / "too few" recommendation + 3×4 sample grid. 250ms debounce. "Create Collection" CTA deeplinks `/admin/content/collections/new?source_category=...`.
+- Free-text filters (writer / director / actor / performer) render as text inputs with `ciIncludes` matching. Complex filters (awards / price / season / epoch) surface as informational chips marked "skipped" — explicit rather than silently broken.
+- Deleted: `/api/admin/filters/counts/route.ts` (superseded by the new endpoint).
+
+### Files touched (session 33)
+
+- New code: `app/api/admin/subcategories/[id]/reassign/route.ts`, `app/api/admin/explorer/query/route.ts`, `lib/category-filters/match.ts`, `components/admin/CombinatorialExplorer.tsx`
+- Memory: `~/.claude/projects/-Users-USER-Desktop-proteino/memory/feedback_admin_gaps_audit.md` (+ MEMORY.md index entry)
+- Refactored: `app/api/admin/subcategories/[id]/route.ts` (PATCH gains slug + description_seo), `app/api/admin/subcategories/route.ts` (POST returns slug), `app/admin/categories/[id]/page.tsx` (fetch description_seo), `components/admin/CategoryDetail.tsx` (drawer + reassign dialog + row chip + inline-rename removed), `components/admin/FiltersManager.tsx` (uses CombinatorialExplorer; old FiltersExplorer + ExplorerCounts deleted), `components/category/CategoryPageShell.tsx` (matchesFilter imported from new lib)
+- Deleted: `app/api/admin/filters/counts/route.ts`
+
+**Stats:** zero new migrations. 3 commits. `npx tsc --noEmit` → 0 errors. Dev server hot-reloaded clean throughout.
+
+### Still on the admin gaps list (from session 33 diagnosis)
+
+- **C — Category metadata editor.** The 9 category slugs (movies/books/food/…) are HARDCODED in `CATEGORY_META` and `CATEGORY_NAMES`. The `categories` table exists in DB but has no admin UI. "Επεξεργασία" on `/admin/categories` just navigates to the subcategory list — there's no editor for the category row itself. Deferred — needs a small migration to add label/icon columns or move CATEGORY_META into DB. Likely worth doing once admin needs to add a 10th category or localize labels.
+- **Save-as-Collection from Explorer matches** — the "Create Collection" button currently just deeplinks with the source_category preset; it does NOT carry over the picked filters or matched item IDs. Future polish: translate Explorer's `category_filters`-style picks into `ExtFilter[]` for the CollectionEditor and pre-populate the form.
+
+### Open follow-ups (next session)
+
+- **Phase B day 1** — still blocked on embedding provider + backfill scope decisions (CLAUDE.md §45).
+- **Biblionet subcategory taxonomy** — still blocked on user (expand to ~18 vs two-tier; CLAUDE.md §44).
+- **SEO closing** (§39 gaps): admin field additions for `contentRating` / `isbn` / `numberOfEpisodes` / `starRating` / `openingHours` / `organizer` / recipe video; sitemap-index split when corpus passes 5K; image sitemap extension; `noindex` on thin pages; canonical URLs on category + profile pages; K2 → new URL 301 redirect map.
+- Carry forward: real legal copy on `/terms` + `/privacy`, hero images, drop legacy `ratings`/`comments` tables, per-category visual identity, admin gap C (category metadata editor).
+
+---
+
+**Previous state — session 32 finished:**
 
 Focused follow-up session, all picked items shipped (4 commits, all green). No new migrations.
 
