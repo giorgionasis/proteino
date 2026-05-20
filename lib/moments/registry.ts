@@ -88,6 +88,20 @@ const category_bookmark_count_eq: PredicateFn = (ctx, args) => {
   return c === target;
 };
 
+/** Fires when the user just published their args.n-th review in the
+ *  given category. Payload must carry `category_review_count` + (when
+ *  args.category is set) `category` — see /api/reviews route. Leaving
+ *  args.category empty matches any category at the same count, useful
+ *  for "first-in-each-category" rules under a single moment row. */
+const category_review_count_eq: PredicateFn = (ctx, args) => {
+  const target = toInt(args.n);
+  if (target == null) return false;
+  const wantCategory = toStr(args.category);
+  if (wantCategory && ctx.payload.category !== wantCategory) return false;
+  const c = toInt(ctx.payload.category_review_count);
+  return c === target;
+};
+
 /** Fires when payload.category matches args.category exactly. */
 const category_eq: PredicateFn = (ctx, args) => {
   const want = toStr(args.category);
@@ -105,6 +119,7 @@ export const PREDICATES: Record<string, PredicateFn> = {
   bookmarkers_count_gte,
   bookmarkers_count_zero,
   category_bookmark_count_eq,
+  category_review_count_eq,
   category_eq,
 };
 
@@ -152,6 +167,14 @@ export const PREDICATE_SCHEMAS: Record<string, PredicateSchema> = {
     description: "π.χ. το 10ο bookmark σε movies. Άφησε την κατηγορία κενή για να ταιριάζει σε όλες (τότε το {category} placeholder αναφέρεται στην τρέχουσα).",
     args: {
       n:        { label: "N", type: "integer" },
+      category: { label: "Κατηγορία (προαιρετικά)", type: "category", hint: "Άσε κενό για να ταιριάζει σε κάθε κατηγορία" },
+    },
+  },
+  category_review_count_eq: {
+    label: "Όταν ο χρήστης γράψει την N-οστή αξιολόγηση σε κατηγορία",
+    description: "π.χ. η 5η αξιολόγηση σε movies. Άσε την κατηγορία κενή για να ταιριάζει σε κάθε κατηγορία (το {category} placeholder αναφέρεται στην τρέχουσα). Χρησιμοποιείται με trigger 'review_published'.",
+    args: {
+      n:        { label: "N", type: "integer", hint: "π.χ. 1, 3, 10" },
       category: { label: "Κατηγορία (προαιρετικά)", type: "category", hint: "Άσε κενό για να ταιριάζει σε κάθε κατηγορία" },
     },
   },

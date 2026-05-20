@@ -1770,9 +1770,21 @@ Generic FLIP hook (`First, Last, Invert, Play`). Takes a container ref + a `data
 
 Considered a separate flatter variant — but the existing modal anatomy (title + subtitle + decorated badge + body) already fit. Adding a new variant would have doubled modal surface area for marginal visual gain; `label_line1/2` gives enough distinction. When/if review milestones need a wholly different treatment (different shape, no hex), splitting then is cheap — the moment row sets a new `variant` key and the modal switches on it.
 
-### Open polish
+### Per-category review milestones — `category_review_count_eq` (session 32)
 
-- **Per-category review milestones** — admin can compose these via `/admin/moments` (`review_count_eq` + a future `category_eq` predicate row). Not seeded by default.
+Single combined predicate so per-category milestones are one moment row, not two. Admin form auto-renders via the registry schema endpoint.
+
+| Predicate arg | Meaning |
+|---|---|
+| `n` (int, required) | Target count — matches when the user's category-scoped review count strictly equals this |
+| `category` (string, optional) | When set, also requires the just-published review's item to be in this category; when empty, fires at the same count in **any** category (one row covers all 9 — `{category}` placeholder resolves to whatever the user just reviewed) |
+
+`/api/reviews` writes the matching payload (added session 32): the route resolves the item's category + counts the user's non-hidden reviews scoped to that category via `reviews INNER JOIN items` and writes both into `payload.category` + `payload.category_review_count`. `buildVars` receives `category` too, so admin copy can use `{category}`, `{category_noun}`, `{category_article}`, `{category_list_noun}` placeholders.
+
+**Trigger combo:** `trigger_event = 'review_published'` + `predicate_key = 'category_review_count_eq'`. Not seeded by default — compose in `/admin/moments`.
+
+### Other open polish
+
 - **Streak milestones** (`reviews_this_week_eq`, `reviews_this_month_eq`) — needs a new predicate that counts within a window. Registry already supports async DB-backed predicates.
 
 ---

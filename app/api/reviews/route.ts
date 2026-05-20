@@ -101,11 +101,27 @@ export async function POST(req: NextRequest) {
     const newCount = totalReviewCount ?? 0;
 
     if (newCount > 0) {
-      const { data: userMeta } = await admin
-        .from("users")
-        .select("handle, display_name")
-        .eq("id", user.id)
-        .single();
+      // Resolve the item's category + the user's category-scoped review
+      // count so `category_review_count_eq` predicates can fire (e.g.
+      // "first review in books"). Both are added to the moment payload
+      // and to vars so admin copy can use {category} / {category_noun}.
+      const [{ data: itemRow }, userMetaResult] = await Promise.all([
+        admin.from("items").select("category").eq("id", itemId).single(),
+        admin.from("users").select("handle, display_name").eq("id", user.id).single(),
+      ]);
+      const itemCategory = (itemRow as any)?.category as string | null;
+      const userMeta = userMetaResult.data;
+
+      let categoryReviewCount: number | null = null;
+      if (itemCategory) {
+        const { count: catCount } = await admin
+          .from("reviews")
+          .select("items!inner(category)", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("is_hidden", false)
+          .eq("items.category", itemCategory);
+        categoryReviewCount = catCount ?? 0;
+      }
 
       // Pick the next-tier target for vars (drives {remaining} +
       // {ordinal} placeholders if a future moment uses them).
@@ -128,12 +144,15 @@ export async function POST(req: NextRequest) {
         },
         payload: {
           count: newCount,
+          category: itemCategory,
+          category_review_count: categoryReviewCount,
         },
         vars: buildVars({
-          user:   { handle: (userMeta as any)?.handle, display_name: (userMeta as any)?.display_name },
-          count:  newCount,
-          target: targetForCount,
-          badge:  badgeForTarget,
+          user:     { handle: (userMeta as any)?.handle, display_name: (userMeta as any)?.display_name },
+          count:    newCount,
+          target:   targetForCount,
+          badge:    badgeForTarget,
+          category: itemCategory,
         }),
       };
 
