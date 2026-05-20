@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CATEGORIES } from "@/constants/categories";
@@ -598,10 +598,7 @@ function LivePreview({ form }: { form: CollectionFormData }) {
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Stable key for fetch deps
-  const key = useMemo(
-    () => JSON.stringify({ src: form.source_category, tags: form.tags, filters: form.filters, lim: form.item_limit }),
-    [form.source_category, form.tags, form.filters, form.item_limit]
-  );
+  const key = JSON.stringify({ src: form.source_category, tags: form.tags, filters: form.filters, lim: form.item_limit });
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

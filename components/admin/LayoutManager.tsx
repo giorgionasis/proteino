@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -84,23 +84,23 @@ export function LayoutManager() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   /* ── Scroll iframe to a specific section via postMessage ── */
-  const scrollToSection = useCallback((sectionId: string) => {
+  const scrollToSection = (sectionId: string) => {
     const iframe = iframeRef.current;
     if (!iframe?.contentWindow) return;
     iframe.contentWindow.postMessage(
       { type: "scroll-to-section", sectionId },
       window.location.origin,
     );
-  }, []);
+  };
 
-  const bucket: BucketKey = useMemo(() => {
+  const bucket: BucketKey = (() => {
     const p = PAGES.find((x) => x.key === pageKey)!;
     return { context: p.context, category: p.category };
-  }, [pageKey]);
+  })();
 
   /* ── Fetch sections ── */
 
-  const load = useCallback(async () => {
+  const load = async () => {
     setLoading(true);
     try {
       const url = new URL("/api/admin/page-sections", window.location.origin);
@@ -117,7 +117,7 @@ export function LayoutManager() {
     } finally {
       setLoading(false);
     }
-  }, [bucket.context, bucket.category]);
+  };
 
   useEffect(() => { load(); }, [load]);
 

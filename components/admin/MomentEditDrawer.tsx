@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, Fragment } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils/cn";
 import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
@@ -643,12 +643,12 @@ function Field({ label, children, required }: { label: string; children: React.R
 // see here is what users will see.
 
 function MomentPreview({ form, category }: { form: FormState; category: string }) {
-  const vars = useMemo(() => buildPreviewVars(form, category), [form, category]);
-  const interpolated = useMemo(() => ({
+  const vars = buildPreviewVars(form, category);
+  const interpolated = ({
     title:    interpolate(form.copy.title,    vars),
     subtitle: interpolate(form.copy.subtitle, vars),
     body:     interpolate(form.copy.body,     vars),
-  }), [form.copy, vars]);
+  });
 
   if (form.surface === "achievement_modal") {
     return <AchievementPreview interpolated={interpolated} display={form.display} />;

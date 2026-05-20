@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ImageUploader } from "./ImageUploader";
@@ -89,10 +89,7 @@ export function ActivityEditor({ initial }: Props) {
     if (t) setForm((f) => ({ ...f, category_id: t.category_id }));
   }, [types, form.type_id, form.category_id]);
 
-  const filteredTypes = useMemo(
-    () => types.filter((t) => !form.category_id || t.category_id === form.category_id),
-    [types, form.category_id]
-  );
+  const filteredTypes = types.filter((t) => !form.category_id || t.category_id === form.category_id);
 
   function patch<K extends keyof ActivityFormData>(key: K, value: ActivityFormData[K]) {
     setForm((f) => ({ ...f, [key]: value }));

@@ -11,13 +11,13 @@
  *   const { following, toggle, busy } = useFollow(targetUserId, initialFollowing);
  */
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 
 export function useFollow(targetUserId: string, initialFollowing = false) {
   const [following, setFollowing] = useState(initialFollowing);
   const [busy, setBusy] = useState(false);
 
-  const toggle = useCallback(async () => {
+  const toggle = async () => {
     if (busy || !targetUserId) return;
     const next = !following;
     setFollowing(next); // optimistic
@@ -51,7 +51,7 @@ export function useFollow(targetUserId: string, initialFollowing = false) {
     } finally {
       setBusy(false);
     }
-  }, [following, busy, targetUserId]);
+  };
 
   return { following, toggle, busy };
 }

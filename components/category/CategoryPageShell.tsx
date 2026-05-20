@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { SubCategoryTabs } from "./SubCategoryTabs";
@@ -279,7 +279,7 @@ export function CategoryPageShell({
   const listItems = items;
   const tabsOwnedKey = TABS_OWNED_FILTER[category];
 
-  const filteredItems = useMemo(() => {
+  const filteredItems = (() => {
     let result = listItems;
 
     if (activeTab !== "Όλα") {
@@ -293,13 +293,13 @@ export function CategoryPageShell({
     }
 
     return result;
-  }, [listItems, activeTab, filterValues, category, tabsOwnedKey, regionDescendants]);
+  })();
 
   const filteredCount = filteredItems.length;
   const hasActiveFilters = activeTab !== "Όλα" || activeFilterCount > 0;
   const displayCount = hasActiveFilters ? filteredCount : totalCount;
 
-  const computeCount = useCallback((vals: FilterValues): number => {
+  const computeCount = (vals: FilterValues): number => {
     let result = listItems;
     if (activeTab !== "Όλα") {
       result = result.filter((it) => ciEq(it.subcategory, activeTab));
@@ -310,7 +310,7 @@ export function CategoryPageShell({
       result = result.filter((it) => matchesFilter(it, filterId, value, category, regionDescendants));
     }
     return result.length;
-  }, [listItems, activeTab, category, tabsOwnedKey, regionDescendants]);
+  };
 
   const regionLabelById = (() => {
     const m = new Map<string, string>();

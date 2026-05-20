@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
@@ -155,7 +155,7 @@ export function ReviewsAdminTable({ stats, unresolved }: Props) {
     setPage(1);
   }, [debouncedSearch, categoryFilter, filterMode, ratingFilter, sortIdx]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = async () => {
     setLoading(true);
     setError(null);
     const sb = getSupabase();
@@ -251,7 +251,7 @@ export function ReviewsAdminTable({ stats, unresolved }: Props) {
     setRows(finalRows);
     setTotalItems(count ?? 0);
     setLoading(false);
-  }, [page, debouncedSearch, sortIdx, categoryFilter, filterMode, ratingFilter, unresolvedRows]);
+  };
 
   useEffect(() => {
     fetchData();

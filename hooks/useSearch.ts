@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { CategorySlug, Item, SearchAnalysis, SearchPill } from "@/types";
 import { CATEGORIES } from "@/constants/categories";
 import { looseStrip } from "@/lib/utils/textSearch";
@@ -97,7 +97,7 @@ export function useSearch(): UseSearchReturn {
   // query session. Reset whenever the query becomes empty (fresh search).
   const noCategoryFilterRef = useRef(false);
 
-  const clearState = useCallback(() => {
+  const clearState = () => {
     setState("empty");
     setPills([]);
     setAnalysis(null);
@@ -109,15 +109,15 @@ export function useSearch(): UseSearchReturn {
     setErrorMessage(null);
     setRegionFallbackUsed(false);
     setAddressMatchUsed(false);
-  }, []);
+  };
 
-  const cancelInflight = useCallback(() => {
+  const cancelInflight = () => {
     if (abortRef.current) abortRef.current.abort();
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-  }, []);
+  };
 
   // Cleanup on unmount: abort any in-flight request + clear pending debounce
   // so we don't setState on an unmounted component.
@@ -125,7 +125,7 @@ export function useSearch(): UseSearchReturn {
 
   const lastQueryRef = useRef<string | null>(null);
 
-  const runSearch = useCallback(async (value: string, signal: AbortSignal) => {
+  const runSearch = async (value: string, signal: AbortSignal) => {
     setState("analyzing");
     setErrorMessage(null);
     lastQueryRef.current = value;
@@ -226,19 +226,18 @@ export function useSearch(): UseSearchReturn {
       );
       setState("error");
     }
-  }, []);
+  };
 
-  const retry = useCallback(() => {
+  const retry = () => {
     const last = lastQueryRef.current;
     if (!last) return;
     cancelInflight();
     const controller = new AbortController();
     abortRef.current = controller;
     void runSearch(last, controller.signal);
-  // cancelInflight is stable but include for hooks-rules conformance
-  }, [runSearch]);  // eslint-disable-line react-hooks/exhaustive-deps
+  };
 
-  const setQuery = useCallback((value: string) => {
+  const setQuery = (value: string) => {
     setQuery_(value);
 
     if (!value.trim()) {
@@ -260,9 +259,9 @@ export function useSearch(): UseSearchReturn {
       if (controller.signal.aborted) return;
       void runSearch(value, controller.signal);
     }, 350);
-  }, [runSearch, cancelInflight, clearState]);
+  };
 
-  const removePill = useCallback((index: number) => {
+  const removePill = (index: number) => {
     const dropped = pills[index];
     if (!dropped) return;
 
@@ -298,16 +297,16 @@ export function useSearch(): UseSearchReturn {
     const controller = new AbortController();
     abortRef.current = controller;
     void runSearch(next, controller.signal);
-  }, [pills, query, runSearch, cancelInflight, clearState]);
+  };
 
-  const clear = useCallback(() => {
+  const clear = () => {
     cancelInflight();
     noCategoryFilterRef.current = false;
     setQuery_("");
     clearState();
-  }, [cancelInflight, clearState]);
+  };
 
-  const pickCategory = useCallback((slug: CategorySlug) => {
+  const pickCategory = (slug: CategorySlug) => {
     // The user explicitly picked a category from the no-match chip picker.
     // Pin via the categories= URL param so the route uses this exact list
     // and skips its own keyword-based detection. Use the current query if
@@ -365,7 +364,7 @@ export function useSearch(): UseSearchReturn {
         setState("error");
       }
     })();
-  }, [query, cancelInflight]);
+  };
 
   return {
     state,

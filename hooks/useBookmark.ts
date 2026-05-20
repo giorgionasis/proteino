@@ -14,7 +14,7 @@
  * failed save to be mis-announced as "removed").
  */
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import type { ResolvedMoment } from "@/lib/moments";
 
@@ -69,7 +69,7 @@ export function useBookmark(
   const supabaseUser               = useAuthStore((s) => s.supabaseUser);
   const isGuest                    = supabaseUser === null;
 
-  const toggle = useCallback(async (): Promise<ToggleResult> => {
+  const toggle = async (): Promise<ToggleResult> => {
     if (busy) return { ok: false, status, context: null, moment: null };
     if (isGuest) {
       // No-op for guests — the GuestPromptModal handles the prompt
@@ -121,9 +121,9 @@ export function useBookmark(
     } finally {
       setBusy(false);
     }
-  }, [status, busy, isGuest, itemId, category]);
+  };
 
-  const setStatus = useCallback(async (nextStatus: BookmarkStatus): Promise<SetStatusResult> => {
+  const setStatus = async (nextStatus: BookmarkStatus): Promise<SetStatusResult> => {
     if (busy) return { ok: false, status: status ?? nextStatus, context: null };
     if (isGuest) {
       return { ok: false, status: nextStatus, context: null };
@@ -152,7 +152,7 @@ export function useBookmark(
     } finally {
       setBusy(false);
     }
-  }, [status, busy, isGuest, itemId, category]);
+  };
 
   return {
     status,

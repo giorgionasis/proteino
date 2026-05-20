@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
 import { Icon } from "@/components/ui/Icon";
@@ -82,10 +82,7 @@ export function LeaderboardPage() {
     return () => { cancelled = true; };
   }, [period, category]);
 
-  const categoryLabel = useMemo(
-    () => CATEGORY_OPTIONS.find((c) => c.value === category)?.label ?? "Όλες οι κατηγορίες",
-    [category],
-  );
+  const categoryLabel = CATEGORY_OPTIONS.find((c) => c.value === category)?.label ?? "Όλες οι κατηγορίες";
 
   return (
     <div className="pb-24">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
@@ -84,7 +84,7 @@ export function LegacyCommentsTable({ stats }: Props) {
     setPage(1);
   }, [debouncedSearch, categoryFilter, filterMode, sortIdx]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = async () => {
     setLoading(true);
     setError(null);
     const supabase = getSupabase();
@@ -154,7 +154,7 @@ export function LegacyCommentsTable({ stats }: Props) {
       setTotalItems(count ?? 0);
     }
     setLoading(false);
-  }, [page, debouncedSearch, sortIdx, categoryFilter, filterMode]);
+  };
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

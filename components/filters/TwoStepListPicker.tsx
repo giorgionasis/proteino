@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { FilterPickerShell } from "./FilterPickerShell";
 
 export interface TwoStepNode {
@@ -44,15 +44,15 @@ export function TwoStepListPicker({
 }: Props) {
   const [activeParentId, setActiveParentId] = useState<string | null>(null);
 
-  const childrenByParent = useMemo(() => {
+  const childrenByParent = (() => {
     const map = new Map<string, Set<string>>();
     for (const p of parents) {
       map.set(p.id, new Set(p.children.map((c) => c.id)));
     }
     return map;
-  }, [parents]);
+  })();
 
-  const selectedCountPerParent = useMemo(() => {
+  const selectedCountPerParent = (() => {
     const out: Record<string, number> = {};
     for (const p of parents) {
       let n = 0;
@@ -60,7 +60,7 @@ export function TwoStepListPicker({
       out[p.id] = n;
     }
     return out;
-  }, [parents, selected]);
+  })();
 
   function toggleChild(childId: string) {
     const next = new Set(selected);

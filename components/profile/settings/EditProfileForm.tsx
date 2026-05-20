@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
 
@@ -272,13 +272,13 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
 function RegionPicker({
   regionId, setRegionId, regions,
 }: { regionId: string; setRegionId: (v: string) => void; regions: RegionRow[] }) {
-  const byId = useMemo(() => {
+  const byId = (() => {
     const m = new Map<string, RegionRow>();
     for (const r of regions) m.set(r.id, r);
     return m;
-  }, [regions]);
+  })();
 
-  const childrenByParent = useMemo(() => {
+  const childrenByParent = (() => {
     const m = new Map<string, RegionRow[]>();
     for (const r of regions) {
       const key = r.parent_id ?? "__root__";
@@ -290,11 +290,11 @@ function RegionPicker({
       return o !== 0 ? o : a.name.localeCompare(b.name, "el");
     }));
     return m;
-  }, [regions]);
+  })();
 
   // Walk from selected up to root: full ancestor path including
   // the current selection (so deeper levels appear automatically).
-  const path: string[] = useMemo(() => {
+  const path: string[] = (() => {
     const out: string[] = [];
     let cur = regionId ? byId.get(regionId) : undefined;
     while (cur) {
@@ -302,7 +302,7 @@ function RegionPicker({
       cur = cur.parent_id ? byId.get(cur.parent_id) : undefined;
     }
     return out;
-  }, [regionId, byId]);
+  })();
 
   // Build level descriptors: first is root children. Each ancestor
   // contributes a level for its own children. Stop adding levels when

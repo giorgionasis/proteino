@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RowMenu } from "@/components/profile/RowMenu";
@@ -47,7 +47,7 @@ export function BookmarksCategoryPage({ handle, isOwnProfile, groups: initialGro
   // Per-category active tab. Defaults to whichever sub-list has more
   // items so the user lands on something non-empty. Empty categories
   // collapse to the wishlist tab by default.
-  const initialTabs: ActiveTab = useMemo(() => {
+  const initialTabs: ActiveTab = (() => {
     const t: ActiveTab = {};
     for (const g of initialGroups) {
       const wish = g.items.filter((i) => i.status === "wishlist").length;
@@ -55,7 +55,7 @@ export function BookmarksCategoryPage({ handle, isOwnProfile, groups: initialGro
       t[g.category] = done > wish ? "done" : "wishlist";
     }
     return t;
-  }, [initialGroups]);
+  })();
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTabs);
 
   async function confirmDelete() {

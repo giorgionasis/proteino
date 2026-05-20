@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, X, Star } from "lucide-react";
 import Link from "next/link";
 import { OverlayHeader } from "@/components/layout/Header";
@@ -409,9 +409,9 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     return () => clearTimeout(t);
   }, []);
 
-  const stopTicker = useCallback(() => {
+  const stopTicker = () => {
     if (tickerRef.current) { clearInterval(tickerRef.current); tickerRef.current = null; }
-  }, []);
+  };
 
   useEffect(() => () => stopTicker(), [stopTicker]);
 

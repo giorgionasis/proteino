@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import maplibregl, { Map, LngLatBoundsLike } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import Supercluster from "supercluster";
@@ -160,13 +160,10 @@ export function CategoryMapView({
   };
 
   // Filter items down to those with valid coordinates — only pinnable ones go on the map.
-  const geoItems = useMemo(
-    () => items.filter((i) => typeof i.lat === "number" && typeof i.lng === "number"),
-    [items],
-  );
+  const geoItems = items.filter((i) => typeof i.lat === "number" && typeof i.lng === "number");
 
   // Build supercluster index. Recomputed when items change.
-  const cluster = useMemo(() => {
+  const cluster = (() => {
     const idx = new Supercluster<{ item: CategoryItem }, { item: CategoryItem }>({
       radius: 60,
       maxZoom: 16,
@@ -178,7 +175,7 @@ export function CategoryMapView({
     }));
     idx.load(points);
     return idx;
-  }, [geoItems]);
+  })();
 
   // Initialize the map once.
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 
 /**
@@ -28,17 +28,14 @@ export function useGuestGuard(action: string) {
   const isGuest = supabaseUser === null;
   const [open, setOpen] = useState(false);
 
-  const requireAuth = useCallback(
-    (fn: () => void) => {
-      if (isGuest) {
-        setOpen(true);
-        return false;
-      }
-      fn();
-      return true;
-    },
-    [isGuest],
-  );
+  const requireAuth = (fn: () => void) => {
+    if (isGuest) {
+      setOpen(true);
+      return false;
+    }
+    fn();
+    return true;
+  };
 
   return {
     isGuest,

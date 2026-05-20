@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { CategorySlug, QualityAssessment, SubmissionAnalysis } from "@/types";
 import { assessQuality } from "@/lib/ai/quality";
 import * as funnel from "@/lib/funnel/tracker";
@@ -283,7 +283,7 @@ export function useSubmission(): UseSubmissionReturn {
   // a re-render dependency.
   const textRef = useRef("");
 
-  const setText = useCallback((value: string) => {
+  const setText = (value: string) => {
     setText_(value);
     textRef.current = value;
 
@@ -447,22 +447,22 @@ export function useSubmission(): UseSubmissionReturn {
         setAnalysisInFlight(false);
       }
     }, 400);
-  }, [state, analysis]);
+  };
 
-  const setRating = useCallback((n: number) => {
+  const setRating = (n: number) => {
     const clamped = Math.max(0, Math.min(5, n));
     setRating_(clamped);
     funnel.track("rating_set", { payload: { rating: clamped } });
-  }, []);
+  };
 
-  const unlock = useCallback(() => {
+  const unlock = () => {
     // Drop the locked match → user can edit text, AI will re-analyze on next keystroke.
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setAnalysis(null);
     setState("typing");
-  }, []);
+  };
 
-  const confirmMatch = useCallback(() => {
+  const confirmMatch = () => {
     setAnalysis((prev) => {
       if (!prev?.matched) return prev;
       const md = (prev.matchData ?? {}) as Record<string, any>;
@@ -474,9 +474,9 @@ export function useSubmission(): UseSubmissionReturn {
       };
     });
     setState("match_found");
-  }, []);
+  };
 
-  const rejectMatch = useCallback(() => {
+  const rejectMatch = () => {
     setAnalysis((prev) => {
       if (!prev?.matched) return prev;
       const md = (prev.matchData ?? {}) as Record<string, any>;
@@ -495,9 +495,9 @@ export function useSubmission(): UseSubmissionReturn {
         matchData: { ...md, confidence_tier: "low" },
       };
     });
-  }, []);
+  };
 
-  const dismissAndReject = useCallback(() => {
+  const dismissAndReject = () => {
     setAnalysis((prev) => {
       if (prev?.title || prev?.category) {
         rejectedMatchesRef.current.add(rejectionKey(prev.category, prev.title));
@@ -506,9 +506,9 @@ export function useSubmission(): UseSubmissionReturn {
     });
     setDuplicate(null);
     setState("typing");
-  }, []);
+  };
 
-  const chooseAlternative = useCallback((index: number) => {
+  const chooseAlternative = (index: number) => {
     setAnalysis((prev) => {
       if (!prev) return prev;
       const md = (prev.matchData ?? {}) as Record<string, any>;
@@ -534,7 +534,7 @@ export function useSubmission(): UseSubmissionReturn {
       };
     });
     setState("match_found");
-  }, []);
+  };
 
   // Preflight duplicate check: the moment we transition to match_found
   // (any path — auto-lock high tier, confirmMatch from medium, or
@@ -581,7 +581,7 @@ export function useSubmission(): UseSubmissionReturn {
     return () => { cancelled = true; };
   }, [state, analysis?.title, analysis?.category]);
 
-  const verify = useCallback(async () => {
+  const verify = async () => {
     if (state !== "match_found") return;
     if (!analysis?.matched || !analysis.title || !analysis.category) {
       setErrorMessage("Δεν υπάρχει αντιστοιχία AI για αποθήκευση.");
@@ -623,9 +623,9 @@ export function useSubmission(): UseSubmissionReturn {
     // Simulate enrichment delay (real enrichment will happen here later — see AI.md §11)
     await new Promise((r) => setTimeout(r, 2000));
     setState("preview");
-  }, [state, analysis]);
+  };
 
-  const publish = useCallback(async () => {
+  const publish = async () => {
     if (state !== "preview") return;
     if (!analysis?.matched || !analysis.title || !analysis.category) {
       setErrorMessage("Δεν υπάρχει αντιστοιχία AI για αποθήκευση.");
@@ -737,9 +737,9 @@ export function useSubmission(): UseSubmissionReturn {
     } finally {
       setIsPublishing(false);
     }
-  }, [state, analysis, text, rating]);
+  };
 
-  const reset = useCallback(() => {
+  const reset = () => {
     funnel.track("flow_reset", {});
     setText_("");
     setAnalysis(null);
@@ -757,7 +757,7 @@ export function useSubmission(): UseSubmissionReturn {
     rejectedMatchesRef.current.clear();
     lockedKeyRef.current = null;
     setState("empty");
-  }, []);
+  };
 
   // Visible "AI is working" state — true if EITHER the submission
   // match analysis OR the coaching tip stream is in flight. Lets the

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CATEGORIES } from "@/constants/categories";
 import { AdminTabs } from "./AdminTabs";
@@ -54,12 +54,12 @@ export function CollectionsList() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const { context, category } = useMemo(() => {
+  const { context, category } = (() => {
     if (activeTab === "home") return { context: "home" as const, category: null as string | null };
     return { context: "category" as const, category: activeTab.replace("cat:", "") };
-  }, [activeTab]);
+  })();
 
-  const load = useCallback(async () => {
+  const load = async () => {
     setLoading(true);
     try {
       const url = new URL("/api/admin/collections", window.location.origin);
@@ -79,7 +79,7 @@ export function CollectionsList() {
     } finally {
       setLoading(false);
     }
-  }, [context, category]);
+  };
 
   useEffect(() => { load(); }, [load]);
 

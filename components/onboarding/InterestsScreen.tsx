@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CATEGORIES } from "@/constants/categories";
 
 interface Props {
@@ -42,7 +42,7 @@ export function InterestsScreen({ initial, onContinue, onBack }: Props) {
   // animate-pop-in. (set + immediate clear via a 1s timer.)
   const [justAdded, setJustAdded] = useState<Set<string>>(new Set());
 
-  const list = useMemo(() => CATEGORIES, []);
+  const list = CATEGORIES;
 
   const toggle = (slug: string) => {
     setPicked((prev) => {

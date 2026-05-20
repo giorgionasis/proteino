@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 interface Category {
@@ -37,7 +37,7 @@ export function ActivityTaxonomyManager() {
 
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = async () => {
     setLoading(true);
     try {
       const [cRes, tRes] = await Promise.all([
@@ -50,7 +50,7 @@ export function ActivityTaxonomyManager() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => { load(); }, [load]);
 

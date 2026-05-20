@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { AdminTabs } from "./AdminTabs";
 
 interface Option {
@@ -87,7 +87,7 @@ export function ExtraFieldsManager({ initialOptions }: Props) {
   const [wizOptions, setWizOptions] = useState("");
 
   // Group options by field_group for the active category
-  const grouped = useMemo(() => {
+  const grouped = (() => {
     const map: Record<string, Option[]> = {};
     for (const o of options) {
       if (o.category !== activeCat) continue;
@@ -98,9 +98,9 @@ export function ExtraFieldsManager({ initialOptions }: Props) {
       map[k].sort((a, b) => a.display_order - b.display_order);
     }
     return map;
-  }, [options, activeCat]);
+  })();
 
-  const groupKeys = useMemo(() => Object.keys(grouped).sort(), [grouped]);
+  const groupKeys = Object.keys(grouped).sort();
 
   async function patchOption(id: string, patch: Record<string, any>): Promise<boolean> {
     setBusy(id);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { AdminPagination } from "./AdminPagination";
@@ -92,7 +92,7 @@ export function UsersTable() {
 
   useEffect(() => { setPage(1); }, [debouncedSearch, sortIdx]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = async () => {
     setLoading(true);
     const supabase = getSupabase();
     const sort = SORT_OPTIONS[sortIdx];
@@ -137,7 +137,7 @@ export function UsersTable() {
       setTotalItems(count ?? 0);
     }
     setLoading(false);
-  }, [page, debouncedSearch, sortIdx]);
+  };
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

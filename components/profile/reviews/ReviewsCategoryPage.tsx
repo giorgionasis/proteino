@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { RowMenu } from "@/components/profile/RowMenu";
@@ -144,7 +144,7 @@ export function ReviewsCategoryPage({ handle, isOwner, reviews }: Props) {
   const [showDeleteSuccess, setShowDeleteSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const sorted = useMemo(() => {
+  const sorted = (() => {
     const arr = [...list];
     switch (sort) {
       case "high": return arr.sort((a, b) => (b.score || 0) - (a.score || 0));
@@ -152,7 +152,7 @@ export function ReviewsCategoryPage({ handle, isOwner, reviews }: Props) {
       case "recent":
       default:     return arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
-  }, [list, sort]);
+  })();
 
   async function confirmDelete() {
     if (!deleting || pendingDelete) return;

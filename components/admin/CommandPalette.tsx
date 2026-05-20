@@ -8,7 +8,7 @@
  * create actions so the palette is useful even before you start typing.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 interface ResultItem {
@@ -110,7 +110,7 @@ export function CommandPalette() {
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
-  const recent = useMemo(() => loadRecent(), [open]);
+  const recent = loadRecent();
 
   // Global toggle
   useEffect(() => {
@@ -166,11 +166,11 @@ export function CommandPalette() {
   }, [query, open]);
 
   // Flatten all visible items for keyboard navigation
-  const flat: ResultItem[] = useMemo(() => {
+  const flat: ResultItem[] = (() => {
     if (query.trim().length >= 2) return groups.flatMap((g) => g.items);
     // Empty state: recent first, then quick actions
     return [...recent, ...QUICK_ACTIONS];
-  }, [groups, query, recent]);
+  })();
 
   function jump(item: ResultItem) {
     saveRecent(item);

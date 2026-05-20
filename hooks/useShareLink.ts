@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 
 /**
  * Centralized share-link handler used by every detail page (and reusable
@@ -14,7 +14,7 @@ export function useShareLink(opts?: { title?: string; text?: string }) {
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const share = useCallback(async () => {
+  const share = async () => {
     if (typeof window === "undefined") return;
     setBusy(true);
     const url = window.location.href;
@@ -40,7 +40,7 @@ export function useShareLink(opts?: { title?: string; text?: string }) {
     } finally {
       setBusy(false);
     }
-  }, [opts?.title, opts?.text]);
+  };
 
   return { share, copied, busy };
 }

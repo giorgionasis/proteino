@@ -1,7 +1,5 @@
 "use client";
 
-import { useCallback } from "react";
-
 /**
  * useBookmarkOrbit — fly a clone of the item's hero image along a
  * parabolic arc into the bookmark icon at the top-right of the header.
@@ -44,7 +42,7 @@ const FADE_START  = 0.97;  // near-zero fade; shrinkage to ~1px handles the disa
 const END_PX      = 1;     // final clone size in pixels — vanishes to a point at the icon centre
 
 export function useBookmarkOrbit() {
-  return useCallback(async (): Promise<void> => {
+  return async (): Promise<void> => {
     if (typeof window === "undefined" || typeof document === "undefined") return;
 
     const source = document.querySelector<HTMLElement>("[data-orbit-source]");
@@ -154,5 +152,5 @@ export function useBookmarkOrbit() {
 
     await anim.finished.catch(() => {});
     clone.remove();
-  }, []);
+  };
 }

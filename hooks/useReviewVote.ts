@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 
 export type Vote = 1 | -1 | null;
 
@@ -26,69 +26,66 @@ export function useReviewVote(reviewId: string, initial: InitialState) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const send = useCallback(
-    async (next: Vote) => {
-      if (busy) return;
-      setBusy(true);
-      setError(null);
+  const send = async (next: Vote) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
 
-      // Optimistic delta
-      const prev = { myVote, voteUp, voteDown };
-      setMyVote(next);
-      let nextUp = voteUp, nextDown = voteDown;
-      if (myVote === 1) nextUp = Math.max(nextUp - 1, 0);
-      if (myVote === -1) nextDown = Math.max(nextDown - 1, 0);
-      if (next === 1) nextUp += 1;
-      if (next === -1) nextDown += 1;
-      setVoteUp(nextUp);
-      setVoteDown(nextDown);
+    // Optimistic delta
+    const prev = { myVote, voteUp, voteDown };
+    setMyVote(next);
+    let nextUp = voteUp, nextDown = voteDown;
+    if (myVote === 1) nextUp = Math.max(nextUp - 1, 0);
+    if (myVote === -1) nextDown = Math.max(nextDown - 1, 0);
+    if (next === 1) nextUp += 1;
+    if (next === -1) nextDown += 1;
+    setVoteUp(nextUp);
+    setVoteDown(nextDown);
 
-      try {
-        const res = await fetch(`/api/reviews/${reviewId}/vote`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ vote: next }),
-        });
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}/vote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vote: next }),
+      });
 
-        if (res.status === 401) {
-          window.location.href = "/login?redirect=" + encodeURIComponent(window.location.pathname);
-          return;
-        }
+      if (res.status === 401) {
+        window.location.href = "/login?redirect=" + encodeURIComponent(window.location.pathname);
+        return;
+      }
 
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          // Revert
-          setMyVote(prev.myVote);
-          setVoteUp(prev.voteUp);
-          setVoteDown(prev.voteDown);
-          setError(body.error || `Αποτυχία (${res.status})`);
-          return;
-        }
-
-        const body = await res.json();
-        setVoteUp(body.vote_up);
-        setVoteDown(body.vote_down);
-        setMyVote(body.my_vote);
-      } catch {
-        // Revert on network error
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        // Revert
         setMyVote(prev.myVote);
         setVoteUp(prev.voteUp);
         setVoteDown(prev.voteDown);
-        setError("Σφάλμα δικτύου");
-      } finally {
-        setBusy(false);
+        setError(body.error || `Αποτυχία (${res.status})`);
+        return;
       }
-    },
-    [reviewId, busy, myVote, voteUp, voteDown]
-  );
 
-  const toggleUp = useCallback(() => {
+      const body = await res.json();
+      setVoteUp(body.vote_up);
+      setVoteDown(body.vote_down);
+      setMyVote(body.my_vote);
+    } catch {
+      // Revert on network error
+      setMyVote(prev.myVote);
+      setVoteUp(prev.voteUp);
+      setVoteDown(prev.voteDown);
+      setError("Σφάλμα δικτύου");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleUp = () => {
     send(myVote === 1 ? null : 1);
-  }, [send, myVote]);
+  };
 
-  const toggleDown = useCallback(() => {
+  const toggleDown = () => {
     send(myVote === -1 ? null : -1);
-  }, [send, myVote]);
+  };
 
   return { myVote, voteUp, voteDown, busy, error, toggleUp, toggleDown };
 }

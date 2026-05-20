@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { CATEGORIES } from "@/constants/categories";
 import { RowAuditFooter } from "@/components/admin/ui/RowAuditFooter";
 import type { AdminUserMap } from "@/lib/admin/audit";
@@ -64,7 +64,7 @@ export function FiltersManager() {
   // the original FiltersManager that was lost during the v2 CMS refactor.
   const [view, setView] = useState<"config" | "explorer">("config");
 
-  const load = useCallback(async () => {
+  const load = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -87,7 +87,7 @@ export function FiltersManager() {
     } finally {
       setLoading(false);
     }
-  }, [activeCategory]);
+  };
 
   useEffect(() => { load(); }, [load]);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 interface Category { id: string; name: string; icon: string | null; }
@@ -56,13 +56,10 @@ export function ActivitiesTable() {
     })();
   }, []);
 
-  const filteredTypes = useMemo(
-    () => activeCategory === ALL ? [] : types.filter((t) => t.category_id === activeCategory),
-    [types, activeCategory]
-  );
+  const filteredTypes = activeCategory === ALL ? [] : types.filter((t) => t.category_id === activeCategory);
 
   // Load activities
-  const load = useCallback(async () => {
+  const load = async () => {
     setLoading(true);
     try {
       const url = new URL("/api/admin/activities", window.location.origin);
@@ -76,7 +73,7 @@ export function ActivitiesTable() {
     } finally {
       setLoading(false);
     }
-  }, [activeCategory, activeType, search]);
+  };
 
   // Debounced search
   useEffect(() => {

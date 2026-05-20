@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
@@ -82,7 +82,7 @@ export function SuggestionsTable({ authors, subcategories }: Props) {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Toggle publish on a row optimistically. Used by the P shortcut.
-  const togglePublishAt = useCallback(async (idx: number) => {
+  const togglePublishAt = async (idx: number) => {
     const row = rows[idx];
     if (!row) return;
     const optimistic = !row.isPublished;
@@ -96,7 +96,7 @@ export function SuggestionsTable({ authors, subcategories }: Props) {
       // Revert on failure
       setRows((rs) => rs.map((r, i) => (i === idx ? { ...r, isPublished: !optimistic } : r)));
     }
-  }, [rows]);
+  };
 
   const { activeIndex, setActiveIndex } = useListKeyboard({
     count: rows.length,
@@ -121,7 +121,7 @@ export function SuggestionsTable({ authors, subcategories }: Props) {
   // Reset page on filter change
   useEffect(() => { setPage(1); }, [activeTab, debouncedSearch, sortIdx, selectedSubcategories, authorFilter, publishFilter, imageFilter]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = async () => {
     setLoading(true);
     const supabase = getSupabase();
     const sort = SORT_OPTIONS[sortIdx];
@@ -207,7 +207,7 @@ export function SuggestionsTable({ authors, subcategories }: Props) {
       setTotalItems(count ?? 0);
     }
     setLoading(false);
-  }, [activeTab, page, debouncedSearch, sortIdx, selectedSubcategories, authorFilter, publishFilter, imageFilter, subcategories]);
+  };
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

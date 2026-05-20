@@ -11,7 +11,7 @@
  *   await save(4, "Πολύ καλό");  // rating mandatory, text optional
  */
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 
 interface ReviewResult {
   review_id: string;
@@ -45,49 +45,49 @@ export function useReview(
   const onSavedRef = useRef<Options["onSaved"]>(options.onSaved);
   useEffect(() => { onSavedRef.current = options.onSaved; }, [options.onSaved]);
 
-  const save = useCallback(
-    async (rating: number, reflection: string | null = null): Promise<ReviewResult | null> => {
-      if (busy) return null;
-      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-        setError("Επίλεξε αστέρια 1–5");
+  const save = async (
+    rating: number,
+    reflection: string | null = null,
+  ): Promise<ReviewResult | null> => {
+    if (busy) return null;
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      setError("Επίλεξε αστέρια 1–5");
+      return null;
+    }
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: itemId, rating, reflection }),
+      });
+
+      if (res.status === 401) {
+        window.location.href = "/login?redirect=" + encodeURIComponent(window.location.pathname);
         return null;
       }
 
-      setBusy(true);
-      setError(null);
-
-      try {
-        const res = await fetch("/api/reviews", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ item_id: itemId, rating, reflection }),
-        });
-
-        if (res.status === 401) {
-          window.location.href = "/login?redirect=" + encodeURIComponent(window.location.pathname);
-          return null;
-        }
-
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          setError(body.error || `Αποτυχία (${res.status})`);
-          return null;
-        }
-
-        const body = (await res.json()) as ReviewResult;
-        setSavedRating(rating);
-        setSavedReflection(reflection);
-        onSavedRef.current?.(body, rating, reflection);
-        return body;
-      } catch {
-        setError("Σφάλμα δικτύου. Δοκίμασε ξανά.");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error || `Αποτυχία (${res.status})`);
         return null;
-      } finally {
-        setBusy(false);
       }
-    },
-    [itemId, busy]
-  );
+
+      const body = (await res.json()) as ReviewResult;
+      setSavedRating(rating);
+      setSavedReflection(reflection);
+      onSavedRef.current?.(body, rating, reflection);
+      return body;
+    } catch {
+      setError("Σφάλμα δικτύου. Δοκίμασε ξανά.");
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return { save, busy, savedRating, savedReflection, error };
 }

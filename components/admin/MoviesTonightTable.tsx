@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ICON_PATHS, platformIconForChannel } from "@/lib/icons";
 
 const CHANNELS = ["MEGA", "ΕΡΤ1", "ΕΡΤ2", "ΕΡΤ3", "ANT1", "ALPHA", "STAR", "ΣΚΑΪ", "OPEN", "COSMOTE TV"];
@@ -80,15 +80,15 @@ export function MoviesTonightTable() {
   const [error, setError] = useState<string | null>(null);
 
   // The window we currently fetch: today through today+6
-  const today = useMemo(() => todayISO(), []);
-  const weekEnd = useMemo(() => plusDays(today, 6), [today]);
+  const today = todayISO();
+  const weekEnd = plusDays(today, 6);
 
   const [editing, setEditing] = useState<AiringRow | null>(null);
   const [newDraft, setNewDraft] = useState<DraftAiring | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -102,7 +102,7 @@ export function MoviesTonightTable() {
     } finally {
       setLoading(false);
     }
-  }, [today, weekEnd]);
+  };
 
   useEffect(() => { load(); }, [load]);
 

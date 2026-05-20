@@ -13,7 +13,7 @@
  * when adding a new rule.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { CATEGORIES } from "@/constants/categories";
 import { useToast } from "@/components/ui/Toast";
 
@@ -90,7 +90,7 @@ export function RelatedSectionsManager() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addingFor, setAddingFor] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/admin/related-sections", { cache: "no-store" });
@@ -99,7 +99,7 @@ export function RelatedSectionsManager() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => { load(); }, [load]);
 

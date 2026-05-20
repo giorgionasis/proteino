@@ -8,7 +8,7 @@
  * delete. Stores a flat array of { url, alt?, tab? }.
  */
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ImageUploader } from "./ImageUploader";
 
 export interface GalleryImage {
@@ -32,12 +32,9 @@ export function ImageGallery({ prefix, tabs, images, onChange }: Props) {
   const [activeTab, setActiveTab] = useState(tabs[0] ?? "");
   const [draftAlt, setDraftAlt] = useState<Record<number, string>>({});
 
-  const tabImages = useMemo(
-    () => images
+  const tabImages = images
       .map((img, idx) => ({ img, idx }))
-      .filter(({ img }) => (img.tab ?? tabs[0]) === activeTab),
-    [images, activeTab, tabs]
-  );
+      .filter(({ img }) => (img.tab ?? tabs[0]) === activeTab);
 
   function addImage(url: string) {
     const next = [...images, { url, tab: activeTab }];

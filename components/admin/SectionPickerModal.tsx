@@ -19,7 +19,7 @@
  * section list + preview.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { compatibleWidgets, isWidgetSingleton } from "@/lib/layout/widgets";
 import type { LayoutAudience, LayoutContext, WidgetSpec } from "@/lib/layout/types";
 
@@ -117,14 +117,14 @@ export function SectionPickerModal({
 
   // Compute widget availability — singletons already in this bucket
   // are disabled.
-  const widgets = useMemo(() => {
+  const widgets = (() => {
     const all = compatibleWidgets(context, category, defaultAudience);
     return all.map((w) => {
       const isSingleton = isWidgetSingleton(w.key);
       const placed = placedWidgets.some((p) => p.widget_key === w.key && p.audience === defaultAudience);
       return { spec: w, disabled: isSingleton && placed, placedReason: isSingleton && placed ? "Ήδη τοποθετημένο" : null };
     });
-  }, [context, category, defaultAudience, placedWidgets]);
+  })();
 
   async function addWidget(spec: WidgetSpec) {
     setCreating(spec.key);

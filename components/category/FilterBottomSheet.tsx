@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState } from "react";
 import type { CategorySlug } from "@/types";
 import type { FilterDefinition, CategoryFilters } from "@/constants/filters";
 import { CATEGORY_FILTERS } from "@/constants/filters";
@@ -36,10 +36,7 @@ export function FilterBottomSheet({ open, onClose, category, values, onChange, r
   const [activeSort, setActiveSort] = useState(config.sortOptions[1] ?? config.sortOptions[0]);
   const [subPicker, setSubPicker] = useState<SubPicker>(null);
 
-  const liveCount = useMemo(
-    () => onComputeCount ? onComputeCount(localValues) : resultCount,
-    [localValues, onComputeCount, resultCount],
-  );
+  const liveCount = onComputeCount ? onComputeCount(localValues) : resultCount;
 
   useEffect(() => {
     if (open) {
@@ -56,15 +53,12 @@ export function FilterBottomSheet({ open, onClose, category, values, onChange, r
   // changes" exit because users were confused (they saw the count
   // updating live and assumed it had been applied; explicit cancel is
   // rarely what they want here).
-  const handleCloseAndApply = useCallback(() => {
+  const handleCloseAndApply = () => {
     onChange(localValues);
     onClose();
-  }, [onChange, localValues, onClose]);
+  };
 
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => { if (e.key === "Escape") handleCloseAndApply(); },
-    [handleCloseAndApply],
-  );
+  const handleKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") handleCloseAndApply(); };
 
   useEffect(() => {
     if (open) document.addEventListener("keydown", handleKeyDown);

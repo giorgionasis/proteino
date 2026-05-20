@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Camera, Link2, List, Mic, RotateCcw, Star, X } from "lucide-react";
 import { OverlayHeader } from "@/components/layout/Header";
 import { useSubmission, type AchievementData } from "@/hooks/useSubmission";
@@ -1255,9 +1255,9 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
     });
   }, [setText]);
 
-  const stopTicker = useCallback(() => {
+  const stopTicker = () => {
     if (tickerRef.current) { clearInterval(tickerRef.current); tickerRef.current = null; }
-  }, []);
+  };
 
   useEffect(() => () => stopTicker(), [stopTicker]);
 

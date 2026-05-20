@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useImperativeHandle, useEffect, useMemo } from "react";
+import { useState, useRef, useImperativeHandle, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CATEGORIES } from "@/constants/categories";
@@ -232,13 +232,13 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
 
   const { confirmIfDirty } = useUnsavedGuard(dirty);
 
-  const goTo = useCallback((id: string | null) => {
+  const goTo = (id: string | null) => {
     if (!id) return;
     if (!confirmIfDirty()) return;
     router.push(`/admin/suggestions/${id}?queue=${queueFilter ?? "unpublished"}`);
-  }, [router, queueFilter, confirmIfDirty]);
+  };
 
-  const save = useCallback(async () => {
+  const save = async () => {
     setSaving(true);
     setSaveStatus("idle");
 
@@ -317,12 +317,12 @@ export function SuggestionEditor({ suggestion, item, extData, subcategories, reg
       setTimeout(() => setSaveStatus("idle"), 3000);
     }
     return res.ok;
-  }, [title, originalTitle, slug, category, subcategoryId, descriptionSeo, isPublished, reflection, item.id, suggestion.id, suggestion.publishedAt, posterUrl, backdropUrl, galleryImages, trailerYoutube, trailerVimeo, adminReviewedAt, item.images]);
+  };
 
-  const saveAndNext = useCallback(async () => {
+  const saveAndNext = async () => {
     const ok = await save();
     if (ok && queue?.next) goTo(queue.next);
-  }, [save, queue, goTo]);
+  };
 
   // Keyboard shortcuts for queue navigation. Active only in queue mode and
   // only when the user isn't typing in a text field.
@@ -2264,13 +2264,13 @@ function RegionSelect({ regionId, setRegionId, regions }: {
   setRegionId: (v: string) => void;
   regions: RegionRow[];
 }) {
-  const byId = useMemo(() => {
+  const byId = (() => {
     const m = new Map<string, RegionRow>();
     for (const r of regions) m.set(r.id, r);
     return m;
-  }, [regions]);
+  })();
 
-  const childrenByParent = useMemo(() => {
+  const childrenByParent = (() => {
     const m = new Map<string, RegionRow[]>();
     for (const r of regions) {
       const key = r.parent_id ?? "__root__";
@@ -2280,10 +2280,10 @@ function RegionSelect({ regionId, setRegionId, regions }: {
     // Stable order — by name, Greek collator.
     m.forEach((arr) => arr.sort((a, b) => a.name.localeCompare(b.name, "el")));
     return m;
-  }, [regions]);
+  })();
 
   // Walk from selected up to root: ancestor path including selected.
-  const path: string[] = useMemo(() => {
+  const path: string[] = (() => {
     const out: string[] = [];
     let cur = regionId ? byId.get(regionId) : undefined;
     while (cur) {
@@ -2291,7 +2291,7 @@ function RegionSelect({ regionId, setRegionId, regions }: {
       cur = cur.parent_id ? byId.get(cur.parent_id) : undefined;
     }
     return out;
-  }, [regionId, byId]);
+  })();
 
   // Build the level descriptors: first level is always root children.
   // Then one level for each ancestor in path WHOSE children exist (so we

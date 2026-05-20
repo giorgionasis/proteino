@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { AdminPageHeader } from "./ui/AdminPageHeader";
 import { AdminPanel } from "./ui/AdminPanel";
 import { AdminEmpty } from "./ui/AdminEmpty";
@@ -61,7 +61,7 @@ export function RegionsManager() {
   const [addingUnderParent, setAddingUnderParent] = useState<string | null | undefined>(undefined);
   const [newName, setNewName] = useState("");
 
-  const load = useCallback(async () => {
+  const load = async () => {
     setLoading(true); setError(null);
     try {
       const res = await fetch("/api/admin/regions");
@@ -73,20 +73,20 @@ export function RegionsManager() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => { void load(); }, [load]);
 
-  const tree = useMemo(() => buildTree(rows), [rows]);
-  const flat = useMemo(() => flatten(tree), [tree]);
+  const tree = buildTree(rows);
+  const flat = flatten(tree);
 
-  const childCounts = useMemo(() => {
+  const childCounts = (() => {
     const m = new Map<string, number>();
     for (const r of rows) {
       if (r.parent_id) m.set(r.parent_id, (m.get(r.parent_id) ?? 0) + 1);
     }
     return m;
-  }, [rows]);
+  })();
 
   const startEdit = (n: TreeNode) => { setEditingId(n.id); setDraftName(n.name); };
 
@@ -185,7 +185,7 @@ export function RegionsManager() {
   };
 
   const totalRegions = rows.length;
-  const rootCount = useMemo(() => rows.filter((r) => !r.parent_id).length, [rows]);
+  const rootCount = rows.filter((r) => !r.parent_id).length;
 
   return (
     <div className="max-w-4xl">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { HookScreen }       from "./HookScreen";
 import { InterestsScreen }  from "./InterestsScreen";
@@ -95,8 +95,7 @@ export function OnboardingFlow({ initialInterests, displayName }: Props) {
   // syncing component reads its steps from a stable ref.
   const lockedStepsRef = useRef<ReturnType<typeof buildFinishSteps> | null>(null);
 
-  const complete = useCallback(
-    async (payload: { interests?: string[]; final?: boolean; skipped?: boolean }) => {
+  const complete = async (payload: { interests?: string[]; final?: boolean; skipped?: boolean }) => {
       try {
         await fetch("/api/onboarding/complete", {
           method:  "POST",
@@ -106,9 +105,7 @@ export function OnboardingFlow({ initialInterests, displayName }: Props) {
       } catch {
         // Soft-fail — onboarding has already done its job in-session.
       }
-    },
-    [],
-  );
+    };
 
   // Fetch the live numbers whenever we enter the syncing state. The
   // fetch races the first step's timer; whichever wins, the UI handles

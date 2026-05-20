@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AdminPageHeader } from "@/components/admin/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/admin/ui/AdminPanel";
@@ -65,7 +65,7 @@ export function MomentsManager({ initialMoments, initialStats, predicateSchemas,
 
   // Group by trigger_event. Order of groups follows TRIGGER_LABELS
   // declaration so the most common triggers are at the top.
-  const grouped = useMemo(() => {
+  const grouped = (() => {
     const map = new Map<string, MomentRow[]>();
     for (const r of rows) {
       const arr = map.get(r.trigger_event);
@@ -79,7 +79,7 @@ export function MomentsManager({ initialMoments, initialStats, predicateSchemas,
       label: TRIGGER_LABELS[trigger] ?? trigger,
       moments: map.get(trigger) ?? [],
     }));
-  }, [rows]);
+  })();
 
   async function toggleActive(row: MomentRow) {
     setBusyId(row.id);

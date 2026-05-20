@@ -13,7 +13,7 @@
  *      navigating.
  */
 
-import { useEffect, useCallback } from "react";
+import { useEffect } from "react";
 
 export function useUnsavedGuard(dirty: boolean) {
   useEffect(() => {
@@ -28,12 +28,12 @@ export function useUnsavedGuard(dirty: boolean) {
   }, [dirty]);
 
   /** Returns true if it's OK to proceed; false if the user cancelled. */
-  const confirmIfDirty = useCallback((message?: string): boolean => {
+  const confirmIfDirty = (message?: string): boolean => {
     if (!dirty) return true;
     return window.confirm(
       message ?? "Έχεις μη αποθηκευμένες αλλαγές. Σίγουρα θέλεις να φύγεις χωρίς αποθήκευση;"
     );
-  }, [dirty]);
+  };
 
   return { confirmIfDirty };
 }
