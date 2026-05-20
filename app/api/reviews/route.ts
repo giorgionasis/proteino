@@ -92,13 +92,27 @@ export async function POST(req: NextRequest) {
   // predicate matches the new count.
   let achievement: ResolvedMoment | null = null;
   if (wasNewReview) {
-    const { count: totalReviewCount } = await admin
+    // Single fetch of all the user's non-hidden review timestamps →
+    // derive total + week + month counts in JS. Cheaper than three
+    // round-trips for the typical N ≤ 50 reviews per user.
+    const { data: timestamps } = await admin
       .from("reviews")
-      .select("id", { count: "exact", head: true })
+      .select("created_at")
       .eq("user_id", user.id)
       .eq("is_hidden", false);
 
-    const newCount = totalReviewCount ?? 0;
+    const now = Date.now();
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const monthAgo = now - 30 * 24 * 60 * 60 * 1000;
+    const tsRows = (timestamps ?? []) as Array<{ created_at: string }>;
+    const newCount = tsRows.length;
+    let weekCount = 0;
+    let monthCount = 0;
+    for (const t of tsRows) {
+      const ms = new Date(t.created_at).getTime();
+      if (ms >= weekAgo)  weekCount++;
+      if (ms >= monthAgo) monthCount++;
+    }
 
     if (newCount > 0) {
       // Resolve the item's category + the user's category-scoped review
@@ -146,6 +160,8 @@ export async function POST(req: NextRequest) {
           count: newCount,
           category: itemCategory,
           category_review_count: categoryReviewCount,
+          reviews_this_week:  weekCount,
+          reviews_this_month: monthCount,
         },
         vars: buildVars({
           user:     { handle: (userMeta as any)?.handle, display_name: (userMeta as any)?.display_name },
@@ -153,6 +169,7 @@ export async function POST(req: NextRequest) {
           target:   targetForCount,
           badge:    badgeForTarget,
           category: itemCategory,
+          extra:    { week_count: weekCount, month_count: monthCount },
         }),
       };
 

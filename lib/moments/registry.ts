@@ -61,6 +61,26 @@ const review_count_eq: PredicateFn = (ctx, args) => {
   return count === target;
 };
 
+/** Fires when the user just hit args.n reviews in the trailing 7-day
+ *  window. Caller must populate `payload.reviews_this_week` (the API
+ *  route counts non-hidden reviews where created_at >= now - 7d).
+ *  Predicates stay pure — count happens at the call site. */
+const reviews_this_week_eq: PredicateFn = (ctx, args) => {
+  const target = toInt(args.n);
+  if (target == null) return false;
+  const c = toInt(ctx.payload.reviews_this_week);
+  return c === target;
+};
+
+/** Same shape as reviews_this_week_eq but for a trailing 30-day
+ *  window. Payload key: `reviews_this_month`. */
+const reviews_this_month_eq: PredicateFn = (ctx, args) => {
+  const target = toInt(args.n);
+  if (target == null) return false;
+  const c = toInt(ctx.payload.reviews_this_month);
+  return c === target;
+};
+
 /** Fires when payload.bookmarkers_count >= args.min. Used for the
  *  "hot — N+ people want it too" bookmark variant. */
 const bookmarkers_count_gte: PredicateFn = (ctx, args) => {
@@ -116,6 +136,8 @@ export const PREDICATES: Record<string, PredicateFn> = {
   suggestion_count_eq,
   suggestion_count_gte,
   review_count_eq,
+  reviews_this_week_eq,
+  reviews_this_month_eq,
   bookmarkers_count_gte,
   bookmarkers_count_zero,
   category_bookmark_count_eq,
@@ -148,6 +170,20 @@ export const PREDICATE_SCHEMAS: Record<string, PredicateSchema> = {
     description: "Ταιριάζει ακριβώς όταν ο χρήστης δημοσιεύσει την N-οστή αξιολόγηση. Χρησιμοποιείται με trigger 'review_published' για milestone celebrations.",
     args: {
       n: { label: "Αριθμός αξιολογήσεων (N)", type: "integer", hint: "π.χ. 1, 5, 10, 25, 50" },
+    },
+  },
+  reviews_this_week_eq: {
+    label: "Όταν ο χρήστης έγραψε N αξιολογήσεις την τελευταία εβδομάδα",
+    description: "Streak predicate — μετράει αξιολογήσεις στα τελευταία 7 ημερολογιακά 24ωρα. Το {week_count} placeholder είναι διαθέσιμο στο copy.",
+    args: {
+      n: { label: "Αριθμός αξιολογήσεων αυτή την εβδομάδα", type: "integer", hint: "π.χ. 3, 5, 7" },
+    },
+  },
+  reviews_this_month_eq: {
+    label: "Όταν ο χρήστης έγραψε N αξιολογήσεις τον τελευταίο μήνα",
+    description: "Streak predicate — μετράει αξιολογήσεις στα τελευταία 30 ημερολογιακά 24ωρα. Το {month_count} placeholder είναι διαθέσιμο στο copy.",
+    args: {
+      n: { label: "Αριθμός αξιολογήσεων αυτόν τον μήνα", type: "integer", hint: "π.χ. 10, 15, 20" },
     },
   },
   bookmarkers_count_gte: {

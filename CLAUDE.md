@@ -1783,9 +1783,23 @@ Single combined predicate so per-category milestones are one moment row, not two
 
 **Trigger combo:** `trigger_event = 'review_published'` + `predicate_key = 'category_review_count_eq'`. Not seeded by default — compose in `/admin/moments`.
 
-### Other open polish
+### Streak-window review milestones — `reviews_this_week_eq` + `reviews_this_month_eq` (session 32)
 
-- **Streak milestones** (`reviews_this_week_eq`, `reviews_this_month_eq`) — needs a new predicate that counts within a window. Registry already supports async DB-backed predicates.
+Two predicates that fire when the user just hit the N-th review inside a trailing window. The route does the count (single timestamp fetch + JS bucketing) and stuffs the result into the payload — predicates stay pure.
+
+| Predicate | Window | Payload key | Var |
+|---|---|---|---|
+| `reviews_this_week_eq` | now − 7 days | `payload.reviews_this_week` | `{week_count}` |
+| `reviews_this_month_eq` | now − 30 days | `payload.reviews_this_month` | `{month_count}` |
+
+`/api/reviews` now does one `SELECT created_at FROM reviews WHERE user_id = X AND is_hidden = false` and buckets into total + this-week + this-month counts in JS (cheaper than 3 round-trips for the typical N ≤ 50 reviews per user). All three are written to `payload`; `weekCount` + `monthCount` flow through `buildVars({ extra: { week_count, month_count } })` so admin copy can use `{week_count}` / `{month_count}` placeholders alongside `{count}` (still the total).
+
+**Trigger combo:** `trigger_event = 'review_published'` + either predicate. Not seeded by default — admin composes via `/admin/moments`. Example use cases:
+
+- "Hot streak — 5 αξιολογήσεις αυτή την εβδομάδα!" → `reviews_this_week_eq` with `n=5`.
+- "Monthly grinder — {month_count} αξιολογήσεις αυτόν τον μήνα" → `reviews_this_month_eq` with `n=20`.
+
+**Scaling note:** the `created_at` filter currently uses the existing `(user_id, item_id)` btree (covers `user_id = X`, then filters created_at row-by-row). At low N that's fine; if any single user passes a few hundred reviews, add an index on `(user_id, created_at)` to keep the timestamp fetch indexed.
 
 ---
 
