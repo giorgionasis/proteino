@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "@/types/database";
 import type { ResolvedCategory } from "@/lib/categories-meta";
 import { useToast } from "@/components/ui/Toast";
 
-interface CategoryRow extends ResolvedCategory {
+export interface CategoryInitialRow extends ResolvedCategory {
   subcategories: number;
   items: number;
   suggestions: number;
 }
+
+type CategoryRow = CategoryInitialRow;
 
 function getSupabase() {
   return createBrowserClient<Database>(
@@ -20,15 +22,16 @@ function getSupabase() {
   );
 }
 
-export function CategoriesTable() {
+export function CategoriesTable({ initial }: { initial: CategoryInitialRow[] }) {
   const { show } = useToast();
-  const [rows, setRows] = useState<CategoryRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Server-fetched initial rows — no empty-mount flash. Mutations
+  // (toggle, edit, reorder) update local state optimistically and
+  // refetch only on failure via loadAll().
+  const [rows, setRows] = useState<CategoryRow[]>(initial);
   const [editing, setEditing] = useState<CategoryRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   async function loadAll() {
-    setLoading(true);
     const supabase = getSupabase();
 
     const [catsRes, subcatsRes, itemsRes, suggestionsRes] = await Promise.all([
@@ -61,10 +64,7 @@ export function CategoriesTable() {
       items: itemCounts[c.slug] || 0,
       suggestions: suggestionCounts[c.slug] || 0,
     })));
-    setLoading(false);
   }
-
-  useEffect(() => { void loadAll(); }, []);
 
   async function moveRow(slug: string, direction: -1 | 1) {
     const idx = rows.findIndex((r) => r.slug === slug);
@@ -133,7 +133,6 @@ export function CategoriesTable() {
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <h1 className="text-2xl font-bold text-zinc-800">Categories</h1>
-        {loading && <span className="text-xs text-zinc-400 animate-pulse">Loading...</span>}
       </div>
 
       <p className="text-xs text-zinc-500 mb-4">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ADMIN_FACETS,
@@ -25,7 +25,7 @@ import type { CategorySlug } from "@/types";
  * 4-10 → Carousel, <4 → too few).
  */
 
-interface FilterRow {
+export interface ExplorerFilterRow {
   id:         string;
   filter_id:  string;
   label:      string;
@@ -34,17 +34,36 @@ interface FilterRow {
   options:    { id: string; label: string }[];
   is_published: boolean;
 }
+// Internal alias kept so the rest of the file's `FilterRow` references
+// don't need a rename pass.
+type FilterRow = ExplorerFilterRow;
 
-interface SubcategoryRow {
+export interface ExplorerSubcategoryRow {
   id:        string;
   category?: string;
   name:      string;
 }
+type SubcategoryRow = ExplorerSubcategoryRow;
 
-interface RegionRow {
+export interface ExplorerRegionRow {
   id:        string;
   name:      string;
   parent_id: string | null;
+}
+type RegionRow = ExplorerRegionRow;
+
+/** Server-fetched metadata for the Explorer's initial render. When the
+ *  active category matches `category`, the Explorer skips its mount
+ *  fetch — the page already paid the round-trip cost server-side. */
+export interface ExplorerInitial {
+  category:        string;
+  filters:         ExplorerFilterRow[];      // published only
+  subcategories:   ExplorerSubcategoryRow[]; // already scoped to `category`
+  topLevelRegions: ExplorerRegionRow[];      // empty for non-venue categories
+  /** Pre-run empty-selection query result. When present, the Explorer
+   *  also skips the first debounced query firing so the count card
+   *  doesn't flicker from "…" to N on mount. */
+  result?:         QueryResult;
 }
 
 interface SampleItem {
@@ -105,20 +124,48 @@ function ChipButton({
   );
 }
 
-export function CombinatorialExplorer({ category }: { category: string }) {
-  const [filters, setFilters]               = useState<FilterRow[]>([]);
-  const [subcategories, setSubcategories]   = useState<SubcategoryRow[]>([]);
-  const [topLevelRegions, setTopLevelRegions] = useState<RegionRow[]>([]);
+export function CombinatorialExplorer({
+  category,
+  initial,
+}: {
+  category: string;
+  initial?: ExplorerInitial;
+}) {
+  // When the server pre-fetched metadata matches the active category,
+  // seed state directly so first paint is fully populated. Otherwise
+  // start empty and let the mount effect fill in.
+  const seedFromInitial = initial && initial.category === category;
+  const [filters, setFilters]               = useState<FilterRow[]>(
+    seedFromInitial ? initial!.filters : [],
+  );
+  const [subcategories, setSubcategories]   = useState<SubcategoryRow[]>(
+    seedFromInitial ? initial!.subcategories : [],
+  );
+  const [topLevelRegions, setTopLevelRegions] = useState<RegionRow[]>(
+    seedFromInitial ? initial!.topLevelRegions : [],
+  );
   const [selections, setSelections]         = useState<Record<string, string | string[]>>({});
   const [adminSelections, setAdminSelections] = useState<Record<string, string | string[]>>({});
   const [minRating, setMinRating]           = useState<number>(0);
 
-  const [result, setResult]   = useState<QueryResult | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [result, setResult]   = useState<QueryResult | null>(
+    seedFromInitial && initial!.result ? initial!.result : null,
+  );
+  const [loading, setLoading] = useState(!seedFromInitial);
   const [running, setRunning] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
   const adminFacets: AdminFacet[] = ADMIN_FACETS[category as CategorySlug] ?? [];
+
+  // Skip the first metadata fetch when state was seeded from props for
+  // this category. Subsequent category changes always refetch.
+  const skipNextLoadFor = useRef<string | null>(seedFromInitial ? category : null);
+  // Same idea for the empty-selection query — if the server pre-ran
+  // it, suppress the first debounced firing so the count card mounts
+  // populated instead of flickering through "…".
+  const skipNextQueryFor = useRef<string | null>(
+    seedFromInitial && initial!.result ? category : null,
+  );
 
   // Reset picks when category changes.
   useEffect(() => {
@@ -130,6 +177,10 @@ export function CombinatorialExplorer({ category }: { category: string }) {
 
   // Load filter config + subcategories + (if venue) regions.
   useEffect(() => {
+    if (skipNextLoadFor.current === category) {
+      skipNextLoadFor.current = null;
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -168,6 +219,12 @@ export function CombinatorialExplorer({ category }: { category: string }) {
   // Debounced query when selections change.
   useEffect(() => {
     if (loading) return;
+    if (skipNextQueryFor.current === category) {
+      // Server pre-ran the empty-selection query — don't refire on
+      // the same category until something actually changes.
+      skipNextQueryFor.current = null;
+      return;
+    }
     setRunning(true);
     const handle = setTimeout(() => {
       void runQuery();

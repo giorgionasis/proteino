@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CATEGORIES } from "@/constants/categories";
 import { RowAuditFooter } from "@/components/admin/ui/RowAuditFooter";
-import { CombinatorialExplorer } from "@/components/admin/CombinatorialExplorer";
+import { CombinatorialExplorer, type ExplorerInitial } from "@/components/admin/CombinatorialExplorer";
 import type { AdminUserMap } from "@/lib/admin/audit";
 
 const WIDGET_LABELS: Record<string, string> = {
@@ -25,7 +25,7 @@ const WIDGET_VALUES = Object.keys(WIDGET_LABELS);
 // Widgets where options array makes sense (can edit via UI)
 const WIDGETS_WITH_OPTIONS = new Set(["segmented", "platform-cards", "icon-cards", "checkboxes"]);
 
-interface FilterRow {
+export interface FilterRow {
   id: string;
   category: string;
   filter_id: string;
@@ -42,20 +42,35 @@ interface FilterRow {
   modified_by?: string | null;
 }
 
-interface SettingsRow {
+export interface SettingsRow {
   category: string;
   has_nearby: boolean;
   sort_options: string[];
 }
 
-const DEFAULT_TAB = CATEGORIES[0].slug;
+interface FiltersManagerProps {
+  initialCategory: string;
+  initialFilters: FilterRow[];
+  initialUserMap: AdminUserMap;
+  initialSettings: SettingsRow | null;
+  /** Server-seeded Explorer data for the default category. The Explorer
+   *  will skip its first mount fetch when this is supplied and the
+   *  active category matches. */
+  initialExplorer?: ExplorerInitial;
+}
 
-export function FiltersManager() {
-  const [activeCategory, setActiveCategory] = useState<string>(DEFAULT_TAB);
-  const [filters, setFilters] = useState<FilterRow[]>([]);
-  const [userMap, setUserMap] = useState<AdminUserMap>({});
-  const [settings, setSettings] = useState<SettingsRow | null>(null);
-  const [loading, setLoading] = useState(true);
+export function FiltersManager({
+  initialCategory,
+  initialFilters,
+  initialUserMap,
+  initialSettings,
+  initialExplorer,
+}: FiltersManagerProps) {
+  const [activeCategory, setActiveCategory] = useState<string>(initialCategory);
+  const [filters, setFilters] = useState<FilterRow[]>(initialFilters);
+  const [userMap, setUserMap] = useState<AdminUserMap>(initialUserMap);
+  const [settings, setSettings] = useState<SettingsRow | null>(initialSettings);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -64,6 +79,11 @@ export function FiltersManager() {
   // admin-only data inspector (per-attribute item counts) restored from
   // the original FiltersManager that was lost during the v2 CMS refactor.
   const [view, setView] = useState<"config" | "explorer">("config");
+
+  // The page server-fetched data for `initialCategory`. Skip the
+  // first client-side load for that tab — only refetch when the user
+  // switches tabs (or after a mutation).
+  const skipFirstFetchFor = useRef(initialCategory);
 
   const load = async () => {
     setLoading(true);
@@ -90,7 +110,14 @@ export function FiltersManager() {
     }
   };
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // Server already populated this tab; don't re-fetch on mount.
+    if (skipFirstFetchFor.current === activeCategory) {
+      skipFirstFetchFor.current = "";
+      return;
+    }
+    load();
+  }, [activeCategory]);
 
   async function move(idx: number, dir: -1 | 1) {
     const next = idx + dir;
@@ -200,7 +227,7 @@ export function FiltersManager() {
       </div>
 
       {view === "explorer" ? (
-        <CombinatorialExplorer category={activeCategory} />
+        <CombinatorialExplorer category={activeCategory} initial={initialExplorer} />
       ) : (
       <div className="grid grid-cols-[1fr_280px] gap-6 items-start">
         {/* List */}
