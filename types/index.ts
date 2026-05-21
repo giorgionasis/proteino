@@ -185,6 +185,68 @@ export interface SearchAnalysis {
    *  both. */
   duration_min?: number | null;
   duration_max?: number | null;
+
+  // ── Search v3 additions (session 36 / CLAUDE.md §54) ────────────────
+  // Structured attributes mirrored from SuggestionEditor fields. The
+  // data is already on items + extension tables; this surfaces it to
+  // free-text queries. Every field is optional — Gemini sets only what
+  // the query implies. Empty/null = "no preference; don't constrain".
+
+  /** Venue amenities (food / bars / hotels). Canonical snake_case keys
+   *  matching the public filter options seeded by migration 044
+   *  (roof_garden, parking, wifi, vegan_menu, live_music, …). AND
+   *  semantics in the search route — every selected amenity must be
+   *  present on the item. */
+  amenities?: string[] | null;
+
+  /** Series — exact season count. "μονή σεζόν" → 1; "πέντε σεζόν" → 5. */
+  seasons?: number | null;
+
+  /** Movies / series — true when the user explicitly asked for
+   *  award-winning content ("βραβευμένη ταινία" / "Oscar winners").
+   *  Filters to items.awards jsonb non-empty. */
+  has_awards?: boolean | null;
+
+  /** Recipes — diet flags. Canonical keys: "vegan", "no_milk",
+   *  "no_sugar" (mirror lib/category-filters/match.ts:normalizeDietFlags).
+   *  AND semantics. */
+  diet?: string[] | null;
+
+  /** Theater / events — relative window. Distinct from `period` (which
+   *  is month / season based). "αυτό το σαββατοκύριακο" → "this_week";
+   *  "αυτόν τον μήνα" → "this_month". */
+  when?: "this_week" | "this_month" | null;
+
+  /** Movies / series / books — admin-entered language string ("Ελληνικά",
+   *  "English"). ilike match. */
+  language?: string | null;
+
+  /** Movies / series — admin-entered country string ("Ελλάδα", "USA").
+   *  ilike match. Separate from `location` (which is for venues). */
+  country?: string | null;
+
+  /** Recipes — "easy" / "medium" / "hard". Maps to admin level field
+   *  via the same alias map matchesFilter uses. */
+  level?: "easy" | "medium" | "hard" | null;
+
+  /** Recipes — cuisine origin ("Ελληνική", "Ιταλική"). Distinct from
+   *  the venue `type` field; recipes carry it on item_recipes.origin. */
+  origin?: string | null;
+
+  /** Books — page count range. "λιγότερο από 200 σελίδες" → pages_max=200. */
+  pages_min?: number | null;
+  pages_max?: number | null;
+
+  /** Recipes — calorie range. "κάτω από 300 θερμίδες" → calories_max=300. */
+  calories_min?: number | null;
+  calories_max?: number | null;
+
+  /** Recipes — serving count range. "για 6 άτομα" → yields_min=yields_max=6. */
+  yields_min?: number | null;
+  yields_max?: number | null;
+
+  /** Books — part of a trilogy / multi-volume work. */
+  is_trilogy?: boolean | null;
 }
 
 export type SearchPillType = "VIBE" | "TYPE" | "LOC" | "CATEGORY";

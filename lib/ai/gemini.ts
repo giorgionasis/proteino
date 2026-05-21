@@ -49,7 +49,23 @@ const SEARCH_PROMPT = `Είσαι assistant για το Proteino, μια ελλ�
   "decade": "<πχ '1990s', '2010s' ή null>",
   "price": "<'budget' / 'mid' / 'high' ή null>",
   "person": "<όνομα ηθοποιού/σκηνοθέτη/συγγραφέα/περφόρμερ ή null>",
-  "location": "<Greek place name (πόλη/περιοχή/νησί) ή null>"
+  "location": "<Greek place name (πόλη/περιοχή/νησί) ή null>",
+  "amenities": <array of canonical amenity keys για venues (food/bars/hotels) — δες AMENITY VOCABULARY παρακάτω — ή null>,
+  "seasons": <ακριβής αριθμός σεζόν για σειρές ('5 σεζόν' → 5, 'μονή σεζόν' → 1) ή null>,
+  "has_awards": <true όταν ο user ζητάει βραβευμένα ('Oscar', 'βραβευμένη ταινία', 'award-winning') ή null>,
+  "diet": <array από 'vegan' / 'no_milk' / 'no_sugar' για συνταγές ή null>,
+  "when": "<'this_week' (αυτό το σαββατοκύριακο, αυτή την εβδομάδα) ή 'this_month' (αυτόν τον μήνα) — για theater/events — ή null>",
+  "language": "<γλώσσα για movies/series/books ('Ελληνικά', 'English') ή null>",
+  "country": "<χώρα παραγωγής για movies/series ('Ελλάδα', 'USA', 'Γαλλία') ή null>",
+  "level": "<'easy' / 'medium' / 'hard' — μόνο για συνταγές — ή null>",
+  "origin": "<προέλευση συνταγής ('Ελληνική', 'Ιταλική', 'Ασιατική') — μόνο για recipes — ή null>",
+  "pages_min": <ελάχιστος αριθμός σελίδων για βιβλία ή null>,
+  "pages_max": <μέγιστος αριθμός σελίδων για βιβλία ('κάτω από 200 σελίδες' → 200) ή null>,
+  "calories_min": <ελάχιστες θερμίδες για συνταγές ή null>,
+  "calories_max": <μέγιστες θερμίδες για συνταγές ('κάτω από 300 θερμίδες' → 300) ή null>,
+  "yields_min": <ελάχιστες μερίδες για συνταγές ή null>,
+  "yields_max": <μέγιστες μερίδες ('για 6 άτομα' → yields_min=yields_max=6) ή null>,
+  "is_trilogy": <true όταν user ζητάει trilogy/series (βιβλία) ή null>
 }
 
 ΚΡΙΣΙΜΟΙ ΚΑΝΟΝΕΣ:
@@ -81,6 +97,52 @@ const SEARCH_PROMPT = `Είσαι assistant για το Proteino, μια ελλ�
 - "location" = περιοχή/πόλη/νησί ΑΥΤΟΥΣΙΑ όπως το έγραψε ο user. Επέστρεψε null για: "κοντά μου", "κέντρο" χωρίς πόλη, "γύρω", "εδώ". ΜΟΝΟ συγκεκριμένα γεωγραφικά ονόματα. ΜΗΝ αλλάξεις την κατεύθυνση — "Βόρεια Προάστια" παραμένει "Βόρεια Προάστια", ΟΧΙ "Νότια Προάστια". Παραδείγματα: Αθήνα, Γλυφάδα, Μύκονος, Βόρεια Προάστια, Νότια Προάστια, Χαλάνδρι, Παγκράτι.
 - Greeklish like "kalifeisi" → "Καλλιθέα", normalize στα ελληνικά.
 - Multi-category όταν είναι αμφίσημο (πχ "κωμωδίες netflix" → ["movies", "series"]).
+
+— V3 STRUCTURED-ATTRIBUTE EXTRACTION —
+
+- "amenities" = ΜΟΝΟ για venues (food/bars/hotels). Bγάλε ΟΛΑ τα tokens που αντιστοιχούν σε amenities. Χρησιμοποίησε ΑΚΡΙΒΩΣ τα canonical keys στο AMENITY VOCABULARY block παρακάτω.
+    Παραδείγματα ισοδυναμιών:
+      "ταράτσα" / "rooftop" / "roof garden" / "ρουφ γκαρντεν" → "roof_garden"
+      "πάρκινγκ" / "parking" → "parking"
+      "wi-fi" / "wifi" / "ίντερνετ" → "wifi"
+      "παιδότοπος" / "παιδική χαρά" / "playground" → "playground"
+      "βίγκαν μενού" / "vegan menu" / "χορτοφαγικό μενού" → "vegan_menu"
+      "live μουσική" / "ζωντανή μουσική" / "live music" → "live_music"
+      "παραλιακό" / "δίπλα στη θάλασσα" / "on the sea" → "on_the_sea"
+      "θέα θάλασσα" / "θέα στη θάλασσα" / "sea view" → "sea_view"
+      "θέα βουνό" / "βουνίσια θέα" / "mountain view" → "mountain"
+      "pet friendly" / "δέχεται κατοικίδια" → "pet"
+      "ΑΜΕΑ" / "πρόσβαση ΑΜΕΑ" / "accessible" → "disabled" (για food/hotels) ή "accessible" (για bars)
+      "happy hour" → "happy_hour"
+      "DJ" → "dj"
+      "εξωτερικά τραπέζια" / "outdoor seating" → "outdoor_seating"
+      "transfer" / "μεταφορά από αεροδρόμιο" → "transfer"
+      "πρωινό" / "breakfast" → "breakfast"
+      "πισίνα" / "pool" → "pool"
+      "εστιατόριο" (ως amenity ξενοδοχείου, όχι ως κατηγορία) → "restaurant"
+    Αν ο user γράψει πολλά (πχ "ξενοδοχείο με πισίνα και πρωινό"), βάλε όλα: ["pool", "breakfast"].
+    Αν το query ΔΕΝ έχει venue category context, μην εξάγεις amenities.
+- "seasons" = ΑΚΕΡΑΙΟΣ αριθμός για σειρές. "5 σεζόν" → 5. "μονή σεζόν" / "μία σεζόν" → 1.
+- "has_awards" = true ΜΟΝΟ όταν ο user ΖΗΤΑΕΙ βραβευμένα έργα: "Oscar winners", "βραβευμένη ταινία", "award-winning", "Cannes". Διαφορετικά null.
+- "diet" = ΜΟΝΟ για recipes. Canonical keys:
+    "vegan" / "βίγκαν" → "vegan"
+    "χωρίς γάλα" / "no milk" / "γαλακτοκομικά" → "no_milk"
+    "χωρίς ζάχαρη" / "no sugar" / "sugar-free" → "no_sugar"
+  Πολλά: ["vegan", "no_milk"].
+- "when" = ΜΟΝΟ για theater/events ΚΑΙ ΜΟΝΟ σχετικά παράθυρα (όχι μήνες/εποχές — εκείνα πάνε στο "period"):
+    "αυτό το σαββατοκύριακο" / "αυτό το week-end" / "this weekend" → "this_week"
+    "αυτή την εβδομάδα" / "this week" → "this_week"
+    "αυτόν τον μήνα" / "this month" → "this_month"
+  Αν ο user γράψει "καλοκαίρι" / "Δεκέμβρης" → ΒΑΛΤΟ ΣΤΟ "period", ΟΧΙ στο when.
+- "language" = γλώσσα έργου (movies/series/books). "ελληνικά βιβλία" → "Ελληνικά". "English movies" → "English".
+- "country" = χώρα παραγωγής (movies/series). "ελληνικές ταινίες" → "Ελλάδα". "Γαλλικές" → "Γαλλία". ΟΧΙ για venues (location handles those).
+- "level" = δυσκολία συνταγής. "εύκολη συνταγή" → "easy". "δύσκολη" → "hard". "μέτρια" → "medium".
+- "origin" = προέλευση συνταγής (recipes ΜΟΝΟ). "ελληνικές συνταγές" → "Ελληνική". ΟΧΙ για food (venue cuisine πάει στο type).
+- "pages_min" / "pages_max" = εύρος σελίδων βιβλίου. "κάτω από 200 σελίδες" → pages_max=200. "πάνω από 500" → pages_min=500.
+- "calories_min" / "calories_max" = εύρος θερμίδων συνταγής. "low calorie" / "λίγες θερμίδες" → calories_max=300. "κάτω από 200 θερμίδες" → calories_max=200.
+- "yields_min" / "yields_max" = αριθμός μερίδων συνταγής. "για 4 άτομα" → yields_min=4 yields_max=4. "για 6+ άτομα" → yields_min=6.
+- "is_trilogy" = true όταν user ζητάει trilogy/multi-volume βιβλία: "τριλογία", "trilogy", "σειρά βιβλίων".
+
 - Επιστροφή ΜΟΝΟ έγκυρου JSON, χωρίς markdown, χωρίς σχόλια.`;
 
 const SUBMISSION_PROMPT = `Είσαι assistant για το Proteino. Ο χρήστης περιγράφει κάτι που του άρεσε σε ελληνικά. Εξάγαγε δομημένα στοιχεία από το κείμενό του.
@@ -240,6 +302,25 @@ export const SearchExtractionSchema = z.object({
   price: z.string().nullable(),
   person: z.string().nullable(),
   location: z.string().nullable(),
+  // ── v3 (session 36) ─────────────────────────────────────────────
+  // Structured attributes mirrored from SuggestionEditor. All
+  // optional/nullable; Gemini sets only what the query implies.
+  amenities: z.array(z.string()).nullable(),
+  seasons: z.number().nullable(),
+  has_awards: z.boolean().nullable(),
+  diet: z.array(z.string()).nullable(),
+  when: z.string().nullable(),
+  language: z.string().nullable(),
+  country: z.string().nullable(),
+  level: z.string().nullable(),
+  origin: z.string().nullable(),
+  pages_min: z.number().nullable(),
+  pages_max: z.number().nullable(),
+  calories_min: z.number().nullable(),
+  calories_max: z.number().nullable(),
+  yields_min: z.number().nullable(),
+  yields_max: z.number().nullable(),
+  is_trilogy: z.boolean().nullable(),
 });
 export type SearchExtraction = z.infer<typeof SearchExtractionSchema>;
 
@@ -346,6 +427,31 @@ export class GeminiAIService implements AIService {
         return Number.isFinite(n) && n > 0 ? n : null;
       };
 
+      const toInt = (v: unknown): number | null => {
+        if (v == null) return null;
+        const n = typeof v === "number" ? v : parseInt(String(v), 10);
+        return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+      };
+      const rawWhen = (object.when ?? "").toString().toLowerCase().trim();
+      const when: "this_week" | "this_month" | null =
+        rawWhen === "this_week" ? "this_week"
+        : rawWhen === "this_month" ? "this_month"
+        : null;
+      const rawLevel = (object.level ?? "").toString().toLowerCase().trim();
+      const level: "easy" | "medium" | "hard" | null =
+        rawLevel === "easy" ? "easy"
+        : rawLevel === "medium" ? "medium"
+        : rawLevel === "hard" ? "hard"
+        : null;
+      const cleanStrArray = (arr: unknown): string[] | null => {
+        if (!Array.isArray(arr)) return null;
+        const out = arr
+          .filter((s) => typeof s === "string")
+          .map((s) => (s as string).trim().toLowerCase())
+          .filter((s) => s.length > 0);
+        return out.length > 0 ? out : null;
+      };
+
       return {
         intent: object.intent ?? query,
         vibe: object.vibe ?? null,
@@ -362,6 +468,23 @@ export class GeminiAIService implements AIService {
         period: object.period ?? null,
         duration_min: toMinutes(object.duration_min),
         duration_max: toMinutes(object.duration_max),
+        // v3 additions
+        amenities: cleanStrArray(object.amenities),
+        seasons: toInt(object.seasons),
+        has_awards: object.has_awards === true ? true : null,
+        diet: cleanStrArray(object.diet),
+        when,
+        language: object.language?.toString().trim() || null,
+        country: object.country?.toString().trim() || null,
+        level,
+        origin: object.origin?.toString().trim() || null,
+        pages_min: toInt(object.pages_min),
+        pages_max: toInt(object.pages_max),
+        calories_min: toInt(object.calories_min),
+        calories_max: toInt(object.calories_max),
+        yields_min: toInt(object.yields_min),
+        yields_max: toInt(object.yields_max),
+        is_trilogy: object.is_trilogy === true ? true : null,
       };
     } catch (err) {
       console.error("[gemini.analyzeSearchQuery]", err);

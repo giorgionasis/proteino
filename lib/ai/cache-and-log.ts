@@ -20,11 +20,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * Prompt-version bump invalidates cache on prompt changes. Bump when
  * tweaking the system prompt in gemini.ts.
  */
-// v16 — SubmissionExtractionSchema extended with location_hint so
-// Google Places can disambiguate same-name venues (Δίοενυσος in
-// Πλάκα vs. anywhere else). Defaults to "Αθήνα" when no location
-// mentioned, since that's the most likely location.
-const PROMPT_VERSION = "v16";
+// v17 — Search v3 (session 36 / CLAUDE.md §54). SearchExtractionSchema
+// + SEARCH_PROMPT extended with structured attributes mirroring the
+// SuggestionEditor surface: amenities (food/bars/hotels), seasons,
+// has_awards (movies/series), diet (recipes), when (theater/events),
+// language, country, level, origin, pages_min/max, calories_min/max,
+// yields_min/max, is_trilogy. Taxonomy injection (lib/ai/taxonomy.ts)
+// now ships the canonical amenity key vocabulary so Gemini emits
+// roof_garden, parking, wifi etc. exactly. Bump invalidates all v16
+// search-result cache entries (30-day TTL).
+const PROMPT_VERSION = "v17";
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 interface CachedEntry {

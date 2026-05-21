@@ -47,6 +47,23 @@ interface SearchAnalysisOut {
   duration_min?: number | null;
   duration_max?: number | null;
   person?: string | null;
+  // v3 (session 36)
+  amenities?: string[] | null;
+  seasons?: number | null;
+  has_awards?: boolean | null;
+  diet?: string[] | null;
+  when?: "this_week" | "this_month" | null;
+  language?: string | null;
+  country?: string | null;
+  level?: "easy" | "medium" | "hard" | null;
+  origin?: string | null;
+  pages_min?: number | null;
+  pages_max?: number | null;
+  calories_min?: number | null;
+  calories_max?: number | null;
+  yields_min?: number | null;
+  yields_max?: number | null;
+  is_trilogy?: boolean | null;
 }
 
 // ── Intent extraction ─────────────────────────────────────────────────────
@@ -326,10 +343,13 @@ async function fetchPeopleMatches(
 //   theater: type (Θέατρο, Μιούζικαλ, ...)
 //   events: event_type (Συναυλία, Φεστιβάλ, ...)
 const TYPE_FIELDS: Record<string, string[]> = {
-  food:    ["cuisine", "type"],
-  bars:    ["type"],
-  hotels:  ["type"],
-  theater: ["type"],
+  // `information` carries amenities (food/bars) + price_level; `facilities`
+  // is the hotel-amenities column. `dates` joins theater so the `when`
+  // filter can run on theater the same way events handles period.
+  food:    ["cuisine", "type", "information"],
+  bars:    ["type", "information"],
+  hotels:  ["type", "facilities"],
+  theater: ["type", "dates"],
   events:  ["event_type", "dates"],
 };
 
@@ -337,7 +357,17 @@ async function fetchVenueItems(
   admin: ReturnType<typeof createAdminClient>,
   category: CategorySlug,
   opts: { regionIds?: string[] | null; limit: number },
-): Promise<Array<{ item: any; address: string | null; cuisine: string | null; type: string | null; dates: any | null }>> {
+): Promise<Array<{
+  item: any;
+  address: string | null;
+  cuisine: string | null;
+  type: string | null;
+  dates: any | null;
+  /** Denormalised amenity flags. Object-of-booleans for food/bars
+   *  (from `information.amenities`) or for hotels (from `facilities`).
+   *  Null when neither source has data. */
+  amenities: Record<string, unknown> | unknown[] | null;
+}>> {
   const extTable = `item_${category}`;
   const typeFields = TYPE_FIELDS[category] ?? [];
   const extraSelect = typeFields.length > 0 ? typeFields.join(", ") + ", " : "";
@@ -351,16 +381,29 @@ async function fetchVenueItems(
   }
   const { data } = await q;
   return ((data ?? []) as any[])
-    .map((row: any) => ({
-      item: row.items,
-      address: row.address ?? null,
-      // Normalize the type/cuisine fields per category to a uniform shape.
-      cuisine: row.cuisine ?? null,
-      type: row.type ?? row.event_type ?? null,
-      // dates: only events have this — null for other venues. Stored
-      // as a jsonb array of {from, to, price, status} per K2 model.
-      dates: row.dates ?? null,
-    }))
+    .map((row: any) => {
+      // Amenity source per category:
+      //   food / bars → information.amenities (jsonb object-of-bools)
+      //   hotels      → facilities (separate jsonb column, same shape)
+      const amenitySource =
+        category === "hotels"
+          ? row.facilities ?? null
+          : (row.information && typeof row.information === "object"
+              ? (row.information as any).amenities ?? null
+              : null);
+      return {
+        item: row.items,
+        address: row.address ?? null,
+        // Normalize the type/cuisine fields per category to a uniform shape.
+        cuisine: row.cuisine ?? null,
+        type: row.type ?? row.event_type ?? null,
+        // dates: events always have this; theater now also pulls it for
+        // the `when` filter. Other venues stay null. Stored as a jsonb
+        // array of {from, to, price, status} per K2 model.
+        dates: row.dates ?? null,
+        amenities: amenitySource,
+      };
+    })
     .filter((r) => r.item && r.item.is_published);
 }
 
@@ -433,6 +476,50 @@ function parseEventDate(s: unknown): Date | null {
   return Number.isNaN(iso.getTime()) ? null : iso;
 }
 
+/** Normalise the amenity store (jsonb object-of-booleans OR
+ *  array-of-strings) into a lowercase key set. Mirrors
+ *  lib/category-filters/admin-facets.ts:parseAmenities — duplicated here
+ *  to avoid importing across the app/(main) boundary into a route. */
+function venueAmenityKeys(src: unknown): Set<string> {
+  const out = new Set<string>();
+  if (!src) return out;
+  if (Array.isArray(src)) {
+    for (const v of src) {
+      if (typeof v === "string" && v.trim()) out.add(v.trim().toLowerCase());
+    }
+    return out;
+  }
+  if (typeof src === "object") {
+    for (const [k, v] of Object.entries(src as Record<string, unknown>)) {
+      if (v === true || (typeof v === "string" && v.trim() !== "" && v.toLowerCase() !== "false")) {
+        out.add(k.toLowerCase());
+      }
+    }
+  }
+  return out;
+}
+
+/** True when any date entry on the row falls within the relative window.
+ *  `when` is distinct from `period` (which is month/season); this is the
+ *  rolling N-day horizon a user means by "αυτή την εβδομάδα". */
+function eventMatchesWhen(dates: unknown, when: "this_week" | "this_month"): boolean {
+  if (!Array.isArray(dates)) return false;
+  const now = new Date();
+  const horizonDays = when === "this_week" ? 7 : 30;
+  const horizon = new Date(now.getTime() + horizonDays * 24 * 60 * 60 * 1000);
+  for (const entry of dates) {
+    if (!entry || typeof entry !== "object") continue;
+    const from = parseEventDate((entry as any).from);
+    const to   = parseEventDate((entry as any).to);
+    const start = from ?? to;
+    const end   = to ?? from;
+    if (!start || !end) continue;
+    // Overlap: [start, end] intersects [now, horizon]
+    if (start.getTime() <= horizon.getTime() && end.getTime() >= now.getTime()) return true;
+  }
+  return false;
+}
+
 function eventMatchesPeriod(dates: unknown, periodRaw: string): boolean {
   if (!Array.isArray(dates)) return false;
   const folded = foldGreek(periodRaw.toLowerCase().trim());
@@ -500,6 +587,22 @@ interface StructuredFilters {
   duration_min?: number | null;
   duration_max?: number | null;
   type?: string | null;
+  // v3 (session 36) — propagated through to per-category ext filters.
+  // null = no constraint; defined = constrain (AND across all set fields).
+  seasons?: number | null;
+  has_awards?: boolean | null;
+  language?: string | null;
+  country?: string | null;
+  level?: "easy" | "medium" | "hard" | null;
+  origin?: string | null;
+  pages_min?: number | null;
+  pages_max?: number | null;
+  calories_min?: number | null;
+  calories_max?: number | null;
+  yields_min?: number | null;
+  yields_max?: number | null;
+  diet?: string[] | null;
+  is_trilogy?: boolean | null;
 }
 
 /**
@@ -569,31 +672,128 @@ async function fetchExtensionFilteredIds(
   // Returns null when no extension filter applies (no constraint on
   // item_ids). Returns Set when filters apply — possibly empty (no
   // matches).
+  //
+  // `has_awards` + `diet` are post-fetch JS filters because the
+  // underlying jsonb shape (awards: array-or-object, nutrition:
+  // object-of-flags) doesn't have a clean Postgres operator. Every
+  // other constraint here is a column-level WHERE.
   if (category === "movies") {
     const useChannel = !!filters.channel;
     const useDuration = filters.duration_min != null || filters.duration_max != null;
-    if (!useChannel && !useDuration) return null;
-    let q = (admin.from("item_movies") as any).select("item_id").limit(1000);
+    const useCountry  = !!filters.country;
+    const useLanguage = !!filters.language;
+    const useAwards   = filters.has_awards === true;
+    if (!useChannel && !useDuration && !useCountry && !useLanguage && !useAwards) return null;
+    let q = (admin.from("item_movies") as any)
+      .select("item_id, awards")
+      .limit(1000);
     if (filters.channel) q = q.ilike("channel", `%${filters.channel}%`);
     if (filters.duration_min != null) q = q.gte("duration_min", filters.duration_min);
     if (filters.duration_max != null) q = q.lte("duration_min", filters.duration_max);
+    if (filters.country)  q = q.ilike("country",  `%${filters.country}%`);
+    if (filters.language) q = q.ilike("language", `%${filters.language}%`);
     const { data } = await q;
-    return new Set((data ?? []).map((r: any) => r.item_id));
+    const rows = (data ?? []) as Array<{ item_id: string; awards: unknown }>;
+    const filtered = useAwards ? rows.filter((r) => hasAnyAward(r.awards)) : rows;
+    return new Set(filtered.map((r) => r.item_id));
   }
   if (category === "series") {
-    const useChannel = !!filters.channel;
-    const useStatus = !!filters.status;
-    if (!useChannel && !useStatus) return null;
-    let q = (admin.from("item_series") as any).select("item_id").limit(1000);
+    const useChannel  = !!filters.channel;
+    const useStatus   = !!filters.status;
+    const useSeasons  = filters.seasons != null;
+    const useCountry  = !!filters.country;
+    const useLanguage = !!filters.language;
+    const useAwards   = filters.has_awards === true;
+    if (!useChannel && !useStatus && !useSeasons && !useCountry && !useLanguage && !useAwards) return null;
+    let q = (admin.from("item_series") as any)
+      .select("item_id, awards")
+      .limit(1000);
     if (filters.channel) q = q.ilike("channel", `%${filters.channel}%`);
     if (filters.status === "completed") q = q.not("end_date", "is", null);
     if (filters.status === "ongoing")   q = q.is("end_date", null);
+    if (filters.seasons != null) q = q.eq("seasons", filters.seasons);
+    if (filters.country)  q = q.ilike("country",  `%${filters.country}%`);
+    if (filters.language) q = q.ilike("language", `%${filters.language}%`);
+    const { data } = await q;
+    const rows = (data ?? []) as Array<{ item_id: string; awards: unknown }>;
+    const filtered = useAwards ? rows.filter((r) => hasAnyAward(r.awards)) : rows;
+    return new Set(filtered.map((r) => r.item_id));
+  }
+  if (category === "books") {
+    const useLanguage = !!filters.language;
+    const usePages    = filters.pages_min != null || filters.pages_max != null;
+    const useTrilogy  = filters.is_trilogy === true;
+    if (!useLanguage && !usePages && !useTrilogy) return null;
+    let q = (admin.from("item_books") as any).select("item_id").limit(1000);
+    if (filters.language)        q = q.ilike("language", `%${filters.language}%`);
+    if (filters.pages_min != null) q = q.gte("pages", filters.pages_min);
+    if (filters.pages_max != null) q = q.lte("pages", filters.pages_max);
+    if (useTrilogy)              q = q.eq("is_trilogy", true);
     const { data } = await q;
     return new Set((data ?? []).map((r: any) => r.item_id));
   }
-  // Books / recipes have no structured filters yet beyond genre
-  // (handled by subcategory_id at the items level).
+  if (category === "recipes") {
+    const useLevel    = !!filters.level;
+    const useOrigin   = !!filters.origin;
+    const useCalories = filters.calories_min != null || filters.calories_max != null;
+    const useYields   = filters.yields_min != null || filters.yields_max != null;
+    const useDiet     = Array.isArray(filters.diet) && filters.diet.length > 0;
+    if (!useLevel && !useOrigin && !useCalories && !useYields && !useDiet) return null;
+    let q = (admin.from("item_recipes") as any)
+      .select("item_id, nutrition")
+      .limit(1000);
+    // Level alias map mirrors lib/category-filters/match.ts:level.
+    if (filters.level) {
+      const levelAliases: Record<string, string[]> = {
+        easy:   ["εύκολη", "πολύ εύκολη", "easy"],
+        medium: ["μέτρια", "medium"],
+        hard:   ["δύσκολη", "hard"],
+      };
+      const aliases = levelAliases[filters.level] ?? [filters.level];
+      // Build an `or` of ilikes. PostgREST `or` syntax doesn't escape
+      // commas inside ilike, but our aliases contain none — safe.
+      const orExpr = aliases.map((a) => `level.ilike.%${a}%`).join(",");
+      q = q.or(orExpr);
+    }
+    if (filters.origin)            q = q.ilike("origin", `%${filters.origin}%`);
+    if (filters.calories_min != null) q = q.gte("calories", filters.calories_min);
+    if (filters.calories_max != null) q = q.lte("calories", filters.calories_max);
+    if (filters.yields_min != null)   q = q.gte("yields", filters.yields_min);
+    if (filters.yields_max != null)   q = q.lte("yields", filters.yields_max);
+    const { data } = await q;
+    const rows = (data ?? []) as Array<{ item_id: string; nutrition: unknown }>;
+    const filtered = useDiet
+      ? rows.filter((r) => {
+          const have = normalizeDietFlagsForSearch(r.nutrition);
+          return filters.diet!.every((d) => have.includes(d));
+        })
+      : rows;
+    return new Set(filtered.map((r) => r.item_id));
+  }
   return null;
+}
+
+/** Mirror of lib/admin/explorer-query.ts:normalizeDietFlags. Duplicated
+ *  here for the same boundary reason — search route lives outside the
+ *  admin lib's import scope. */
+function normalizeDietFlagsForSearch(nutrition: unknown): string[] {
+  if (!nutrition || typeof nutrition !== "object") return [];
+  const n = nutrition as Record<string, unknown>;
+  const flags: string[] = [];
+  if (n.vegan === true) flags.push("vegan");
+  if (n.dairy_free === true || n.milk === false || n.no_milk === true) flags.push("no_milk");
+  if (n.sugar_free === true || n.sugar === false || n.no_sugar === true) flags.push("no_sugar");
+  return flags;
+}
+
+/** True when the awards jsonb has any entry. Same compromise the
+ *  public `awards` filter uses — admin entries are free-form so
+ *  specific-award match isn't reliable. */
+function hasAnyAward(awards: unknown): boolean {
+  if (!awards) return false;
+  if (Array.isArray(awards)) return awards.length > 0;
+  if (typeof awards === "object") return Object.keys(awards as object).length > 0;
+  return false;
 }
 
 async function fetchByStructuredFilters(
@@ -619,7 +819,17 @@ async function fetchByStructuredFilters(
   const typeSeed  = (filters.type  ?? "").trim();
   const hasOtherFilters = !!(
     filters.channel || filters.status ||
-    filters.duration_min != null || filters.duration_max != null
+    filters.duration_min != null || filters.duration_max != null ||
+    // v3 additions — any of these is reason to keep the search going
+    // even if the genre token didn't resolve.
+    filters.seasons != null ||
+    filters.has_awards === true ||
+    filters.language || filters.country || filters.level || filters.origin ||
+    filters.pages_min != null || filters.pages_max != null ||
+    filters.calories_min != null || filters.calories_max != null ||
+    filters.yields_min != null || filters.yields_max != null ||
+    (Array.isArray(filters.diet) && filters.diet.length > 0) ||
+    filters.is_trilogy === true
   );
   if (genreSeed) {
     const ids = await resolveSubcategoryIds(admin, genreSeed, targetCategories);
@@ -814,6 +1024,23 @@ export async function GET(req: NextRequest) {
     duration_min: llmAnalysis?.duration_min ?? null,
     duration_max: llmAnalysis?.duration_max ?? null,
     person: llmAnalysis?.person ?? null,
+    // v3
+    amenities: llmAnalysis?.amenities ?? null,
+    seasons: llmAnalysis?.seasons ?? null,
+    has_awards: llmAnalysis?.has_awards ?? null,
+    diet: llmAnalysis?.diet ?? null,
+    when: llmAnalysis?.when ?? null,
+    language: llmAnalysis?.language ?? null,
+    country: llmAnalysis?.country ?? null,
+    level: llmAnalysis?.level ?? null,
+    origin: llmAnalysis?.origin ?? null,
+    pages_min: llmAnalysis?.pages_min ?? null,
+    pages_max: llmAnalysis?.pages_max ?? null,
+    calories_min: llmAnalysis?.calories_min ?? null,
+    calories_max: llmAnalysis?.calories_max ?? null,
+    yields_min: llmAnalysis?.yields_min ?? null,
+    yields_max: llmAnalysis?.yields_max ?? null,
+    is_trilogy: llmAnalysis?.is_trilogy ?? null,
   };
 
   // 2. Items query.
@@ -1116,6 +1343,54 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // Amenities filter (food / bars / hotels). AND semantics — every
+    // selected amenity must be present on the item. Items in
+    // non-amenity venue categories (theater/events) pass through; if
+    // the user asked for amenities and category is theater, we still
+    // don't filter them out (no signal to match against; soft-fallback
+    // per session-36 decision).
+    const amenitySel = llmAnalysis?.amenities ?? null;
+    if (Array.isArray(amenitySel) && amenitySel.length > 0) {
+      const amenityById = new Map<string, Set<string>>();
+      for (const c of candidates) {
+        if (c.item.category === "food" || c.item.category === "bars" || c.item.category === "hotels") {
+          amenityById.set(c.item.id, venueAmenityKeys(c.amenities));
+        }
+      }
+      // Lowercase the selection once so per-item match is cheap.
+      const sel = amenitySel.map((a) => a.toLowerCase());
+      const refined = items.filter((it: any) => {
+        if (it.category !== "food" && it.category !== "bars" && it.category !== "hotels") return true;
+        const have = amenityById.get(it.id);
+        if (!have) return false;
+        return sel.every((s) => have.has(s));
+      });
+      // Soft fallback — if amenities knock everything out but we DO
+      // have a location/refinement match, keep the broader set rather
+      // than empty-returning. Mirrors how genre-miss is handled.
+      if (refined.length > 0 || (locationTokens.length === 0 && refinementTokens.length === 0)) {
+        items = refined;
+      }
+    }
+
+    // When filter (theater + events). Distinct from `period` (which is
+    // month/season). Walks the row's dates jsonb against a rolling
+    // 7-day or 30-day horizon. Items without dates fail the filter
+    // when `when` is set — there's no honest answer for "what's on
+    // this week?" if we don't know the dates.
+    if (llmAnalysis?.when && (venueCatsForFilter.includes("theater") || venueCatsForFilter.includes("events"))) {
+      const datesById = new Map<string, unknown>();
+      for (const c of candidates) {
+        if (c.item.category === "theater" || c.item.category === "events") {
+          datesById.set(c.item.id, c.dates);
+        }
+      }
+      items = items.filter((it: any) => {
+        if (it.category !== "theater" && it.category !== "events") return true;
+        return eventMatchesWhen(datesById.get(it.id), llmAnalysis.when!);
+      });
+    }
+
     // People-search fallback for venue categories. Catches "θέατρο
     // μπέζος" (theater play with actor μπέζος) and "συναυλία dimitri
     // μάρας" (events with performer). Runs when refinement and
@@ -1188,7 +1463,22 @@ export async function GET(req: NextRequest) {
       llmAnalysis?.channel ||
       llmAnalysis?.status ||
       llmAnalysis?.duration_min != null ||
-      llmAnalysis?.duration_max != null
+      llmAnalysis?.duration_max != null ||
+      // v3 signals
+      llmAnalysis?.seasons != null ||
+      llmAnalysis?.has_awards === true ||
+      llmAnalysis?.language ||
+      llmAnalysis?.country ||
+      llmAnalysis?.level ||
+      llmAnalysis?.origin ||
+      llmAnalysis?.pages_min != null ||
+      llmAnalysis?.pages_max != null ||
+      llmAnalysis?.calories_min != null ||
+      llmAnalysis?.calories_max != null ||
+      llmAnalysis?.yields_min != null ||
+      llmAnalysis?.yields_max != null ||
+      (Array.isArray(llmAnalysis?.diet) && llmAnalysis!.diet!.length > 0) ||
+      llmAnalysis?.is_trilogy === true
     );
     if (hasStructuredSignals) {
       items = await fetchByStructuredFilters(admin, {
@@ -1199,6 +1489,21 @@ export async function GET(req: NextRequest) {
         duration_min: llmAnalysis?.duration_min ?? null,
         duration_max: llmAnalysis?.duration_max ?? null,
         type: llmAnalysis?.type ?? null,
+        // v3
+        seasons: llmAnalysis?.seasons ?? null,
+        has_awards: llmAnalysis?.has_awards ?? null,
+        language: llmAnalysis?.language ?? null,
+        country: llmAnalysis?.country ?? null,
+        level: llmAnalysis?.level ?? null,
+        origin: llmAnalysis?.origin ?? null,
+        pages_min: llmAnalysis?.pages_min ?? null,
+        pages_max: llmAnalysis?.pages_max ?? null,
+        calories_min: llmAnalysis?.calories_min ?? null,
+        calories_max: llmAnalysis?.calories_max ?? null,
+        yields_min: llmAnalysis?.yields_min ?? null,
+        yields_max: llmAnalysis?.yields_max ?? null,
+        diet: llmAnalysis?.diet ?? null,
+        is_trilogy: llmAnalysis?.is_trilogy ?? null,
       });
     }
 

@@ -153,5 +153,16 @@ export function renderTaxonomyForPrompt(t: Taxonomy): string {
     lines.push("");
   }
 
+  // Amenity vocabulary — canonical snake_case keys for the `amenities`
+  // array. Mirror migration 044 public-filter options exactly.
+  // Diet vocabulary mirrors lib/category-filters/match.ts:normalizeDietFlags.
+  lines.push("AMENITY VOCABULARY — χρησιμοποίησε τα παρακάτω ακριβή keys στο amenities array:");
+  lines.push("  food:   parking, wifi, pet, vegan_menu, playground, disabled, sea_view, on_the_sea, roof_garden");
+  lines.push("  bars:   parking, wifi, outdoor_seating, live_music, dj, pet, reservations, smoking_area, accessible, happy_hour, late_night");
+  lines.push("  hotels: pool, bar, restaurant, parking, breakfast, wifi, sea_view, mountain, on_the_sea, roof_garden, pet, disabled, transfer, vegan_menu, playground");
+  lines.push("");
+  lines.push("DIET VOCABULARY (recipes) — χρησιμοποίησε αυτά τα ακριβή keys στο diet array: vegan, no_milk, no_sugar");
+  lines.push("");
+
   return lines.join("\n");
 }
