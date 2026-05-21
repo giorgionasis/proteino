@@ -63,6 +63,12 @@ export interface CategoryItem {
    *  to "has any award on record" rather than matching against the
    *  free-form taxonomy. */
   hasAwards?:        boolean;
+  /** Food / bars / hotels — structured amenity flags. Object-of-
+   *  booleans OR array-of-strings (parseAmenities tolerates both).
+   *  Food + bars read from `item_*.information.amenities`; hotels
+   *  reads from `item_hotels.facilities`. Drives the `amenities`
+   *  public filter with AND semantics. */
+  amenities?:        Record<string, boolean> | string[];
   /** Original suggester — populates the avatar overlay on landscape
    *  cards and (when tapped) opens ProfilePopup. Optional because not
    *  every item has a suggestion attached. */

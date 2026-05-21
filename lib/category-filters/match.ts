@@ -1,5 +1,6 @@
 import type { CategoryItem } from "@/components/category/CategoryCard";
 import type { CategorySlug } from "@/types";
+import { parseAmenities } from "./admin-facets";
 
 /**
  * Pure filter-application logic shared between the public category
@@ -151,6 +152,18 @@ export function matchesFilter(
     case "price":
       if (arr.length > 0) return arr.some((p) => ciEq(item.priceRange, p));
       return ciEq(item.priceRange, v);
+
+    case "amenities": {
+      // AND semantics — every selected amenity must be present.
+      // `item.amenities` is denormalised by mapItem from
+      // item_food.information.amenities / item_bars.information.amenities
+      // / item_hotels.facilities (object-of-booleans or array-of-strings;
+      // parseAmenities tolerates both shapes).
+      if (arr.length === 0) return true;
+      const have = parseAmenities(item.amenities);
+      if (have.length === 0) return false;
+      return arr.every((sel) => have.includes(sel.toLowerCase()));
+    }
 
     case "platform":
       if (arr.length > 0) return arr.some((p) => ciIncludes(item.channel, p));

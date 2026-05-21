@@ -50,9 +50,9 @@ const EXT_SELECT: Record<CategorySlug, string> = {
   books: "item_books(writer, publication, publication_year, language, pages, is_trilogy)",
   movies: "item_movies(director, release_date, end_date, country, language, channel, duration_min, actors, awards)",
   series: "item_series(director, release_date, end_date, country, language, channel, seasons, actors, awards)",
-  food: "item_food(cuisine, type, address, region_id, lat, lng, delivery_links)",
+  food: "item_food(cuisine, type, address, region_id, lat, lng, delivery_links, information)",
   recipes: "item_recipes(level, channel, origin, nutrition, yields, calories, duration)",
-  bars: "item_bars(type, address, region_id, lat, lng)",
+  bars: "item_bars(type, address, region_id, lat, lng, information)",
   hotels: "item_hotels(type, address, region_id, lat, lng, price_range, facilities)",
   theater: "item_theater(type, address, region_id, lat, lng, name_place, director, writer, actors, dates, year, price)",
   events: "item_events(event_type, address, region_id, lat, lng, name_place, performers, dates, status, price)",
@@ -199,11 +199,13 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
       if (ext?.delivery_links && typeof ext.delivery_links === "object") {
         result.delivery = Object.keys(ext.delivery_links).filter((k) => ext.delivery_links[k]);
       }
+      result.amenities = ext?.information?.amenities ?? undefined;
       break;
     case "bars":
       result.subcategory = ext?.type || tags[0] || "Bar";
       result.area = extractArea(ext?.address);
       result.regionId = ext?.region_id || undefined;
+      result.amenities = ext?.information?.amenities ?? undefined;
       break;
     case "hotels":
       result.subcategory = ext?.type || tags[0] || "Ξενοδοχείο";
@@ -211,6 +213,7 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
       result.area = extractArea(ext?.address);
       result.regionId = ext?.region_id || undefined;
       result.priceRange = ext?.price_range || undefined;
+      result.amenities = ext?.facilities ?? undefined;
       break;
     case "theater":
       result.subcategory = ext?.type || tags[0] || "Θέατρο";
