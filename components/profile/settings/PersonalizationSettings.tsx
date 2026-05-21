@@ -11,12 +11,23 @@ const EMOJI_MAP: Record<string, string> = {
   hotels: "🏨", theater: "🎭", events: "🎉",
 };
 
-const CATEGORIES = [
-  { key: "all", label: "Όλες", emoji: "⭐" },
-  ...CAT_LIST.map((c) => ({ key: c.slug, label: c.labelEl, emoji: EMOJI_MAP[c.slug] ?? "📌" })),
-];
+interface PersonalizationSettingsProps {
+  /** Server-resolved nav-published categories. When supplied, drives
+   *  both label + order. Icon falls back to EMOJI_MAP when the
+   *  resolved icon isn't a single-emoji string. */
+  categories?: { slug: string; labelEl: string; icon: string }[];
+}
 
-export function PersonalizationSettings() {
+export function PersonalizationSettings({ categories }: PersonalizationSettingsProps = {}) {
+  const sourceList = categories ?? CAT_LIST.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }));
+  const CATEGORIES = [
+    { key: "all", label: "Όλες", emoji: "⭐" },
+    ...sourceList.map((c) => ({
+      key: c.slug,
+      label: c.labelEl,
+      emoji: c.icon || EMOJI_MAP[c.slug] || "📌",
+    })),
+  ];
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);

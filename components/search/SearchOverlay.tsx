@@ -345,9 +345,14 @@ function EmptyState({
 
 interface SearchOverlayProps {
   onClose: () => void;
+  /** Server-resolved category metadata (label + icon). When omitted,
+   *  falls back to the code constant. Used for the grouped result
+   *  headers and the category picker grid. */
+  categories?: { slug: string; labelEl: string; icon: string }[];
 }
 
-export function SearchOverlay({ onClose }: SearchOverlayProps) {
+export function SearchOverlay({ onClose, categories }: SearchOverlayProps) {
+  const RESOLVED_CATEGORIES = categories ?? CATEGORIES.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }));
   const {
     state,
     query,
@@ -678,7 +683,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
           return (
             <div className="space-y-5">
               {ordered.map(([cat, list]) => {
-                const meta = CATEGORIES.find((c) => c.slug === (cat as CategorySlug));
+                const meta = RESOLVED_CATEGORIES.find((c) => c.slug === (cat as CategorySlug));
                 return (
                   <div key={cat} className="space-y-2.5">
                     <p className="text-[10px] font-bold text-zinc-400 tracking-[0.2em] uppercase px-1">
@@ -759,10 +764,10 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
                       Διάλεξε κατηγορία
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {CATEGORIES.map((c) => (
+                      {RESOLVED_CATEGORIES.map((c) => (
                         <button
                           key={c.slug}
-                          onClick={() => handleCategoryChosen(c.slug)}
+                          onClick={() => handleCategoryChosen(c.slug as CategorySlug)}
                           className="h-9 px-3.5 rounded-full bg-white border border-zinc-200 text-sm font-semibold text-zinc-700 active:bg-zinc-50 transition-colors"
                         >
                           <span className="mr-1.5">{c.icon}</span>

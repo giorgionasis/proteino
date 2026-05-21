@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow";
+import { getNavPublishedCategories } from "@/lib/categories-meta";
 
 /**
  * /onboarding — gated server entry.
@@ -45,11 +46,13 @@ export default async function OnboardingPage() {
 
   const initialInterests = data?.preferences?.interests ?? [];
   const displayName      = data?.display_name ?? data?.handle ?? null;
+  const cats             = await getNavPublishedCategories();
 
   return (
     <OnboardingFlow
       initialInterests={initialInterests}
       displayName={displayName}
+      categories={cats.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }))}
     />
   );
 }

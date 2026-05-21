@@ -71,6 +71,10 @@ type Step = "hook" | "interests" | "reward" | "people";
 interface Props {
   initialInterests: string[];
   displayName:      string | null;
+  /** Server-resolved categories (label + icon). Forwarded to
+   *  InterestsScreen — keeps onboarding's category grid in sync
+   *  with admin-edited labels. */
+  categories?:      { slug: string; labelEl: string; icon: string }[];
 }
 
 /**
@@ -83,7 +87,7 @@ interface Props {
  * interests only — otherwise a stray re-render hitting /onboarding's
  * server entry would redirect the user out of the flow.
  */
-export function OnboardingFlow({ initialInterests, displayName }: Props) {
+export function OnboardingFlow({ initialInterests, displayName, categories }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("hook");
   const [interests, setInterests] = useState<string[]>(initialInterests);
@@ -190,6 +194,7 @@ export function OnboardingFlow({ initialInterests, displayName }: Props) {
           initial={interests}
           onContinue={handleInterestsContinue}
           onBack={handleInterestsBack}
+          categories={categories}
         />
       );
     case "reward":

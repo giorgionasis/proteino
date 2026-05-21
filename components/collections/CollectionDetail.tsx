@@ -27,6 +27,10 @@ interface Props {
   tags: string[];
   total: number;
   items: CollectionDetailItem[];
+  /** Server-resolved source-category label. When supplied, takes
+   *  precedence over the code constant — keeps the header in sync
+   *  with admin renames. */
+  sourceCategoryLabel?: string | null;
 }
 
 export function CollectionDetail({
@@ -37,12 +41,14 @@ export function CollectionDetail({
   tags,
   total,
   items,
+  sourceCategoryLabel,
 }: Props) {
   const router = useRouter();
   const isPortrait = !sourceCategory || PORTRAIT_CATEGORIES.has(sourceCategory);
-  const sourceLabel = sourceCategory
-    ? CATEGORIES.find((c) => c.slug === sourceCategory)?.labelEl ?? sourceCategory
-    : null;
+  const sourceLabel = sourceCategoryLabel
+    ?? (sourceCategory
+      ? CATEGORIES.find((c) => c.slug === sourceCategory)?.labelEl ?? sourceCategory
+      : null);
 
   return (
     <div>

@@ -7,6 +7,10 @@ interface Props {
   initial:    string[];
   onContinue: (picked: string[]) => void | Promise<void>;
   onBack:     () => void;
+  /** Server-resolved categories (label + icon). When omitted, falls
+   *  back to the code constant. Used to drive the interest grid +
+   *  the label lookup for the AI-added pop-in toast. */
+  categories?: { slug: string; labelEl: string; icon: string }[];
 }
 
 const MIN_PICKS = 2;
@@ -28,7 +32,7 @@ const AI_DEBOUNCE_MS = 700;
  *
  * No new step, no modal — the magic is offered, not imposed.
  */
-export function InterestsScreen({ initial, onContinue, onBack }: Props) {
+export function InterestsScreen({ initial, onContinue, onBack, categories }: Props) {
   const [picked, setPicked] = useState<Set<string>>(new Set(initial));
   const [busy, setBusy] = useState(false);
 
@@ -42,7 +46,7 @@ export function InterestsScreen({ initial, onContinue, onBack }: Props) {
   // animate-pop-in. (set + immediate clear via a 1s timer.)
   const [justAdded, setJustAdded] = useState<Set<string>>(new Set());
 
-  const list = CATEGORIES;
+  const list = categories ?? CATEGORIES.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }));
 
   const toggle = (slug: string) => {
     setPicked((prev) => {
@@ -92,7 +96,7 @@ export function InterestsScreen({ initial, onContinue, onBack }: Props) {
           setAiNote("Δεν κατάλαβα ακόμα — πρόσθεσε λίγη λεπτομέρεια.");
           return;
         }
-        setAiNote(`Διάβασα: ${cats.map(catLabel).join(" · ")}`);
+        setAiNote(`Διάβασα: ${cats.map((s) => list.find((c) => c.slug === s)?.labelEl ?? s).join(" · ")}`);
         // Merge into picked, additive only.
         const newlyAdded = new Set<string>();
         setPicked((prev) => {
@@ -251,7 +255,3 @@ export function InterestsScreen({ initial, onContinue, onBack }: Props) {
   );
 }
 
-function catLabel(slug: string): string {
-  const c = CATEGORIES.find((x) => x.slug === slug);
-  return c?.labelEl ?? slug;
-}

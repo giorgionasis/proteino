@@ -16,10 +16,13 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: "week",  label: "Τελευταία εβδομάδα" },
 ];
 
-const CATEGORY_OPTIONS = [
-  { value: "all", label: "Όλες οι κατηγορίες" },
-  ...CAT_LIST.map((c) => ({ value: c.slug, label: c.labelEl })),
-];
+function buildCategoryOptions(cats?: { slug: string; labelEl: string }[]) {
+  const source = cats ?? CAT_LIST.map((c) => ({ slug: c.slug, labelEl: c.labelEl }));
+  return [
+    { value: "all", label: "Όλες οι κατηγορίες" },
+    ...source.map((c) => ({ value: c.slug, label: c.labelEl })),
+  ];
+}
 
 interface LeaderboardRow {
   id:           string;
@@ -40,8 +43,16 @@ interface LeaderboardData {
   neighbours: LeaderboardRow[];
 }
 
-export function LeaderboardPage() {
+interface LeaderboardPageProps {
+  /** Server-resolved category list (label + slug) from
+   *  lib/categories-meta.ts. When omitted, falls back to the code
+   *  constant — keeps the component usable in showcase contexts. */
+  categories?: { slug: string; labelEl: string }[];
+}
+
+export function LeaderboardPage({ categories }: LeaderboardPageProps = {}) {
   const router = useRouter();
+  const CATEGORY_OPTIONS = buildCategoryOptions(categories);
   const [period, setPeriod]     = useState<Period>("all");
   const [category, setCategory] = useState("all");
   const [dropOpen, setDropOpen] = useState(false);

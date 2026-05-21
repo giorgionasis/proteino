@@ -8,6 +8,7 @@ import { FAB }                  from "@/components/ui/FAB";
 import { OverlayManager }       from "@/components/layout/OverlayManager";
 import { MaintenanceBanner }    from "@/components/layout/MaintenanceBanner";
 import { fetchAppSettings }     from "@/lib/app-settings";
+import { getNavPublishedCategories } from "@/lib/categories-meta";
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   let isRegistered = false;
@@ -91,6 +92,12 @@ export default async function MainLayout({ children }: { children: React.ReactNo
     redirect("/onboarding");
   }
 
+  // Resolved categories for chrome that surfaces category labels —
+  // SearchOverlay's group headers + category picker today. Other
+  // consumers can opt in by reading from the prop instead of the
+  // code constant.
+  const resolvedCategories = await getNavPublishedCategories();
+
   return (
     <AuthProvider>
       <div className="bg-[#F2F2F7]">
@@ -110,7 +117,11 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         <FAB />
 
         {/* Full-screen slide-up overlays — renders on top of everything */}
-        <OverlayManager />
+        <OverlayManager
+          categories={resolvedCategories.map((c) => ({
+            slug: c.slug, labelEl: c.labelEl, icon: c.icon,
+          }))}
+        />
       </div>
       </div>
     </AuthProvider>

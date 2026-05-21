@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CollectionDetail, type CollectionDetailItem } from "@/components/collections/CollectionDetail";
+import { getCategoryResolved } from "@/lib/categories-meta";
+import type { CategorySlug } from "@/types";
 
 interface Props {
   params: Promise<{ alias: string }>;
@@ -80,6 +82,10 @@ export default async function CollectionPage(props: Props) {
     };
   });
 
+  const sourceCategoryResolved = collection.source_category
+    ? await getCategoryResolved(collection.source_category as CategorySlug)
+    : null;
+
   return (
     <CollectionDetail
       title={collection.title}
@@ -87,6 +93,7 @@ export default async function CollectionPage(props: Props) {
       imageUrl={collection.image_url}
       type={collection.type}
       sourceCategory={collection.source_category}
+      sourceCategoryLabel={sourceCategoryResolved?.labelEl ?? null}
       tags={tags}
       total={count ?? items.length}
       items={items}
