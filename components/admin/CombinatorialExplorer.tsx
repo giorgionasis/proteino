@@ -536,13 +536,16 @@ export function CombinatorialExplorer({
             <Recommendation count={result?.count ?? 0} />
           </div>
 
-          {/* Save → opens collection editor with picked filters carried
-              over as a partial CollectionFormData (source_category +
-              tags + ext filters + title hint). Range / decade /
-              facilities picks can't be expressed as ExtFilter and are
-              skipped — the banner inside the editor tells the admin
-              which ones didn't carry. */}
-          <div className="border-t border-zinc-200 pt-3">
+          {/* Save → opens collection editor. Two paths:
+              - Filter mode: chip picks (genre/type/platform/country/…)
+                carry as source_category + tags + ExtFilter. Range /
+                decade / facilities / etc. don't fit and are skipped.
+              - Manual mode: stash matched item IDs in localStorage
+                under a fresh key, deeplink carries `?manual_key=...`.
+                The editor reads it on mount and seeds manual_item_ids
+                so the collection contains *exactly* the matched set
+                regardless of which Explorer facets produced it. */}
+          <div className="border-t border-zinc-200 pt-3 space-y-2">
             <Link
               href={buildCollectionDeeplink(
                 category,
@@ -553,10 +556,19 @@ export function CombinatorialExplorer({
               )}
               className="block text-center px-3 py-2 text-xs font-semibold rounded bg-zinc-900 text-white hover:bg-zinc-800"
             >
-              Δημιούργησε Collection με αυτά τα picks →
+              Δημιούργησε με filter mode →
             </Link>
-            <p className="text-[10px] text-zinc-500 mt-1.5 text-center">
-              Τα chip picks (genre/type/platform/country/…) μεταφέρονται· τα range/decade/facilities δεν.
+            <button
+              type="button"
+              onClick={() => openCollectionWithManualList(category, result?.matchedIds ?? [], result?.count ?? 0)}
+              disabled={!result || result.matchedIds.length === 0}
+              className="block w-full text-center px-3 py-2 text-xs font-semibold rounded border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-50 disabled:opacity-40"
+            >
+              Δημιούργησε με manual list ({result?.matchedIds.length ?? 0} items) →
+            </button>
+            <p className="text-[10px] text-zinc-500 text-center">
+              Filter mode: chip picks (genre/type/…) μεταφέρονται· range/decade/facilities δεν.
+              Manual mode: τα συγκεκριμένα matched items καρφώνονται στη συλλογή.
             </p>
           </div>
         </div>
@@ -676,6 +688,36 @@ function pickSubFilterId(category: string, filters: FilterRow[]): string {
 
 function isSubFilterId(category: string, id: string): boolean {
   return id === pickSubFilterId(category, []) || ["genre", "event_type", "cuisine", "type"].includes(id);
+}
+
+/** Manual-list handoff. Stashes matched item IDs in localStorage under
+ *  a unique key (URL length limits rule out passing them directly) and
+ *  opens the collection editor with a `?manual_key=...` deeplink. The
+ *  editor reads the stash on mount, seeds `manual_item_ids`, and lands
+ *  in manual mode — the collection contains exactly those items.
+ *
+ *  Why localStorage and not a server-side stash: cheap, no migration,
+ *  fine for single-user admin sessions. Stale entries are harmless —
+ *  the editor only reads when prompted by `?manual_key=`. */
+function openCollectionWithManualList(category: string, matchedIds: string[], matchCount: number) {
+  if (matchedIds.length === 0) return;
+  const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    localStorage.setItem(`explorer_matched_${key}`, JSON.stringify(matchedIds));
+  } catch {
+    // localStorage may be unavailable (private mode, quota); fall back
+    // to filter-mode deeplink with a console hint.
+    if (typeof console !== "undefined") {
+      console.warn("[explorer] localStorage write failed; manual list won't carry.");
+    }
+  }
+  const params = new URLSearchParams();
+  params.set("source_category", category);
+  params.set("from_explorer", String(matchCount));
+  params.set("manual_key", key);
+  if (typeof window !== "undefined") {
+    window.location.href = `/admin/content/collections/new?${params.toString()}`;
+  }
 }
 
 /** Translate Explorer picks into a CollectionEditor deeplink with a

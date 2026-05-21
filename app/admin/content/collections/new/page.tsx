@@ -41,6 +41,8 @@ export default async function NewCollectionPage(props: Props) {
       ? Number(fromExplorerRaw)
       : undefined;
 
+  const manualKey = readString(sp.manual_key);
+
   const initial: Parameters<typeof CollectionEditor>[0]["initial"] = {};
   if (source_category) initial.source_category = source_category;
   if (title_specific)  initial.title_specific = title_specific;
@@ -51,6 +53,7 @@ export default async function NewCollectionPage(props: Props) {
     <CollectionEditor
       initial={Object.keys(initial).length > 0 ? initial : undefined}
       origin={fromExplorerMatchCount !== undefined ? { source: "explorer", matchCount: fromExplorerMatchCount } : undefined}
+      originManualKey={manualKey || undefined}
     />
   );
 }

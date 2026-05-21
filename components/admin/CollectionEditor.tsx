@@ -31,6 +31,10 @@ export interface CollectionFormData {
   source_category: string; // "" = all
   tags: string[];
   filters: ExtFilter[];
+  /** Manual-list mode (migration 042). Non-empty array makes the
+   *  hydrator ignore source_category / tags / filters / item_limit
+   *  and just return these items in order. Empty = filter mode. */
+  manual_item_ids: string[];
   item_limit: number;
   is_published: boolean;
   target_audience: Audience;
@@ -62,6 +66,7 @@ const EMPTY: CollectionFormData = {
   source_category: "",
   tags: [],
   filters: [],
+  manual_item_ids: [],
   item_limit: 20,
   is_published: true,
   target_audience: "all",
@@ -90,14 +95,41 @@ interface Props {
    *  (ranges, decade, facilities, regions) could NOT be translated to
    *  the ext-filter shape. */
   origin?: { source: "explorer"; matchCount: number };
+  /** When the Explorer deeplink carries a localStorage key for the
+   *  matched item IDs, the editor reads them on mount and seeds
+   *  `manual_item_ids` so the collection lands in manual-list mode.
+   *  Decoupled from `initial` because the IDs live client-side. */
+  originManualKey?: string;
 }
 
-export function CollectionEditor({ initial, origin }: Props) {
+export function CollectionEditor({ initial, origin, originManualKey }: Props) {
   const router = useRouter();
   const [form, setForm] = useState<CollectionFormData>(() => ({ ...EMPTY, ...initial } as CollectionFormData));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aliasTouched, setAliasTouched] = useState(!!initial?.alias);
+
+  // Hydrate manual_item_ids from localStorage when the Explorer
+  // deeplinked us with a key. Fails soft — missing/invalid stash just
+  // leaves the form in filter mode and the user can switch manually.
+  useEffect(() => {
+    if (!originManualKey) return;
+    if (form.manual_item_ids.length > 0) return;
+    try {
+      const raw = localStorage.getItem(`explorer_matched_${originManualKey}`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const ids = parsed.filter((s): s is string => typeof s === "string" && s.length > 0);
+        if (ids.length > 0) setForm((f) => ({ ...f, manual_item_ids: ids }));
+      }
+    } catch {
+      // localStorage / JSON failure — silent.
+    }
+    // Intentionally one-shot on mount. The key in the URL doesn't
+    // change for the lifetime of the editor session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Snapshot for dirty-tracking. Stringified form is the cheapest reliable
   // comparison given how much nested data the form holds.
@@ -143,6 +175,7 @@ export function CollectionEditor({ initial, origin }: Props) {
         source_category: form.source_category || null,
         tags: form.tags,
         filters: form.filters,
+        manual_item_ids: form.manual_item_ids,
         item_limit: form.item_limit,
         is_published: form.is_published,
         target_audience: form.target_audience,
@@ -271,45 +304,55 @@ export function CollectionEditor({ initial, origin }: Props) {
 
           {/* Content */}
           <Section title="Περιεχόμενο" hint="Τι items θα περιλαμβάνει η συλλογή.">
-            <Field label="Πηγή">
-              <select
-                value={form.source_category}
-                onChange={(e) => patch("source_category", e.target.value)}
-                className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:border-zinc-400"
-              >
-                <option value="">Όλες οι κατηγορίες</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c.slug} value={c.slug}>{c.icon} {c.labelEl}</option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Tags (όλα πρέπει να ταιριάζουν)" hint="Αν είναι κενό, ταιριάζουν όλα τα items της πηγής.">
-              <TagPicker
-                category={form.source_category || null}
-                value={form.tags}
-                onChange={(t) => patch("tags", t)}
+            {form.manual_item_ids.length > 0 ? (
+              <ManualListPanel
+                ids={form.manual_item_ids}
+                onChange={(ids) => patch("manual_item_ids", ids)}
+                onClearAndSwitchToFilter={() => patch("manual_item_ids", [])}
               />
-            </Field>
+            ) : (
+              <>
+                <Field label="Πηγή">
+                  <select
+                    value={form.source_category}
+                    onChange={(e) => patch("source_category", e.target.value)}
+                    className="w-full px-4 py-2.5 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:border-zinc-400"
+                  >
+                    <option value="">Όλες οι κατηγορίες</option>
+                    {CATEGORIES.map((c) => (
+                      <option key={c.slug} value={c.slug}>{c.icon} {c.labelEl}</option>
+                    ))}
+                  </select>
+                </Field>
 
-            <Field label="Φίλτρα πεδίων (advanced)" hint="Φίλτρα σε στήλες extension table — π.χ. Movies × channel = 'Netflix'. Όλα πρέπει να ταιριάζουν.">
-              <ExtFilterEditor
-                sourceCategory={form.source_category || null}
-                value={form.filters}
-                onChange={(filters) => patch("filters", filters)}
-              />
-            </Field>
+                <Field label="Tags (όλα πρέπει να ταιριάζουν)" hint="Αν είναι κενό, ταιριάζουν όλα τα items της πηγής.">
+                  <TagPicker
+                    category={form.source_category || null}
+                    value={form.tags}
+                    onChange={(t) => patch("tags", t)}
+                  />
+                </Field>
 
-            <Field label="Όριο items">
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={form.item_limit}
-                onChange={(e) => patch("item_limit", Math.max(1, Math.min(100, Number(e.target.value) || 20)))}
-                className="w-32 px-4 py-2.5 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400"
-              />
-            </Field>
+                <Field label="Φίλτρα πεδίων (advanced)" hint="Φίλτρα σε στήλες extension table — π.χ. Movies × channel = 'Netflix'. Όλα πρέπει να ταιριάζουν.">
+                  <ExtFilterEditor
+                    sourceCategory={form.source_category || null}
+                    value={form.filters}
+                    onChange={(filters) => patch("filters", filters)}
+                  />
+                </Field>
+
+                <Field label="Όριο items">
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={form.item_limit}
+                    onChange={(e) => patch("item_limit", Math.max(1, Math.min(100, Number(e.target.value) || 20)))}
+                    className="w-32 px-4 py-2.5 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400"
+                  />
+                </Field>
+              </>
+            )}
           </Section>
 
           {/* Display */}
@@ -616,7 +659,13 @@ function LivePreview({ form }: { form: CollectionFormData }) {
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Stable key for fetch deps
-  const key = JSON.stringify({ src: form.source_category, tags: form.tags, filters: form.filters, lim: form.item_limit });
+  const key = JSON.stringify({
+    src: form.source_category,
+    tags: form.tags,
+    filters: form.filters,
+    lim: form.item_limit,
+    manual: form.manual_item_ids,
+  });
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -630,6 +679,7 @@ function LivePreview({ form }: { form: CollectionFormData }) {
             source_category: form.source_category || undefined,
             tags: form.tags,
             filters: form.filters,
+            manual_item_ids: form.manual_item_ids,
             item_limit: form.item_limit,
           }),
         });
@@ -801,6 +851,97 @@ function CarouselPreview({ form, items, loading }: { form: CollectionFormData; i
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Manual list panel ─────────────────────────────────────── */
+
+/** Manual-list mode UI — renders a chip stack of the picked items'
+ *  titles + covers, with per-row remove. Switching to filter mode
+ *  empties `manual_item_ids` and brings back the source / tags /
+ *  filters / item_limit knobs. */
+function ManualListPanel({
+  ids,
+  onChange,
+  onClearAndSwitchToFilter,
+}: {
+  ids: string[];
+  onChange: (next: string[]) => void;
+  onClearAndSwitchToFilter: () => void;
+}) {
+  const [rows, setRows] = useState<{ id: string; title: string; cover_url: string | null; category: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Hydrate titles + covers for the current id list. Re-runs when the
+  // ids array reference changes (admin removes one, etc).
+  const idsKey = ids.join(",");
+  useEffect(() => {
+    if (ids.length === 0) { setRows([]); return; }
+    let cancelled = false;
+    setLoading(true);
+    fetch("/api/admin/collections/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ manual_item_ids: ids }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const items = Array.isArray(data?.items) ? data.items : [];
+        setRows(items.map((it: any) => ({
+          id: it.id, title: it.title, cover_url: it.cover_url, category: it.category,
+        })));
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
+
+  function remove(id: string) {
+    onChange(ids.filter((x) => x !== id));
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="border border-coral-200 bg-coral-50 rounded-lg p-3 text-xs text-zinc-700">
+        <strong className="text-zinc-900">Manual list mode</strong> · {ids.length} items πέρασαν από το Explorer.
+        Ο hydrator αγνοεί source / tags / filters — εμφανίζει ακριβώς αυτά τα items.
+        <button
+          onClick={onClearAndSwitchToFilter}
+          className="ml-2 underline text-coral-700 hover:text-coral-800"
+        >
+          Άλλαξε σε filter mode
+        </button>
+      </div>
+
+      {loading && rows.length === 0 ? (
+        <div className="text-xs text-zinc-400">Φόρτωση...</div>
+      ) : rows.length === 0 ? (
+        <div className="text-xs text-zinc-400">Κανένα ταιριαστό item (πιθανώς unpublished ή διαγραμμένα).</div>
+      ) : (
+        <ul className="divide-y divide-zinc-100 border border-zinc-200 rounded-lg overflow-hidden">
+          {rows.map((it) => (
+            <li key={it.id} className="flex items-center gap-3 p-2.5 bg-white hover:bg-zinc-50">
+              <div className="w-10 h-14 bg-zinc-100 rounded overflow-hidden shrink-0">
+                {it.cover_url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={it.cover_url} alt="" className="w-full h-full object-cover" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-zinc-800 truncate">{it.title}</p>
+                <p className="text-[11px] text-zinc-400">{it.category}</p>
+              </div>
+              <button
+                onClick={() => remove(it.id)}
+                className="text-zinc-400 hover:text-red-600 text-lg leading-none px-2"
+                aria-label="Αφαίρεση"
+              >×</button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

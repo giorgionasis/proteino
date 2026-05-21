@@ -26,6 +26,12 @@ export interface CollectionRow {
   source_category: string | null;
   tags: string[];
   filters: { field: string; value: string }[];
+  /** Manual-list mode (migration 042). When non-empty, the hydrator
+   *  returns exactly these items in this order and ignores
+   *  source_category / tags / filters / item_limit. Surfaced by the
+   *  Editor as a mode toggle and seeded from the Explorer's
+   *  Save-as-Collection deeplink. */
+  manual_item_ids: string[];
   item_limit: number;
   is_published: boolean;
   target_audience: "all" | "registered" | "guest";
@@ -143,6 +149,41 @@ const EXT_TABLES: Record<string, string> = {
 };
 
 async function hydrateCollection(sb: SupabaseLike, c: CollectionRow): Promise<HydratedCollection> {
+  // Always fetch the original-suggester profile alongside item metadata —
+  // the Landscape card renders the avatar overlay AND wires it to the
+  // ProfilePopup (id/handle/display_name needed). FK disambiguator:
+  // `suggestions` has two FKs to `users` (user_id + hidden_by) so plain
+  // `users(...)` returns ambiguous.
+  const suggesterJoin = "suggestions(users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, level, suggestion_count, avg_quality_score))";
+  const baseSelect = `id, title, slug, cover_url, category, avg_rating, rating_count, metadata, ${suggesterJoin}`;
+
+  // Manual-list mode (migration 042): non-empty manual_item_ids wins.
+  // Hydrator returns exactly those items in declared order, ignoring
+  // source_category / tags / filters / item_limit. Still respects
+  // is_published — an admin can't accidentally surface a hidden item.
+  const manualIds = (Array.isArray(c.manual_item_ids) ? c.manual_item_ids : [])
+    .filter((s): s is string => typeof s === "string" && s.length > 0);
+  if (manualIds.length > 0) {
+    const { data, error } = await sb
+      .from("items")
+      .select(baseSelect)
+      .in("id", manualIds)
+      .eq("is_published", true);
+    if (error) {
+      console.error("[collections] hydrate (manual) failed for", c.id, error.message);
+      return { collection: c, items: [], total: 0 };
+    }
+    // Preserve admin-declared order; drop unknown ids silently.
+    const byId = new Map<string, HydratedItem>();
+    for (const row of (data ?? []) as HydratedItem[]) byId.set(row.id, row);
+    const ordered: HydratedItem[] = [];
+    for (const id of manualIds) {
+      const hit = byId.get(id);
+      if (hit) ordered.push(hit);
+    }
+    return { collection: c, items: ordered, total: ordered.length };
+  }
+
   // If admin set ext-field filters, we need to inner-join the ext table
   // so we can filter on its columns. Otherwise plain items query is fine.
   const extFilters: ExtFilter[] = (Array.isArray(c.filters) ? c.filters : [])
@@ -153,13 +194,6 @@ async function hydrateCollection(sb: SupabaseLike, c: CollectionRow): Promise<Hy
   const extTable = c.source_category ? EXT_TABLES[c.source_category] : undefined;
   const useExtJoin = extFilters.length > 0 && !!extTable;
 
-  // Always fetch the original-suggester profile alongside item metadata —
-  // the Landscape card renders the avatar overlay AND wires it to the
-  // ProfilePopup (id/handle/display_name needed). FK disambiguator:
-  // `suggestions` has two FKs to `users` (user_id + hidden_by) so plain
-  // `users(...)` returns ambiguous.
-  const suggesterJoin = "suggestions(users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, level, suggestion_count, avg_quality_score))";
-  const baseSelect = `id, title, slug, cover_url, category, avg_rating, rating_count, metadata, ${suggesterJoin}`;
   const select = useExtJoin
     ? `${baseSelect}, ${extTable}!inner()`
     : baseSelect;

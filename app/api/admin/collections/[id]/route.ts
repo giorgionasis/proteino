@@ -23,7 +23,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
   const {
     type, title, title_specific, alias, image_url,
-    source_category, tags, filters, item_limit,
+    source_category, tags, filters, manual_item_ids, item_limit,
     is_published, valid_from, valid_until, target_audience,
     placements,
   } = body;
@@ -38,6 +38,11 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   if (source_category !== undefined) patch.source_category = source_category || null;
   if (tags !== undefined) patch.tags = tags;
   if (filters !== undefined) patch.filters = filters;
+  if (manual_item_ids !== undefined) {
+    patch.manual_item_ids = Array.isArray(manual_item_ids)
+      ? manual_item_ids.filter((s: any) => typeof s === "string" && s.length > 0)
+      : [];
+  }
   if (item_limit !== undefined) patch.item_limit = item_limit;
   if (is_published !== undefined) patch.is_published = is_published;
   if (valid_from !== undefined) patch.valid_from = valid_from || null;

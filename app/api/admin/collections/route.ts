@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
     source_category,
     tags = [],
     filters = [],
+    manual_item_ids = [],
     item_limit = 20,
     is_published = true,
     valid_from,
@@ -104,6 +105,7 @@ export async function POST(req: NextRequest) {
     source_category?: string;
     tags?: string[];
     filters?: any[];
+    manual_item_ids?: string[];
     item_limit?: number;
     is_published?: boolean;
     valid_from?: string;
@@ -111,6 +113,10 @@ export async function POST(req: NextRequest) {
     target_audience?: "all" | "registered" | "guest";
     placements?: Placement[];
   };
+
+  const cleanManualIds = Array.isArray(manual_item_ids)
+    ? manual_item_ids.filter((s): s is string => typeof s === "string" && s.length > 0)
+    : [];
 
   if (!type || !title?.trim()) {
     return NextResponse.json({ error: "type and title are required" }, { status: 400 });
@@ -149,6 +155,7 @@ export async function POST(req: NextRequest) {
       source_category: source_category || null,
       tags,
       filters,
+      manual_item_ids: cleanManualIds,
       item_limit,
       is_published,
       valid_from: valid_from || null,
