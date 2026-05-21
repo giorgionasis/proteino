@@ -2,7 +2,7 @@
 
 This file is the source of truth for all architectural, design, and product decisions made for the Proteino project. Read this before every session.
 
-**Last meaningful update:** 2026-05-21 (session 34 — Explorer expansion §49: matchesFilter coverage for 8 silent no-op filters (awards / characteristics / origin / diet / when × 2 / price), admin-only ADMIN_FACETS registry with 7 facet kinds (chips / searchable-chips / year-range / range / amenities / tag-pattern / boolean / text), searchable combobox for open sets, tag-pattern characteristics per category, Save-as-Collection deeplink. Admin gap C closed via §50: `category_meta` table + resolver overlay on `constants/categories.ts` for editable label / icon / order / nav-visibility.)
+**Last meaningful update:** 2026-05-22 (session 35 — §51 first-paint flash fix on /admin/categories + /admin/content/filters (server-fetch initial data + skip-flag for client effects, Explorer query extracted to lib/admin/explorer-query.ts); §52 Collection manual-list mode (migration 042) + Explorer matched-IDs handoff via localStorage; §53 rolled back vibes tag-pattern filter (043) — wrong tool for structured queries — and replaced with structured amenities reading from `item_food.information.amenities` / `item_bars.information.amenities` / `item_hotels.facilities` (migration 044, no schema change needed); resolver wiring for 5 user-facing CATEGORIES consumers (LeaderboardPage / SearchOverlay / PersonalizationSettings / InterestsScreen / CollectionDetail). §54 documents the next move: AI search v3 needs to extract structured attributes (amenities + seasons + single_season + completed series + diet + when window etc) from free-text Greek queries so "χαλάνδρι μπαρ ταράτσα" actually returns bars in Χαλάνδρι with amenities.roof_garden=true.)
 
 ---
 
@@ -2384,3 +2384,290 @@ If admin starts asking for capability-flag edits ("turn on map for theater?"), t
 4. Document the constraint per flag (e.g. "hasMap requires every published item in the category to have lat/lng").
 
 Likely a multi-session project. Not worth doing until the demand surfaces.
+
+---
+
+## 51. First-paint flash fix — server-fetch initial data for client admin pages (session 35)
+> ✅ Shipped — commit `21b8d8c`. `/admin/categories` + `/admin/content/filters` (including the Explorer subtab) mount fully populated, no blank flash, no layout jump.
+
+### Symptoms before the fix
+
+User reported flashes on the new session-34 surfaces: blank screen briefly → content appears → layout shifts/jumps → for the Explorer, a second flicker as the count card swapped from "0/…" to the real number. Root cause was the same pattern in both pages: `"use client"` components with `useState`/`useEffect`, mounting empty and fetching in the effect.
+
+### Pattern applied
+
+Each surface gets:
+1. **Server-fetch in `page.tsx`** — async server component pre-loads everything the client component would have fetched. Uses the existing admin client + helpers (no new infrastructure).
+2. **`initial*` props** — client component accepts the data via props and seeds `useState` from them. `loading` starts `false` when seeded.
+3. **`useRef` skip-flag** — suppresses the first-mount fetch effect when the seeded category/scope matches what's on screen. Subsequent category switches and mutations still refetch normally.
+
+Used by:
+- `/admin/categories` → `<CategoriesTable initial={...} />` (resolver + 3 count queries in parallel)
+- `/admin/content/filters` → `<FiltersManager initialCategory initialFilters initialUserMap initialSettings initialExplorer />` (5 server fetches in parallel including the empty-selection Explorer query)
+- `<CombinatorialExplorer>` → accepts `initial?: ExplorerInitial` with `{ category, filters, subcategories, topLevelRegions, result }`; two skip-flags (metadata + debounced query)
+
+### `lib/admin/explorer-query.ts` extraction
+
+The route handler at `app/api/admin/explorer/query/route.ts` was ~470 lines, with the actual query logic deeply nested. Extracted `runExplorerQuery(sb, input)` into the lib so:
+- Route stays as a thin body-parse + delegate (~50 lines)
+- Server page can pre-run the empty-selection query against the admin client directly, no HTTP roundtrip during SSR
+
+Pure function over `(sb, ExplorerQueryInput)` → `ExplorerQueryResult`. Same matching contract as before; behavior unchanged from the client side.
+
+### When to apply this pattern elsewhere
+
+Audit every `"use client"` admin page that does `useState/useEffect`-fetch-on-mount. If the page is gated by the admin auth layout (server-side) and the data is service-role accessible, the pattern always works. Other candidates that still flash: `/admin/content/regions`, `/admin/content/activities`, `/admin/users`, `/admin/reviews` (sorta — already has server fetch for the Unresolved section, body could too).
+
+---
+
+## 52. Collection manual-list mode + Explorer matched-IDs handoff (session 35)
+> ✅ Shipped — commit `17636c7`. Migration **042** to apply on Supabase.
+
+### Why it exists
+
+Until session 35 a collection's contents were always derived from `(source_category + tags + filters)`. The Explorer's Save-as-Collection deeplink (shipped session 34, §49) could carry the filter portion of the picks but not the matched item IDs — admins who built picks via ranges / amenities / decades / characteristics had to re-approximate them as `ExtFilter`, losing precision. The "I want exactly these 47 bars I see in the Explorer preview" use case had no path.
+
+### Schema (`scripts/sql/042-collections-manual-item-ids.sql`)
+
+```sql
+ALTER TABLE collections
+  ADD COLUMN IF NOT EXISTS manual_item_ids jsonb NOT NULL DEFAULT '[]'::jsonb;
+```
+
+`jsonb` (not `uuid[]`) for shape symmetry with the existing `tags` + `filters` columns. Order in the array is preserved by the hydrator and surfaces as the carousel order.
+
+### Hydrator contract (`lib/collections.ts`)
+
+When `manual_item_ids` is non-empty, the hydrator short-circuits: ignores `source_category` / `tags` / `filters` / `item_limit`, selects exactly those items in declared order, drops unknown IDs silently. Still respects `is_published` — admin can't accidentally surface a hidden item.
+
+```ts
+if (manualIds.length > 0) {
+  const { data } = await sb
+    .from("items")
+    .select(baseSelect)
+    .in("id", manualIds)
+    .eq("is_published", true);
+  const byId = new Map(...);
+  const ordered = manualIds.map((id) => byId.get(id)).filter(Boolean);
+  return { collection: c, items: ordered, total: ordered.length };
+}
+```
+
+### Editor UI (`<CollectionEditor>` + `<ManualListPanel>`)
+
+- New `ManualListPanel` replaces the source / tags / filters knobs when `manual_item_ids.length > 0`. Renders hydrated rows: cover + title + per-row remove-X.
+- "Άλλαξε σε filter mode" link clears `manual_item_ids` and brings the filter UI back. One-way mental model — either manual OR filter, never both.
+- Save payload includes the field; POST + PATCH endpoints persist it; preview endpoint short-circuits the same way the hydrator does.
+
+### Explorer handoff (localStorage + `?manual_key=`)
+
+URL length rules out passing thousands of UUIDs as query params. The "Δημιούργησε με manual list (N items)" CTA:
+1. Generates a fresh key (`<base36-timestamp>-<base36-random>`)
+2. `localStorage.setItem('explorer_matched_<key>', JSON.stringify(matchedIds))`
+3. Deeplinks `/admin/content/collections/new?source_category=<cat>&from_explorer=<n>&manual_key=<key>`
+
+The CollectionEditor accepts a new `originManualKey?: string` prop. On mount, reads `localStorage['explorer_matched_<key>']` and seeds `manual_item_ids`. Fails soft (private mode / quota / missing stash) — falls back to filter mode silently.
+
+Why localStorage and not a server-side stash: zero infrastructure, fine for single-user admin sessions. Stale entries are harmless — the editor only reads when prompted by the URL param.
+
+### Both buttons coexist
+
+The original "Δημιούργησε με filter mode →" stays alongside the new "Δημιούργησε με manual list (N items) →". Filter mode is the right choice when the picks ARE expressible as ext filters and admin wants the collection to track new matching items over time; manual mode is right when the picks fall outside ExtFilter shape OR admin wants a frozen list.
+
+---
+
+## 53. Tag-pattern vibes filter — shipped, then reverted (session 35)
+> ❌ Shipped via 043 (session 35), then **reverted** — `4431903` + 043-rollback migration. Replaced with §53.B structured-amenities approach.
+
+### What was shipped initially
+
+Migration 043 seeded 3 `category_filters` rows (`food.vibes`, `bars.vibes`, `hotels.vibes`) with `widget: checkboxes` and option lists like rooftop / cocktail / wine / live-music. A new `lib/category-filters/vibes.ts` held the regex pattern catalogue per option, and `matchesFilter` got a `case "vibes"` that tested the patterns against `item.metadata.tags`.
+
+### Why it was wrong
+
+User pushback (verbatim): *"why do we need tags? it is filtering to see how many items we have in a category. it is not a search on frontend. we search specifically for a bar if it has a roof garden for example."*
+
+The lesson:
+- **Filtering is a structured query.** "Show bars with a roof garden" should select rows where the bar has explicit `roof_garden = true`, not rows where the tag column happens to contain text that matches a regex.
+- Tag-pattern matching is fragile: false-positives ("best rooftop view in Athens" matches even if the bar has no actual rooftop), false-negatives (a bar with `has_rooftop=true` but no descriptive text doesn't match). Admin has no clean way to control coverage.
+- Admin tag-pattern facets in the Explorer stay — they're a diagnostic / rough-cut tool ("how many items even MENTION rooftop?") for the admin's own use, not a user-facing filter.
+
+### Rollback artifact
+
+Migration `043-public-vibes-filters-rollback.sql` runs `DELETE FROM category_filters WHERE filter_id='vibes' AND category IN ('food','bars','hotels')`. Idempotent — no-op if 043 was never applied.
+
+### 53.B — Structured amenities (the proper fix)
+
+Crucial discovery during the rework: **the structured amenity data already exists**:
+
+| Category | Column |
+|---|---|
+| Food | `item_food.information.amenities` — object-of-booleans (`{parking: true, wifi: true, …}`) |
+| Bars | `item_bars.information.amenities` — same shape |
+| Hotels | `item_hotels.facilities` — same shape, separate column |
+
+Admin already writes to these via `IconToggleGrid` in `SuggestionEditor` (food + hotels) and a checkbox grid (bars). The catalogues live in `lib/icons.ts` (`HOTEL_AMENITY_GROUPS`, `FOOD_AMENITY_OPTIONS`; bars uses the `extra_fields`-driven attribute list with a 12-item hardcoded fallback).
+
+**No schema migration needed.** The wiring (session 35 commit `284c259`):
+
+1. `CategoryItem.amenities?: Record<string, boolean> | string[]` — denormalised
+2. Both `mapItem` implementations (public `app/(main)/[category]/page.tsx`, admin `lib/admin/explorer-query.ts`) read from the right source per category:
+   - food: `ext.information?.amenities`
+   - bars: `ext.information?.amenities`
+   - hotels: `ext.facilities`
+3. `EXT_SELECT` (public + Explorer) now pulls `information` for food + bars
+4. `matchesFilter case "amenities"` — AND semantics via `parseAmenities` (imported from `admin-facets.ts` where the helper already lived; tolerates both object-of-booleans and array-of-strings shapes)
+5. **Migration 044** seeds 3 public `amenities` filter rows. Idempotent. Admin can edit options at `/admin/content/filters` to add / remove what surfaces publicly.
+
+When a user picks "Roof Garden" on `/bars`, the filter now selects exactly the bars where `item_bars.information.amenities.roof_garden = true`. Hard yes/no, no pattern matching, no false positives.
+
+### Migration order on Supabase
+
+Apply in this order:
+1. **043-rollback** — clean up the bad seed (no-op if 043 never applied)
+2. **044** — seed the proper structured amenities filter rows
+
+---
+
+## 54. AI search v3 — structured-attribute extraction (planned, not started)
+> 📋 Concrete next move. Plans how the Gemini search extractor will recognise amenities + structured attributes (seasons / single-season / completed / diet / when) so a Greek free-text query like "χαλάνδρι μπαρ ταράτσα" returns bars in Χαλάνδρι with `amenities.roof_garden=true`.
+
+### The gap
+
+Today's search (CLAUDE.md §27, `app/api/search/route.ts` + `lib/ai/gemini.ts:analyzeSearchQuery`) extracts:
+- `intent` / `vibe` / `query` / `type` / `location` / `categories` / `genre` / `channel` / `status` / `period` / `person` / `decade` / `price` / `duration_min` / `duration_max`
+
+It does NOT extract:
+- **Amenities** for venues (food / bars / hotels) — e.g. ταράτσα → `roof_garden`, parking → `parking`, βίγκαν → `vegan_menu`
+- **`seasons`** for series — e.g. "μονή σεζόν" / "single-season" → `seasons=1`
+- **`single_season` / `completed` / `true_story`** characteristics — already shipped as a public filter (§49 matchesFilter Class A) but search doesn't surface them
+- **`diet` flags** for recipes — e.g. "vegan" / "χωρίς γάλα" → vegan / no_milk
+- **`when` window** for theater / events — e.g. "αυτό το σαββατοκύριακο" → this_week
+- **`hasAwards`** for movies / series — e.g. "βραβευμένη ταινία" → hasAwards=true
+
+So "χαλάνδρι μπαρ ταράτσα" today resolves only the category (bars) + location (Χαλάνδρι). The amenity token is dropped — search returns every bar in Χαλάνδρι instead of the rooftop subset.
+
+### The plan
+
+Three pieces:
+
+**1. Extend `SearchAnalysis` (types/index.ts):**
+
+```ts
+export interface SearchAnalysis {
+  ...existing fields...
+  /** Venue amenities (food / bars / hotels). Canonical keys matching
+   *  the catalogues in lib/icons.ts (HOTEL_AMENITY_GROUPS,
+   *  FOOD_AMENITY_OPTIONS) — e.g. "roof_garden", "parking", "wifi",
+   *  "vegan_menu". AND semantics in the search route (mirror the
+   *  public `amenities` filter). */
+  amenities?:    string[] | null;
+  /** Series — exact season count. Today's surface uses 1 only
+   *  ("single-season" filter), but the type allows any int so admin
+   *  can extend the characteristic facet later. */
+  seasons?:      number | null;
+  /** Generic structured-characteristic flags. Each one maps to a
+   *  matchesFilter case the public side already supports — search
+   *  just needs to identify them. */
+  completed?:    boolean | null;  // series with end_date
+  true_story?:   boolean | null;  // tag-regex match
+  has_awards?:   boolean | null;  // movies/series awards jsonb non-empty
+  /** Recipes — vegan / no_milk / no_sugar (mirror normalizeDietFlags). */
+  diet?:         string[] | null;
+  /** Theater/events — "this_week" | "this_month" | resolved month name */
+  when?:         "this_week" | "this_month" | string | null;
+}
+```
+
+**2. Teach Gemini the vocabulary (`lib/ai/gemini.ts:analyzeSearchQuery` + `lib/ai/taxonomy.ts`):**
+
+The taxonomy file already injects categories + regions + sub-categories into the prompt. Add an amenity-vocabulary block per venue category (food / bars / hotels), generated from `lib/icons.ts` catalogues:
+
+```
+AMENITIES (when category = bars):
+- "ταράτσα" / "rooftop" / "roof garden" → "roof_garden"
+- "parking" / "πάρκινγκ" → "parking"
+- "wifi" / "wi-fi" → "wifi"
+- "live music" / "ζωντανή μουσική" → "live_music"
+- "pet friendly" / "κατοικίδιο" → "pet"
+...
+```
+
+Same for food + hotels. **Bump `PROMPT_VERSION`** in `lib/ai/cache-and-log.ts` to invalidate the 30-day cache so the next searches see the new prompt.
+
+The same block also lists `seasons / single_season / completed / true_story / diet / when / has_awards` keywords per category so Gemini can route them to the new fields.
+
+**3. Apply the new fields in `app/api/search/route.ts`:**
+
+For each branch (venue / non-venue), after the title / type / location filters land:
+
+```ts
+// Venue branch (food / bars / hotels)
+if (analysis.amenities?.length) {
+  candidates = candidates.filter((c) => {
+    const have = parseAmenities(c.amenities);
+    return analysis.amenities!.every((sel) => have.includes(sel.toLowerCase()));
+  });
+}
+
+// Series branch
+if (typeof analysis.seasons === "number") {
+  candidates = candidates.filter((c) => c.seasons === analysis.seasons);
+}
+if (analysis.completed === true) {
+  candidates = candidates.filter((c) => !!c.endDate);
+}
+
+// Theater / events
+if (analysis.when) {
+  // Reuse the matchesFilter "when" case directly — pass through analysis.when.
+}
+
+// Recipes
+if (analysis.diet?.length) {
+  candidates = candidates.filter((c) => analysis.diet!.every((d) => c.diet?.includes(d)));
+}
+
+// Movies + series
+if (analysis.has_awards === true) {
+  candidates = candidates.filter((c) => !!c.hasAwards);
+}
+```
+
+The fetch side (`fetchByStructuredFilters` for non-venues) needs corresponding additions — pull `seasons` for series, `end_date` for completed-series queries, `awards` for has_awards. Most of these columns are already in the `EXT_SELECT` since §49 Class A.
+
+### Decisions to lock before starting
+
+1. **`PROMPT_VERSION` bump** — `v6` → `v7`. Forces every cached 30-day query to re-run through Gemini. ~$0.0001/search × maybe a few hundred cached entries = pennies.
+2. **AND vs OR for amenities** — mirroring the public filter (AND) is the only sensible default. "ταράτσα και live μουσική" → both must apply.
+3. **Soft vs hard fallback when amenities don't resolve** — today's pattern: if location resolves but a refinement token doesn't match anything in the data, search still returns location-only matches (drops the unmatched constraint). Keep that for amenities too — "χαλάνδρι μπαρ chthonic-vibes" returns Χαλάνδρι bars rather than zero results.
+4. **Single-token disambiguation** — "rooftop" alone could be a vibe, a venue type, a movie, or an album. Lean on the category extraction: if Gemini also identified `categories: ["bars"]` from co-occurring tokens, treat `rooftop` as an amenity. Otherwise leave it in `query` for title-match fallback.
+
+### Estimate
+
+Half a session (~2h). Mostly a Gemini-prompt edit + a few JS filter additions in the search route. The structured data is already on items (the §53.B amenities migration shipped this; seasons / end_date / awards / diet have been there since the schema's inception).
+
+### Why this is the next move
+
+The structured-amenities filter (§53.B) only matters at scale when users actually find the chips. The current path is "go to /bars → see the chips → click them." Most users will type instead. Without §54 they get a half-broken search experience: "χαλάνδρι ταβέρνα" works (location + sub-type are extracted) but "χαλάνδρι ταβέρνα παιδότοπος" silently drops the amenity. §54 closes that gap and makes the structured data actually queryable by humans.
+
+---
+
+## 55. Open follow-ups (rolling)
+> Snapshot maintained at end of each session.
+
+**Concrete + sized:**
+- **§54 AI search v3** — extract amenities + structured attributes from free-text queries. ~2h. Next move per user request.
+- **Admin tools migrate to resolver** — 7 admin files still read `constants/categories.ts` directly (CollectionEditor / CollectionsList / LayoutManager / RelatedSectionsManager / SectionConfigDrawer / SuggestionEditor / NewSuggestionForm). ~30 min mechanical. Lower priority (admin sees their own edits on `/admin/categories`).
+- **First-paint flash audit pass 2** — same server-fetch + skip-flag pattern can fix `/admin/content/regions`, `/admin/content/activities`, `/admin/users`. ~1h each.
+
+**Blocked on user decisions:**
+- **Phase B day 1** (pgvector recs) — embedding provider lock + backfill scope. Plan in §45.
+- **Biblionet subcategory taxonomy** — expand to ~18 vs two-tier UI. Plan in §44.
+
+**Long tail:**
+- Promote more useful admin-only facets to public filters (case-by-case after watching which Explorer combinations drive admin activity).
+- §39 SEO closing — admin fields for contentRating / ISBN / numberOfEpisodes / starRating / openingHours / organizer / recipe video; sitemap-index split at 5K items; image sitemap extension; `noindex` on thin pages; canonical URLs on category + profile pages; K2 → new URL 301 redirect map.
+- Real legal copy on `/terms` + `/privacy`.
+- Drop legacy `ratings` + `comments` tables (frozen, no longer written/read).
+- Per-category visual identity polish.

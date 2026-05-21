@@ -1,12 +1,109 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-21 (session 34 — Explorer expansion: matchesFilter coverage + ADMIN_FACETS registry + Save-as-Collection deeplink + category_meta resolver + all-categories audit)
+Last updated: 2026-05-22 (session 35 — admin flash fix + Collection manual-list mode + vibes revert + structured amenities + 5 CATEGORIES consumers wired to resolver)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 34 (current) finished:**
+**Current state — session 35 (current) finished:**
+
+Five shipped pieces across the admin + filtering surfaces, plus one shipped-then-reverted experiment with a documented lesson. Documented in CLAUDE.md §51–§54.
+
+### Shipped — first-paint flash fix on /admin/categories + /admin/content/filters (commit `21b8d8c`)
+
+User reported a cascade of flashes on the new session-34 admin pages: blank screen briefly → content appears → layout jumps. Both pages were `"use client"` components that mounted empty and fetched in `useEffect`. Pattern applied:
+
+- **`page.tsx` becomes async server component** — pre-fetches the data the client component would have asked for in its mount effect (resolver + 3 count queries for categories; filters + settings + audit user-map + subcategories + venue regions for the filters page; the **empty-selection Explorer query result** too).
+- **`initial*` props** — client component seeds `useState` from props, `loading` starts `false`.
+- **`useRef` skip-flag** — suppresses the first-mount fetch effect when the seeded scope still matches what's on screen. Subsequent category switches + mutations refetch normally.
+
+The Explorer query was extracted from the route handler into `lib/admin/explorer-query.ts:runExplorerQuery(sb, input)` — a pure function the server page can call directly during SSR. Route handler became a thin body-parse + delegate (~50 lines vs the previous ~470).
+
+CLAUDE.md §51 documents the pattern + lists other admin pages where it should apply next (`/admin/content/regions`, `/admin/content/activities`, `/admin/users`).
+
+### Shipped — Collection manual-list mode + Explorer matched-IDs handoff (commit `17636c7`, migration **042**)
+
+The Explorer's Save-as-Collection deeplink (session 34, §49) could carry the filter portion of admin's picks but not the matched item IDs — picks built from ranges / amenities / decades had to be re-approximated as ExtFilter, losing precision. Session 35 adds the manual-list mode:
+
+- **Migration 042** — `collections.manual_item_ids jsonb`. When non-empty, the hydrator (`lib/collections.ts`) short-circuits all filtering, returns exactly those items in declared order, still respects `is_published`.
+- **`<ManualListPanel>`** in CollectionEditor — replaces the source/tags/filters knobs when in manual mode. Renders hydrated rows (cover + title + remove-X). "Άλλαξε σε filter mode" clears the list and brings the filter UI back.
+- **Explorer "Δημιούργησε με manual list (N items)" CTA** — stashes `result.matchedIds` in `localStorage['explorer_matched_<key>']` (URL length rules out passing thousands of UUIDs as query params) and deeplinks `/admin/content/collections/new?manual_key=<key>`. CollectionEditor reads the stash on mount via a new `originManualKey` prop. Fails soft (private mode, missing stash) — falls back to filter mode.
+
+Both buttons coexist; filter mode is right when the picks ARE expressible as ext filters and the collection should track new matching items over time; manual mode is right when picks fall outside ExtFilter shape OR admin wants a frozen list.
+
+### Shipped — 5 user-facing CATEGORIES consumers routed through the resolver (commit `3694409`)
+
+After session 34's migration 041 made category label/icon/order DB-editable, the consumers reading `constants/categories.ts` directly were stuck on in-code defaults. Routed the high-visibility user-facing ones through `getCategoriesResolved` / `getCategoryResolved` / `getNavPublishedCategories`:
+
+| Consumer | Parent that fetches | How |
+|---|---|---|
+| `LeaderboardPage` | `app/(main)/leaderboard/page.tsx` (made async) | Optional `categories` prop, falls back to constant |
+| `SearchOverlay` | `app/(main)/layout.tsx` → `OverlayManager` | Threaded 3 levels — overlay always has resolved data |
+| `PersonalizationSettings` | `app/(main)/profile/[handle]/settings/personalization/page.tsx` | Same prop pattern |
+| `InterestsScreen` (onboarding) | `app/onboarding/page.tsx` → `OnboardingFlow` → `InterestsScreen` | Threaded through |
+| `CollectionDetail` | `app/(main)/collections/[alias]/page.tsx` | Adds `sourceCategoryLabel` prop via `getCategoryResolved()` (single-slug resolver) |
+
+Intentionally skipped: slug-validation / route-gen surfaces (route-coupled, can't DB-drive), showcase-only components, admin tools (admin's editing surface is itself resolver-backed; ~30 min follow-up if we want full coverage).
+
+### Shipped, then reverted — tag-pattern vibes filter (commits `ef22dea` ship, `4431903` revert)
+
+Originally seeded 3 `category_filters` rows (food/bars/hotels `vibes`) with regex pattern matching against `metadata.tags`. User flagged the architectural mistake: *"we search specifically for a bar if it has a roof garden for example"* — filtering should be structured queries, not free-text regex. Reverted via:
+
+- `lib/category-filters/vibes.ts` deleted
+- `case "vibes"` + its import dropped from `match.ts`
+- `043-public-vibes-filters.sql` deleted from disk + repo
+- **New rollback migration `043-public-vibes-filters-rollback.sql`** — runs `DELETE FROM category_filters WHERE filter_id='vibes' AND category IN (...)`. Idempotent.
+
+CLAUDE.md §53 captures the lesson so it doesn't get re-attempted.
+
+### Shipped — structured amenities filter for food / bars / hotels (commit `284c259`, migration **044**)
+
+The proper replacement. Crucial discovery during the rework: **the structured amenity data already exists** on items:
+
+- `item_food.information.amenities` — object-of-booleans, admin writes via `IconToggleGrid`
+- `item_bars.information.amenities` — same shape, admin writes via checkbox grid (the bars editor was added earlier; the column is shared with food via `information` jsonb)
+- `item_hotels.facilities` — existing column, same shape
+
+No schema migration needed. Wiring:
+
+- **`CategoryItem.amenities`** field (object | string[])
+- **Both `mapItem` implementations** (public `app/(main)/[category]/page.tsx`, admin `lib/admin/explorer-query.ts`) denormalise from the right source per category
+- **`EXT_SELECT`** (public + Explorer) now pulls `information` for food + bars
+- **`matchesFilter case "amenities"`** — AND semantics via `parseAmenities` (imported from `admin-facets.ts` where the helper already existed; tolerates both shapes)
+- **Migration 044** seeds 3 public `amenities` filter rows. Idempotent. Admin can edit options at `/admin/content/filters`.
+
+When a user picks "Roof Garden" on `/bars`, the filter now selects exactly the bars where `item_bars.information.amenities.roof_garden = true`. Hard yes/no, no pattern matching, no false positives.
+
+CLAUDE.md §53.B documents the full wiring; §54 documents the next move (search v3 needs to extract these in free-text queries).
+
+### Files touched (session 35)
+
+- New code: `lib/admin/explorer-query.ts`, `components/admin/CollectionEditor.tsx:ManualListPanel`, `scripts/sql/042-collections-manual-item-ids.sql`, `scripts/sql/043-public-vibes-filters-rollback.sql`, `scripts/sql/044-public-amenities-filters.sql`
+- Deleted: `scripts/sql/043-public-vibes-filters.sql`, `lib/category-filters/vibes.ts`
+- Refactored: `app/admin/categories/page.tsx`, `app/admin/content/filters/page.tsx`, `components/admin/CategoriesTable.tsx`, `components/admin/FiltersManager.tsx`, `components/admin/CombinatorialExplorer.tsx`, `app/api/admin/explorer/query/route.ts` (slimmed), `lib/collections.ts` (manual-list hydration), `app/api/admin/collections/{route,[id]/route,preview/route}.ts`, `app/admin/content/collections/new/page.tsx`, `components/category/CategoryCard.tsx` (CategoryItem.amenities), `app/(main)/[category]/page.tsx` (EXT_SELECT + mapItem.amenities), `lib/category-filters/match.ts` (case "amenities"), 5 CATEGORIES-consumer pages + their components (see above table)
+
+**Stats:** 3 new migrations (042 / 043-rollback / 044). 8 commits (`21b8d8c` flash fix, `17636c7` manual-list, `ef22dea` vibes ship, `3694409` CATEGORIES consumers, `4431903` vibes revert, `284c259` structured amenities, + the two split commits from the work day). `npx tsc --noEmit` → 0 errors throughout.
+
+### Migrations to apply on next deploy
+
+1. **042** — `collections.manual_item_ids jsonb`
+2. **043-rollback** — drops vibes seed rows if 043 was already applied (no-op otherwise)
+3. **044** — seeds the proper structured amenities filter rows
+
+### Open follow-ups (next session — locked, see CLAUDE.md §54 + §55)
+
+- **🎯 NEXT MOVE — AI search v3 (CLAUDE.md §54)**: extend `SearchAnalysis` + `analyzeSearchQuery` to extract amenities + seasons + completed + true_story + diet + when + has_awards from free-text Greek queries. Bump `PROMPT_VERSION` to invalidate the 30-day cache. ~2h.
+   - Concrete failing case to fix: "χαλάνδρι μπαρ ταράτσα" → today returns every Χαλάνδρι bar (amenity token dropped); should return only bars with `amenities.roof_garden=true`.
+   - The data is already structured on items (§53.B amenities, §49 Class A for seasons/completed/diet/when); search just needs to learn the vocabulary.
+- **Admin tools migrate to resolver** — 7 admin files (~30 min mechanical, lower priority).
+- **Phase B day 1** (pgvector recs) — still blocked on provider lock + backfill scope.
+- **Biblionet subcategory taxonomy** — still blocked on user decision.
+- Carry forward: §39 SEO closing, real legal copy on `/terms` + `/privacy`, drop legacy `ratings`/`comments` tables, per-category visual identity.
+
+---
+
+**Previous state — session 34 finished:**
 
 User-feedback memory `feedback-design-real-ux` saved this session — they called out that v1 of the Explorer expansion shipped rough surfaces (chip dumps for 100+ countries, blind text inputs for actors/directors). The fix-up pass added the searchable combobox, distinct-extraction from candidate rows for people fields, and tag-pattern characteristics across every category. The memory rule applies to all admin UI work going forward.
 
