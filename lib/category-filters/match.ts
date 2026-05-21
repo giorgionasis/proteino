@@ -1,6 +1,5 @@
 import type { CategoryItem } from "@/components/category/CategoryCard";
 import type { CategorySlug } from "@/types";
-import { tagsMatchVibeOption } from "./vibes";
 
 /**
  * Pure filter-application logic shared between the public category
@@ -152,17 +151,6 @@ export function matchesFilter(
     case "price":
       if (arr.length > 0) return arr.some((p) => ciEq(item.priceRange, p));
       return ciEq(item.priceRange, v);
-
-    case "vibes": {
-      // Promoted from admin Explorer tag-pattern facets. Each option
-      // maps (via lib/category-filters/vibes.ts) to a regex pattern
-      // array matched against item.tags. OR semantics across selected
-      // options — admin can extend the option list in the
-      // category_filters row; patterns live in vibes.ts.
-      if (arr.length === 0 && !v) return true;
-      const selected = arr.length > 0 ? arr : [v];
-      return selected.some((optId) => tagsMatchVibeOption(item.tags, category, optId));
-    }
 
     case "platform":
       if (arr.length > 0) return arr.some((p) => ciIncludes(item.channel, p));
