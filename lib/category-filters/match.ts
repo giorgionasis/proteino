@@ -1,6 +1,7 @@
 import type { CategoryItem } from "@/components/category/CategoryCard";
 import type { CategorySlug } from "@/types";
 import { parseAmenities } from "./admin-facets";
+import { parseEventDate } from "./event-date";
 
 /**
  * Pure filter-application logic shared between the public category
@@ -135,6 +136,12 @@ export function matchesFilter(
 
     case "when": {
       // Theater + events — relative-window segmented filter.
+      //
+      // `item.dates` is denormalised from the extension's `dates` jsonb
+      // (see app/(main)/[category]/page.tsx:extractEventDates). Strings
+      // arrive as DD/MM/YYYY for K2 rows or ISO for newer admin entries;
+      // both flow through `parseEventDate` — plain `new Date(d)` would
+      // mis-parse the European DD/MM ordering.
       const sel = v && v !== "" ? v : arr[0];
       if (!sel || sel === "all") return true;
       if (!item.dates || item.dates.length === 0) return false;
@@ -143,8 +150,8 @@ export function matchesFilter(
       if (horizonDays == null) return true;
       const horizon = new Date(now.getTime() + horizonDays * 24 * 60 * 60 * 1000);
       return item.dates.some((d) => {
-        const dt = new Date(d);
-        if (Number.isNaN(dt.getTime())) return false;
+        const dt = parseEventDate(d);
+        if (!dt) return false;
         return dt >= now && dt <= horizon;
       });
     }

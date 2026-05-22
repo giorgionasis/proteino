@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAIService } from "@/lib/ai";
+import { parseEventDate } from "@/lib/category-filters/event-date";
 import type { CategorySlug, SearchAnalysis } from "@/types";
 
 // Sharp pipeline downstream is on Node runtime; the AIService factory is
@@ -458,22 +459,6 @@ function periodToMonths(periodRaw: string): Set<number> | null {
   // caller skips month-based matching for weekend; the weekend check
   // is folded into eventMatchesPeriod for symmetry.
   return null;
-}
-
-function parseEventDate(s: unknown): Date | null {
-  if (!s || typeof s !== "string") return null;
-  // DD/MM/YY or DD/MM/YYYY
-  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-  if (m) {
-    const day = parseInt(m[1], 10);
-    const month = parseInt(m[2], 10) - 1;
-    let year = parseInt(m[3], 10);
-    if (year < 100) year += 2000;
-    const d = new Date(year, month, day);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  const iso = new Date(s);
-  return Number.isNaN(iso.getTime()) ? null : iso;
 }
 
 /** Normalise the amenity store (jsonb object-of-booleans OR
