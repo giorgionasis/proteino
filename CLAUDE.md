@@ -205,7 +205,6 @@ Full token reference + image pipeline + icon registry + motion system in `docs/d
 **Concrete + sized:**
 - **First-paint flash audit pass 2** — apply server-fetch + skip-flag pattern to `/admin/content/regions`, `/admin/content/activities`, `/admin/users`. ~1h each.
 - **Amenity vocab → DB-driven** (§54 follow-up) — `taxonomy.ts:159-162` has canonical keys hardcoded. If admin edits migration 044, prompt drifts until file re-edited. ~1h.
-- **Public `match.ts:when` parser fix** — `new Date(d)` mis-parses K2's `DD/MM/YYYY`. Replace with `parseEventDate`. Narrow surface area.
 
 **Blocked on user decisions:**
 - **Phase B day 1** (pgvector recs) — needs embedding-provider lock (OpenAI text-embedding-3-small recommended) + backfill scope (prod direct vs dev first). Plan in docs/architecture.md.

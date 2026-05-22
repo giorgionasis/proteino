@@ -256,7 +256,7 @@ Read via `venueAmenityKeys` (route-local) — tolerates array-of-strings + objec
 
 - **`period`** (events) = month/season → `eventMatchesPeriod` walks `dates` jsonb. Year-agnostic ("summer concerts" matches any year).
 - **`when`** (theater + events) = rolling 7d/30d horizon → `eventMatchesWhen`. Mutually exclusive with `period` per prompt rule.
-- `dates` jsonb is K2-format `[{from: "DD/MM/YYYY", to: "..."}]`. Search route's `parseEventDate` handles it; public `match.ts:when` does `new Date(d)` which mis-parses (open follow-up).
+- `dates` jsonb is K2-format `[{from: "DD/MM/YYYY", to: "..."}]`. Shared `parseEventDate` in `lib/category-filters/event-date.ts` is consumed by both the search route (`eventMatchesWhen` / `eventMatchesPeriod`) and `match.ts:when` so the public filter and the search route stay byte-identical.
 
 ### Region descendants
 
