@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { CATEGORIES } from "@/constants/categories";
+import { CATEGORIES as CAT_CONST } from "@/constants/categories";
 import { getWidget } from "@/lib/layout/widgets";
 import type {
   ConfigField,
@@ -31,9 +31,14 @@ interface Props {
   onClose: () => void;
   row: SectionRow | null;
   onSaved: () => void;
+  /** Server-resolved category list. When omitted, falls back to the
+   *  code constant. */
+  categories?: { slug: string; labelEl: string; icon: string }[];
 }
 
-export function SectionConfigDrawer({ open, onClose, row, onSaved }: Props) {
+export function SectionConfigDrawer({ open, onClose, row, onSaved, categories }: Props) {
+  const CATEGORIES =
+    categories ?? CAT_CONST.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }));
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [audience, setAudience] = useState<LayoutAudience>("all");
   const [validFrom, setValidFrom] = useState<string>("");
@@ -162,6 +167,7 @@ export function SectionConfigDrawer({ open, onClose, row, onSaved }: Props) {
                   field={field}
                   value={config[field.key]}
                   onChange={(v) => setConfig({ ...config, [field.key]: v })}
+                  categories={CATEGORIES}
                 />
               ))}
             </fieldset>
@@ -246,12 +252,14 @@ export function SectionConfigDrawer({ open, onClose, row, onSaved }: Props) {
 /* ─── Field input ───────────────────────────────────────────────────── */
 
 function ConfigFieldInput({
-  field, value, onChange,
+  field, value, onChange, categories,
 }: {
   field: ConfigField;
   value: unknown;
   onChange: (v: unknown) => void;
+  categories: { slug: string; labelEl: string; icon: string }[];
 }) {
+  const CATEGORIES = categories;
   const label = (
     <span className="text-xs font-medium text-zinc-700 block mb-1">{field.label}</span>
   );

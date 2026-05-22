@@ -11,12 +11,20 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CATEGORIES } from "@/constants/categories";
+import { CATEGORIES as CAT_CONST } from "@/constants/categories";
 import { ImageUploader } from "./ImageUploader";
 
 interface Subcategory { id: string; category: string; name: string; }
 
-export function NewSuggestionForm() {
+interface NewSuggestionFormProps {
+  /** Server-resolved category list. When omitted, falls back to the
+   *  code constant. */
+  categories?: { slug: string; labelEl: string; icon: string }[];
+}
+
+export function NewSuggestionForm({ categories }: NewSuggestionFormProps = {}) {
+  const CATEGORIES =
+    categories ?? CAT_CONST.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }));
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<string>("movies");

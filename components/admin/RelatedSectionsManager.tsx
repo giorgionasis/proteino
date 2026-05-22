@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { CATEGORIES } from "@/constants/categories";
+import { CATEGORIES as CAT_CONST } from "@/constants/categories";
 import { useToast } from "@/components/ui/Toast";
 
 interface Rule {
@@ -83,7 +83,15 @@ const FIELD_PRESETS: Record<string, { value: string; label: string; suggestedTit
   ],
 };
 
-export function RelatedSectionsManager() {
+interface RelatedSectionsManagerProps {
+  /** Server-resolved category list. When omitted, falls back to the
+   *  code constant. */
+  categories?: { slug: string; labelEl: string; icon: string }[];
+}
+
+export function RelatedSectionsManager({ categories }: RelatedSectionsManagerProps = {}) {
+  const CATEGORIES =
+    categories ?? CAT_CONST.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }));
   const { show, toast } = useToast();
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);

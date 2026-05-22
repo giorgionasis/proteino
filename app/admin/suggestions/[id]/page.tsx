@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SuggestionEditor } from "@/components/admin/SuggestionEditor";
+import { getCategoriesResolved } from "@/lib/categories-meta";
 import { notFound } from "next/navigation";
 
 export default async function SuggestionDetailPage(props: { params: Promise<{ id: string }> }) {
@@ -115,6 +116,9 @@ export default async function SuggestionDetailPage(props: { params: Promise<{ id
     extraOptions[o.field_group].push({ value: o.value, label: o.label });
   }
 
+  const cats = await getCategoriesResolved();
+  const categories = cats.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }));
+
   return (
     <SuggestionEditor
       suggestion={{
@@ -155,6 +159,7 @@ export default async function SuggestionDetailPage(props: { params: Promise<{ id
       subcategories={subcategories ?? []}
       regions={regions}
       extraOptions={extraOptions}
+      categories={categories}
     />
   );
 }

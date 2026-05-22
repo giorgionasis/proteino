@@ -3,7 +3,7 @@
 import { useState, useRef, useImperativeHandle, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CATEGORIES } from "@/constants/categories";
+import { CATEGORIES as CAT_CONST } from "@/constants/categories";
 import { ImageUploader } from "./ImageUploader";
 import { ImageGallery, type GalleryImage } from "./ImageGallery";
 import { extractGalleryImages, pickCoverUrl } from "@/lib/images/gallery";
@@ -72,6 +72,9 @@ interface Props {
   subcategories: { id: string; name: string }[];
   regions: { id: string; name: string; parent_id: string | null }[];
   extraOptions: ExtraOptions;
+  /** Server-resolved category list. When omitted, falls back to the
+   *  code constant. */
+  categories?: { slug: string; labelEl: string; icon: string }[];
 }
 
 // Helper: get options for a field group, with hardcoded fallback
@@ -132,7 +135,9 @@ function parseTrailer(url: string | null | undefined): { youtube: string; vimeo:
   return { youtube: url, vimeo: "" };
 }
 
-export function SuggestionEditor({ suggestion, item, extData, subcategories, regions, extraOptions }: Props) {
+export function SuggestionEditor({ suggestion, item, extData, subcategories, regions, extraOptions, categories }: Props) {
+  const CATEGORIES =
+    categories ?? CAT_CONST.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }));
   const [title, setTitle] = useState(item.title);
   const [originalTitle, setOriginalTitle] = useState(item.originalTitle ?? "");
   const [slug, setSlug] = useState(item.slug);

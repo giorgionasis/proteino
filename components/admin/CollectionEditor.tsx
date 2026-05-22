@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CATEGORIES } from "@/constants/categories";
+import { CATEGORIES as CAT_CONST } from "@/constants/categories";
 import { ImageUploader } from "./ImageUploader";
 import { OpenAsUserButton } from "./OpenAsUserButton";
 import { useUnsavedGuard } from "@/hooks/useUnsavedGuard";
@@ -100,9 +100,15 @@ interface Props {
    *  `manual_item_ids` so the collection lands in manual-list mode.
    *  Decoupled from `initial` because the IDs live client-side. */
   originManualKey?: string;
+  /** Server-resolved category list (label + slug + icon) from
+   *  lib/categories-meta.ts. When omitted, falls back to the code
+   *  constant — keeps the component usable in showcase contexts. */
+  categories?: { slug: string; labelEl: string; icon: string }[];
 }
 
-export function CollectionEditor({ initial, origin, originManualKey }: Props) {
+export function CollectionEditor({ initial, origin, originManualKey, categories }: Props) {
+  const CATEGORIES =
+    categories ?? CAT_CONST.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }));
   const router = useRouter();
   const [form, setForm] = useState<CollectionFormData>(() => ({ ...EMPTY, ...initial } as CollectionFormData));
   const [saving, setSaving] = useState(false);

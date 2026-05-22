@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CATEGORIES } from "@/constants/categories";
+import { CATEGORIES as CAT_CONST } from "@/constants/categories";
 import { AdminTabs } from "./AdminTabs";
 import { RowAuditFooter } from "@/components/admin/ui/RowAuditFooter";
 import type { AdminUserMap } from "@/lib/admin/audit";
@@ -42,12 +42,23 @@ interface PreviewItem {
   cover_url: string | null;
 }
 
-const TABS: { label: string; value: string; icon?: string }[] = [
-  { label: "Αρχική", value: "home", icon: "🏠" },
-  ...CATEGORIES.map((c) => ({ label: c.labelEl, value: `cat:${c.slug}`, icon: c.icon })),
-];
+function buildTabs(cats: { slug: string; labelEl: string; icon: string }[]): { label: string; value: string; icon?: string }[] {
+  return [
+    { label: "Αρχική", value: "home", icon: "🏠" },
+    ...cats.map((c) => ({ label: c.labelEl, value: `cat:${c.slug}`, icon: c.icon })),
+  ];
+}
 
-export function CollectionsList() {
+interface CollectionsListProps {
+  /** Server-resolved category list. When omitted, falls back to the
+   *  code constant. */
+  categories?: { slug: string; labelEl: string; icon: string }[];
+}
+
+export function CollectionsList({ categories }: CollectionsListProps = {}) {
+  const CATEGORIES =
+    categories ?? CAT_CONST.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }));
+  const TABS = buildTabs(CATEGORIES);
   const [activeTab, setActiveTab] = useState<string>("home");
   const [rows, setRows] = useState<PlacementRow[]>([]);
   const [userMap, setUserMap] = useState<AdminUserMap>({});
@@ -166,6 +177,7 @@ export function CollectionsList() {
                 onMoveUp={() => move(idx, -1)}
                 onMoveDown={() => move(idx, +1)}
                 onTogglePublish={() => togglePublish(row)}
+                categories={CATEGORIES}
               />
             ))
           )}
@@ -185,7 +197,7 @@ export function CollectionsList() {
 
 /* ─── Row ──────────────────────────────────────────────────── */
 
-function Row({ row, userMap, isFirst, isLast, busy, onMoveUp, onMoveDown, onTogglePublish }: {
+function Row({ row, userMap, isFirst, isLast, busy, onMoveUp, onMoveDown, onTogglePublish, categories }: {
   row: PlacementRow;
   userMap: AdminUserMap;
   idx: number;
@@ -195,11 +207,12 @@ function Row({ row, userMap, isFirst, isLast, busy, onMoveUp, onMoveDown, onTogg
   onMoveUp: () => void;
   onMoveDown: () => void;
   onTogglePublish: () => void;
+  categories: { slug: string; labelEl: string; icon: string }[];
 }) {
   const c = row.collections;
   const sourceLabel =
     c.source_category
-      ? CATEGORIES.find((x) => x.slug === c.source_category)?.labelEl ?? c.source_category
+      ? categories.find((x) => x.slug === c.source_category)?.labelEl ?? c.source_category
       : "Όλες";
   const tagsLabel = c.tags?.length ? c.tags.slice(0, 3).join(" · ") + (c.tags.length > 3 ? "…" : "") : "—";
 

@@ -18,7 +18,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CATEGORIES } from "@/constants/categories";
+import { CATEGORIES as CAT_CONST } from "@/constants/categories";
 import { getWidget } from "@/lib/layout/widgets";
 import type {
   LayoutAudience,
@@ -49,16 +49,20 @@ interface BucketKey {
 
 /* ─── Constants ─────────────────────────────────────────────────────── */
 
-const PAGES: { key: string; label: string; context: LayoutContext; category: string | null; icon?: string }[] = [
-  { key: "home", label: "Αρχική", context: "home", category: null, icon: "🏠" },
-  ...CATEGORIES.map((c) => ({
-    key: `cat:${c.slug}`,
-    label: c.labelEl,
-    context: "category" as const,
-    category: c.slug,
-    icon: c.icon,
-  })),
-];
+type PageRow = { key: string; label: string; context: LayoutContext; category: string | null; icon?: string };
+
+function buildPages(cats: { slug: string; labelEl: string; icon: string }[]): PageRow[] {
+  return [
+    { key: "home", label: "Αρχική", context: "home", category: null, icon: "🏠" },
+    ...cats.map((c) => ({
+      key: `cat:${c.slug}`,
+      label: c.labelEl,
+      context: "category" as const,
+      category: c.slug,
+      icon: c.icon,
+    })),
+  ];
+}
 
 const AUDIENCE_OPTIONS: { value: AdminPreviewAudience; label: string }[] = [
   { value: "all",        label: "Όλοι" },
@@ -68,7 +72,17 @@ const AUDIENCE_OPTIONS: { value: AdminPreviewAudience; label: string }[] = [
 
 /* ─── Main manager ──────────────────────────────────────────────────── */
 
-export function LayoutManager() {
+interface LayoutManagerProps {
+  /** Server-resolved category list (label + slug + icon) from
+   *  lib/categories-meta.ts. When omitted, falls back to the code
+   *  constant. */
+  categories?: { slug: string; labelEl: string; icon: string }[];
+}
+
+export function LayoutManager({ categories }: LayoutManagerProps = {}) {
+  const CATEGORIES =
+    categories ?? CAT_CONST.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }));
+  const PAGES = buildPages(CATEGORIES);
   const { show, toast } = useToast();
   const [deleteTarget, setDeleteTarget] = useState<ApiSectionRow | null>(null);
   const [pageKey, setPageKey] = useState<string>("cat:movies");
@@ -242,7 +256,7 @@ export function LayoutManager() {
     <>
     <div className="flex h-[calc(100vh-0px)]">
       {/* Page picker (left rail) */}
-      <PagePicker selected={pageKey} onSelect={setPageKey} />
+      <PagePicker selected={pageKey} onSelect={setPageKey} pages={PAGES} />
 
       {/* Section stack (middle column) */}
       <div className="flex-1 min-w-0 border-r border-zinc-200 overflow-y-auto bg-zinc-50">
@@ -338,6 +352,7 @@ export function LayoutManager() {
         load();
         setPreviewKey((k) => k + 1);
       }}
+      categories={CATEGORIES}
     />
     <ConfirmDialog
       open={deleteTarget !== null}
@@ -357,14 +372,14 @@ export function LayoutManager() {
 
 /* ─── Page picker ───────────────────────────────────────────────────── */
 
-function PagePicker({ selected, onSelect }: { selected: string; onSelect: (k: string) => void }) {
+function PagePicker({ selected, onSelect, pages }: { selected: string; onSelect: (k: string) => void; pages: PageRow[] }) {
   return (
     <aside className="w-[220px] shrink-0 border-r border-zinc-200 overflow-y-auto bg-white">
       <div className="px-4 py-5 border-b border-zinc-200">
         <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Σελίδες</h2>
       </div>
       <div className="p-2 space-y-1">
-        {PAGES.map((p) => (
+        {pages.map((p) => (
           <button
             key={p.key}
             onClick={() => onSelect(p.key)}

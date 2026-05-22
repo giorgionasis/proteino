@@ -1,4 +1,5 @@
 import { CollectionEditor } from "@/components/admin/CollectionEditor";
+import { getCategoriesResolved } from "@/lib/categories-meta";
 
 /** Accept Explorer deeplink query params and pre-populate the form.
  *  See `buildCollectionDeeplink` in CombinatorialExplorer.tsx for the
@@ -43,6 +44,9 @@ export default async function NewCollectionPage(props: Props) {
 
   const manualKey = readString(sp.manual_key);
 
+  const cats = await getCategoriesResolved();
+  const categories = cats.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }));
+
   const initial: Parameters<typeof CollectionEditor>[0]["initial"] = {};
   if (source_category) initial.source_category = source_category;
   if (title_specific)  initial.title_specific = title_specific;
@@ -54,6 +58,7 @@ export default async function NewCollectionPage(props: Props) {
       initial={Object.keys(initial).length > 0 ? initial : undefined}
       origin={fromExplorerMatchCount !== undefined ? { source: "explorer", matchCount: fromExplorerMatchCount } : undefined}
       originManualKey={manualKey || undefined}
+      categories={categories}
     />
   );
 }

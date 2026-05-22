@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CollectionEditor, type CollectionFormData, type Placement } from "@/components/admin/CollectionEditor";
+import { getCategoriesResolved } from "@/lib/categories-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -39,5 +40,8 @@ export default async function EditCollectionPage(props: { params: Promise<{ id: 
     placements,
   };
 
-  return <CollectionEditor initial={initial} />;
+  const cats = await getCategoriesResolved();
+  const categories = cats.map((c) => ({ slug: c.slug, labelEl: c.labelEl, icon: c.icon }));
+
+  return <CollectionEditor initial={initial} categories={categories} />;
 }
