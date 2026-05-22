@@ -27,6 +27,11 @@ export interface Taxonomy {
   /** Top-level regions only — sub-region neighborhood names not included
    *  (those are caught by address text fallback). */
   topRegions: string[];
+  /** Amenity option keys for food / bars / hotels, sourced from the
+   *  public `category_filters` rows admin maintains at
+   *  `/admin/content/filters` (migration 044). Empty record when the
+   *  migration isn't applied. */
+  amenitiesByCategory: Record<string, string[]>;
 }
 
 const TTL_MS = 5 * 60 * 1000;
@@ -92,12 +97,44 @@ export async function getTaxonomy(force = false): Promise<Taxonomy> {
   }
   typesByCategory.events = await fetchDistinct(sb, "item_events", "event_type");
 
+  // Amenity vocabulary per venue category — sourced from migration 044
+  // (`category_filters` rows where filter_id='amenities'). Admin edits
+  // at `/admin/content/filters` flow through here within the 5-min
+  // taxonomy cache TTL.
+  //
+  // Each row's `options` jsonb is an array of `{id, label}`; the `id`
+  // values are the canonical snake_case keys we want Gemini to emit.
+  const amenitiesByCategory: Record<string, string[]> = {};
+  try {
+    const { data: amenityRows } = await (sb.from("category_filters") as any)
+      .select("category, options")
+      .eq("filter_id", "amenities")
+      .eq("is_published", true)
+      .in("category", ["food", "bars", "hotels"]);
+    for (const row of (amenityRows ?? []) as Array<{ category: string; options: unknown }>) {
+      const opts = Array.isArray(row.options) ? row.options : [];
+      const keys: string[] = [];
+      for (const opt of opts) {
+        if (opt && typeof opt === "object") {
+          const id = (opt as any).id;
+          if (typeof id === "string" && id.trim().length > 0) keys.push(id.trim());
+        }
+      }
+      if (keys.length > 0) amenitiesByCategory[row.category] = keys;
+    }
+  } catch {
+    // Migration not applied / table missing — leave empty. The prompt
+    // section is skipped per-category when its key list is empty, so
+    // Gemini just won't extract amenities until admin lands 044.
+  }
+
   cached = {
     categories: CATEGORIES.slice(),
     subcategoriesByCategory,
     cuisines,
     typesByCategory,
     topRegions,
+    amenitiesByCategory,
   };
   lastFetch = Date.now();
   return cached;
@@ -154,13 +191,26 @@ export function renderTaxonomyForPrompt(t: Taxonomy): string {
   }
 
   // Amenity vocabulary — canonical snake_case keys for the `amenities`
-  // array. Mirror migration 044 public-filter options exactly.
-  // Diet vocabulary mirrors lib/category-filters/match.ts:normalizeDietFlags.
-  lines.push("AMENITY VOCABULARY — χρησιμοποίησε τα παρακάτω ακριβή keys στο amenities array:");
-  lines.push("  food:   parking, wifi, pet, vegan_menu, playground, disabled, sea_view, on_the_sea, roof_garden");
-  lines.push("  bars:   parking, wifi, outdoor_seating, live_music, dj, pet, reservations, smoking_area, accessible, happy_hour, late_night");
-  lines.push("  hotels: pool, bar, restaurant, parking, breakfast, wifi, sea_view, mountain, on_the_sea, roof_garden, pet, disabled, transfer, vegan_menu, playground");
-  lines.push("");
+  // array. Sourced from `category_filters.options` (migration 044) via
+  // getTaxonomy; admin edits at `/admin/content/filters` propagate
+  // within the 5-min cache TTL with no code change.
+  //
+  // Diet vocabulary mirrors lib/category-filters/match.ts:normalizeDietFlags
+  // — kept hardcoded because it isn't backed by a category_filters row
+  // (recipes' diet filter has its own widget).
+  const amenityLines: string[] = [];
+  for (const cat of ["food", "bars", "hotels"] as const) {
+    const keys = t.amenitiesByCategory[cat];
+    if (keys && keys.length > 0) {
+      amenityLines.push(`  ${cat}: ${keys.join(", ")}`);
+    }
+  }
+  if (amenityLines.length > 0) {
+    lines.push("AMENITY VOCABULARY — χρησιμοποίησε τα παρακάτω ακριβή keys στο amenities array:");
+    lines.push(...amenityLines);
+    lines.push("");
+  }
+
   lines.push("DIET VOCABULARY (recipes) — χρησιμοποίησε αυτά τα ακριβή keys στο diet array: vegan, no_milk, no_sugar");
   lines.push("");
 

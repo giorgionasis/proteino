@@ -200,7 +200,7 @@ yields_min/max · is_trilogy
 
 Per-field rules in `SEARCH_PROMPT` (gemini.ts:34-146) with Greek + English aliases. `taxonomy.ts:getTaxonomy()` injects canonical DB values at runtime (categories, subcategories, cuisines, types per venue, top-level regions, amenity vocabulary) — 5-min cache.
 
-**Amenity vocabulary** in `taxonomy.ts:159-162` must mirror migration 044 byte-for-byte. Drift = silent search miss. Open follow-up: read from `category_filters` rows on prompt assembly.
+**Amenity vocabulary** is sourced from the `category_filters` rows admin maintains at `/admin/content/filters` (migration 044). `getTaxonomy` reads `options[].id` per food/bars/hotels row, and `renderTaxonomyForPrompt` emits them under the AMENITY VOCABULARY block. Admin edits propagate within the 5-min taxonomy cache TTL.
 
 ### Decisions locked
 
@@ -506,7 +506,7 @@ Cases: `genre · event_type · cuisine · type · writer · publisher · directo
 
 **Empty/`"all"` always passes** — by convention. AND vs OR depends on case (amenities AND, characteristics AND, diet AND; writer/director/actor OR across selection).
 
-**Amenities** (mig 044) — AND semantics. `parseAmenities` (from `admin-facets.ts`) tolerates both jsonb object-of-booleans and array-of-strings shapes. Lowercased canonical keys match migration 044 + `taxonomy.ts:159-162`.
+**Amenities** (mig 044) — AND semantics. `parseAmenities` (from `admin-facets.ts`) tolerates both jsonb object-of-booleans and array-of-strings shapes. Lowercased canonical keys come from `category_filters.options` (the same rows the Gemini taxonomy block reads via `getTaxonomy`).
 
 ### Admin facets — `lib/category-filters/admin-facets.ts`
 
