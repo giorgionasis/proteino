@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AdminPageHeader } from "./ui/AdminPageHeader";
 import { AdminPanel } from "./ui/AdminPanel";
 import { AdminEmpty } from "./ui/AdminEmpty";
 import { AdminRow, AdminActionButton, AdminActionSelect } from "./ui/AdminRow";
-import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 
-interface Region {
+export interface Region {
   id: string;
   name: string;
   slug: string;
@@ -49,10 +48,16 @@ function flatten(roots: TreeNode[]): TreeNode[] {
   return out;
 }
 
-export function RegionsManager() {
+interface RegionsManagerProps {
+  /** Server-fetched rows seed the initial state so the page renders
+   *  populated on first paint (no empty-mount flash). All mutations
+   *  update local state optimistically; there's no client refetch. */
+  initial: Region[];
+}
+
+export function RegionsManager({ initial }: RegionsManagerProps) {
   const { show, toast } = useToast();
-  const [rows, setRows] = useState<Region[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<Region[]>(initial);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -60,22 +65,6 @@ export function RegionsManager() {
   // null = adding root, string = adding under id, undefined = closed
   const [addingUnderParent, setAddingUnderParent] = useState<string | null | undefined>(undefined);
   const [newName, setNewName] = useState("");
-
-  const load = async () => {
-    setLoading(true); setError(null);
-    try {
-      const res = await fetch("/api/admin/regions");
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Load failed");
-      setRows(data);
-    } catch (e: any) {
-      setError(e.message ?? String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { void load(); }, [load]);
 
   const tree = buildTree(rows);
   const flat = flatten(tree);
@@ -192,7 +181,7 @@ export function RegionsManager() {
       <AdminPageHeader
         title="Regions"
         subtitle="Δομή τοποθεσιών — υποστηρίζει αυθαίρετο βάθος"
-        meta={loading ? undefined : `${totalRegions} σύνολο · ${rootCount} ρίζες`}
+        meta={`${totalRegions} σύνολο · ${rootCount} ρίζες`}
         primary={
           <button
             type="button"
@@ -251,17 +240,7 @@ export function RegionsManager() {
           </div>
         )}
 
-        {loading ? (
-          <div className="p-4 space-y-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 px-2 py-2">
-                <Skeleton className="w-4 h-4 rounded" />
-                <Skeleton className="h-4 flex-1 max-w-[60%] rounded" />
-                <Skeleton className="h-4 w-20 rounded" />
-              </div>
-            ))}
-          </div>
-        ) : flat.length === 0 ? (
+        {flat.length === 0 ? (
           <AdminEmpty
             icon={<MapIcon />}
             title="Δεν υπάρχει καμία περιοχή ακόμα"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { AdminPagination } from "./AdminPagination";
@@ -26,7 +26,7 @@ interface AdminWarning {
   source_report_id?: string;
 }
 
-interface UserRow {
+export interface UserRow {
   id: string;
   handle: string | null;
   name: string;
@@ -74,16 +74,29 @@ function getBadge(suggestionCount: number): { label: string; color: string } {
   return { label: "NEW", color: "text-zinc-400" };
 }
 
-export function UsersTable() {
+interface UsersTableProps {
+  /** Server-fetched seed for the default scope (sortIdx=0, page=1,
+   *  search="") — skips the empty-mount + first client roundtrip.
+   *  Sort changes, search input, and pagination still re-fetch via
+   *  the effect below. */
+  initialRows: UserRow[];
+  initialTotal: number;
+}
+
+export function UsersTable({ initialRows, initialTotal }: UsersTableProps) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sortIdx, setSortIdx] = useState(0);
-  const [rows, setRows] = useState<UserRow[]>([]);
-  const [totalItems, setTotalItems] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<UserRow[]>(initialRows);
+  const [totalItems, setTotalItems] = useState(initialTotal);
+  const [loading, setLoading] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const [warningsFor, setWarningsFor] = useState<UserRow | null>(null);
+
+  // Suppress the first fetch effect — server already populated rows
+  // for the seeded scope (sortIdx=0 / page=1 / no search).
+  const skipFirstFetch = useRef(true);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -139,7 +152,13 @@ export function UsersTable() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    if (skipFirstFetch.current) {
+      skipFirstFetch.current = false;
+      return;
+    }
+    fetchData();
+  }, [fetchData]);
 
   /** Replace the warnings array on a single row locally (after a new
    * manual warning lands). Keeps the table in sync without a full

@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
-interface Category { id: string; name: string; icon: string | null; }
-interface Type { id: string; category_id: string; name: string; icon: string | null; }
+export interface ActivityCategory { id: string; name: string; icon: string | null; }
+export interface ActivityType { id: string; category_id: string; name: string; icon: string | null; }
 
-interface ActivityRow {
+export interface ActivityRow {
   id: string;
   name: string;
   address: string | null;
@@ -26,35 +26,38 @@ interface ActivityRow {
 
 const ALL = "ALL";
 
-export function ActivitiesTable() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [types, setTypes] = useState<Type[]>([]);
-  const [rows, setRows] = useState<ActivityRow[]>([]);
-  const [total, setTotal] = useState(0);
+interface ActivitiesTableProps {
+  /** Server-fetched seed data — empty-filter query result + taxonomy.
+   *  Skips the empty-mount + first client roundtrip for the default
+   *  ALL/ALL/empty view; filter switches and the search debounce both
+   *  trigger fresh fetches via the effect below. */
+  initialCategories: ActivityCategory[];
+  initialTypes: ActivityType[];
+  initialRows: ActivityRow[];
+  initialTotal: number;
+}
+
+export function ActivitiesTable({
+  initialCategories,
+  initialTypes,
+  initialRows,
+  initialTotal,
+}: ActivitiesTableProps) {
+  const [categories] = useState<ActivityCategory[]>(initialCategories);
+  const [types] = useState<ActivityType[]>(initialTypes);
+  const [rows, setRows] = useState<ActivityRow[]>(initialRows);
+  const [total, setTotal] = useState(initialTotal);
 
   const [activeCategory, setActiveCategory] = useState<string>(ALL);
   const [activeType, setActiveType] = useState<string>(ALL);
   const [search, setSearch] = useState("");
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  // Load taxonomy once
-  useEffect(() => {
-    (async () => {
-      try {
-        const [cRes, tRes] = await Promise.all([
-          fetch("/api/admin/activity-categories"),
-          fetch("/api/admin/activity-types"),
-        ]);
-        const [cats, tps] = await Promise.all([cRes.json(), tRes.json()]);
-        if (Array.isArray(cats)) setCategories(cats);
-        if (Array.isArray(tps)) setTypes(tps.map((t: any) => ({
-          id: t.id, category_id: t.category_id, name: t.name, icon: t.icon,
-        })));
-      } catch { /* no-op */ }
-    })();
-  }, []);
+  // Suppress the very first effect run — the server already populated
+  // `rows` for the seeded scope (ALL / ALL / "").
+  const skipFirstFetch = useRef(true);
 
   const filteredTypes = activeCategory === ALL ? [] : types.filter((t) => t.category_id === activeCategory);
 
@@ -75,8 +78,12 @@ export function ActivitiesTable() {
     }
   };
 
-  // Debounced search
+  // Debounced search + filter refetch
   useEffect(() => {
+    if (skipFirstFetch.current) {
+      skipFirstFetch.current = false;
+      return;
+    }
     const t = setTimeout(load, search ? 250 : 0);
     return () => clearTimeout(t);
   }, [load, search]);

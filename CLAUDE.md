@@ -202,8 +202,7 @@ Full token reference + image pipeline + icon registry + motion system in `docs/d
 
 ## Open follow-ups (rolling — update this section, not narrative)
 
-**Concrete + sized:**
-- **First-paint flash audit pass 2** — apply server-fetch + skip-flag pattern to `/admin/content/regions`, `/admin/content/activities`, `/admin/users`. ~1h each.
+**Concrete + sized:** _(none open — see "Blocked on user decisions" + "Long tail")_
 
 **Blocked on user decisions:**
 - **Phase B day 1** (pgvector recs) — needs embedding-provider lock (OpenAI text-embedding-3-small recommended) + backfill scope (prod direct vs dev first). Plan in docs/architecture.md.
