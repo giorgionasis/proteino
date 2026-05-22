@@ -1,12 +1,82 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-22 (session 36 — Search v3 shipped (commit be06762) + project-docs restructure: CLAUDE.md 2624 → 280 lines, two new topical docs under `docs/`)
+Last updated: 2026-05-22 (session 37 — concrete+sized follow-up sweep: admin resolver migration, shared parseEventDate, DB-driven amenity vocab, flash-fix pass 2)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 36 (current) finished:**
+**Current state — session 37 (current) finished:**
+
+Pure follow-up sweep. Every "concrete + sized" item from CLAUDE.md's open-follow-ups list shipped in one session — no new features, no scope creep, no migrations. 4 implementation commits + 3 small docs commits, all green through `npx tsc --noEmit`.
+
+### Shipped — admin tools through category_meta resolver (commit `1733520`)
+
+Closes the session-35 §41 follow-up. 7 admin client components — CollectionEditor, CollectionsList, LayoutManager, RelatedSectionsManager, SectionConfigDrawer, SuggestionEditor, NewSuggestionForm — each gain an optional `categories?: { slug; labelEl; icon }[]` prop. Their 7 server parents under `app/admin/` fetch via `getCategoriesResolved()` and pass it down. Components fall back to `CATEGORIES as CAT_CONST` when the prop is omitted (showcase + standalone uses keep working).
+
+Notable threading:
+- `CollectionsList` → `Row` sub-component (was reading the module-scoped constant inside the sibling function)
+- `LayoutManager` → `PagePicker` (`pages` prop, threaded from `buildPages(CATEGORIES)`)
+- `SectionConfigDrawer` → `ConfigFieldInput` (`categories` prop alongside `field` + `value` + `onChange`)
+
+Admin edits to label / icon / display_order via migration 041's `category_meta` now propagate to every admin tool without a code change.
+
+### Shipped — shared parseEventDate (commit `36dd82e`)
+
+Closes the session-36 §54 follow-up (the "low-priority drift" called out in the search v3 drift audit). New `lib/category-filters/event-date.ts:parseEventDate(s)` is the single source of truth for K2's `DD/MM/YYYY` strings. `lib/category-filters/match.ts:when` and `app/api/search/route.ts` (eventMatchesWhen / eventMatchesPeriod) both import from there.
+
+The bug it fixes: `new Date("15/03/2026")` returns `Invalid Date` in Node. The public `when` filter was silently dropping every K2 theater/event row from "αυτή την εβδομάδα" / "αυτό τον μήνα". The search route had its own correct parser since session 36, but `match.ts` was on the old path. Now one parser, both consumers.
+
+### Shipped — DB-driven amenity vocab (commit `e4311d3`)
+
+Closes the session-36 §54 follow-up. `lib/ai/taxonomy.ts` previously had three hardcoded lines listing the canonical amenity keys for food / bars / hotels — required to mirror migration 044 byte-for-byte. Whenever admin edited the public amenity filter options at `/admin/content/filters`, the Gemini search prompt silently drifted.
+
+`Taxonomy.amenitiesByCategory: Record<string, string[]>` now sourced from `category_filters` rows where `filter_id='amenities'` and category ∈ {food, bars, hotels}. Each row's `options[].id` becomes the canonical key list. Falls back to an empty record (and the AMENITY VOCABULARY block disappears from the prompt entirely) when migration 044 isn't applied. 5-min taxonomy cache means admin edits propagate within 5 min, no deploy.
+
+**Did NOT bump PROMPT_VERSION.** Verified the rendered keys are identical to the old hardcoded set on a freshly-seeded DB; the 30-day search cache stays valid.
+
+### Shipped — flash-fix pass 2 (commit `548bbd0`)
+
+Closes the session-35 §51 follow-up. Same pattern as session 35's flash fix on /admin/categories + /admin/content/filters:
+
+| Page | Pattern |
+|---|---|
+| `/admin/content/regions` | Server pre-fetches the regions tree. Client `RegionsManager` drops its mount-fetch `useEffect` entirely — all mutations were already optimistic, no client load needed. |
+| `/admin/content/activities` | Server pre-fetches the empty-filter activities query + activity_categories + activity_types. Client retains its debounced-search useEffect but with `useRef` skip-flag suppressing the first run. Filter changes / sort / search still re-fetch. |
+| `/admin/users` | Server pre-fetches sort=Recent-Registered, page=1, no-search. Client's `useEffect(() => fetchData(), [fetchData])` gains the same skip-flag. Sort / search / pagination changes re-fetch normally. |
+
+### Files touched (session 37)
+
+- New: `lib/category-filters/event-date.ts`
+- Refactored: 7 admin components + their 7 server parents (resolver migration), `lib/ai/taxonomy.ts` (amenity vocab from DB), 3 admin manager components + their 3 server pages (flash fix), `lib/category-filters/match.ts` (when uses shared parser), `app/api/search/route.ts` (drops local parser, imports from shared)
+- Docs: `CLAUDE.md` (3 sized follow-ups closed + the new "none open" marker), `docs/architecture.md` (3 entries refreshed to reflect closed work)
+
+**Stats:** zero new migrations. 4 implementation commits + 3 docs commits. `npx tsc --noEmit` → 0 errors throughout. Branch pushed clean to `origin/main` at `548bbd0`.
+
+### Open follow-ups (next session)
+
+Carried from `CLAUDE.md` "Open follow-ups". **The "concrete + sized" bucket is empty for the first time since session 30.** What's left:
+
+**Blocked on user decisions:**
+- **Phase B day 1** (pgvector recs) — embedding provider lock (OpenAI `text-embedding-3-small` recommended) + backfill scope (prod vs dev branch). Plan in `docs/architecture.md` → "Recommendations (Phase B)". Cost at 1000 DAU ≈ $60/month total including Haiku rerank.
+- **Biblionet subcategory taxonomy** — expand to ~18 vs two-tier UI. Plan in `docs/architecture.md` → "Biblionet integration".
+
+**Long tail (no single one is sized — each becomes a sized item once we pick it up):**
+- §39 SEO closing (admin fields for contentRating/ISBN/numberOfEpisodes/starRating/openingHours/organizer/recipe video; sitemap split at 5K; image sitemap; `noindex` on thin pages; K2→new URL 301 map)
+- Real legal copy on `/terms` + `/privacy`
+- Drop legacy `ratings` + `comments` tables (after archive review)
+- Promote useful admin-only facets to public filters (case-by-case)
+- Per-category visual identity polish
+
+Two natural next moves the user can pick from: (a) unblock Phase B day 1 with the two decisions, (b) start chipping at the long-tail list.
+
+### Cleanup candidate
+
+`CLAUDE.md.old` — the 2624-line safety backup from session 36 — has now survived two sessions without anyone needing it. Safe to delete next session if the user agrees.
+
+---
+
+**Previous state — session 36 finished:**
 
 Two things landed: AI search v3 (which was queued as session-35's "next move") + a project-docs restructure that the user asked for after CLAUDE.md grew to 2624 lines / 188 KB.
 
