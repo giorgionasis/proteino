@@ -27,7 +27,7 @@ Admins never touch code. Everything is managed through the admin UI.
 | Suggestions list | ✅ | ✅ | Filters: category/subcategory/author/published/search/sort |
 | Suggestion editor | ✅ | ✅ | Saves items + suggestions + extension tables; DB-backed extra options; Portrait/Landscape image uploads + Trailer URL wired |
 | Users | ✅ | ✅ | Search, sort, pagination, badges by level |
-| Reviews | ✅ | ✅ | NEW (session 25, consolidated session 28). `/admin/reviews` — first-class moderation surface for the `reviews` table **and** their reports. Top "Unresolved (N)" section + REPORTS column with 3-state badge (black=unresolved / green=resolved history / "0"=pristine). Per-report Keep/Hide via drawer. Hide endpoint auto-resolves pending reports. See CLAUDE.md §41. |
+| Reviews | ✅ | ✅ | NEW (session 25, consolidated session 28). `/admin/reviews` — first-class moderation surface for the `reviews` table **and** their reports. Top "Unresolved (N)" section + REPORTS column with 3-state badge (black=unresolved / green=resolved history / "0"=pristine). Per-report Keep/Hide via drawer. Hide endpoint auto-resolves pending reports. See `docs/design-system.md` → "Admin IA + visual refresh" and `docs/architecture.md` → "Reports / moderation". |
 | Reports | 🚫 | — | **Deprecated session 28.** Was a separate moderation queue across all `content_reports` target_types; in practice only reviews are reported (suggestions are admin-curated). Folded into `/admin/reviews`. The `PATCH /api/admin/reports/[id]` resolution endpoint stays. |
 | Legacy Comments | ✅ | ✅ | Frozen K2-archive `comments` table (343 rows) — moderation surface for historic content. Moved from `/admin/reviews` → `/admin/legacy-comments` in session 25 (was confusingly labelled "Comments (Legacy)" sharing the canonical reviews route). |
 | Review detail | ✅ | ✅ | Reports section, hide w/ reason, author flagged history |
@@ -57,8 +57,8 @@ Admins never touch code. Everything is managed through the admin UI.
 | Lean Edge middleware | ✅ | — | Dropped `@supabase/ssr` from middleware (Edge cold-start crash on Vercel); cookie-presence check only; whole body in try/catch; `/api/*` excluded from matcher |
 | Categories — New | 🚫 | — | Deleted; subcategories managed via `/admin/categories/[id]`. Top-level categories are a fixed enum |
 | Extra Fields — New | 🚫 | — | Deleted; superseded by wizard in `/admin/extra-fields` main page |
-| Layout (page composition) | ✅ | ✅ | `/admin/layout` — DB-driven page composition via `page_sections` (migrations 032 + 033). Category + home pages support reorder, add, delete, audience toggle, mobile-frame iframe preview. See CLAUDE.md §37 |
-| Related Sections (detail pages) | ✅ | ✅ | `/admin/related-sections` — admin-defined "More from {director|writer|actor}" carousels per category via `related_sections_config` (migration 034). Auto-hide when `min_items` threshold isn't met. See CLAUDE.md §38 |
+| Layout (page composition) | ✅ | ✅ | `/admin/layout` — DB-driven page composition via `page_sections` (migrations 032 + 033). Category + home pages support reorder, add, delete, audience toggle, mobile-frame iframe preview. See `docs/architecture.md` → "Admin layout system" |
+| Related Sections (detail pages) | ✅ | ✅ | `/admin/related-sections` — admin-defined "More from {director|writer|actor}" carousels per category via `related_sections_config` (migration 034). Auto-hide when `min_items` threshold isn't met. See `docs/architecture.md` → "Detail-page related sections" |
 | Moments | ✅ | ✅ | `/admin/moments` — DB-driven copy + timing + conditions for in-app moments (bookmark celebration, achievement modal — for BOTH suggestion milestones [1/2/3/7/9/10/22/24/25/47/49/50] AND review milestones [1/5/10/25/50] per migration 036, …). See PROGRESS.md session 21 + 26 |
 | Audit log (Overview) | ✅ | ✅ | NEW (session 29 — migration 040). `<RecentChanges>` widget surfaces last N admin actions across moments/page_sections/collections/related_sections_config/category_filters. `/api/admin/audit-log` endpoint unions tables. PATCH endpoints stamp via `lib/admin/audit.ts:executeWithAuditFallback` (graceful degradation when migration unapplied). Per-row "Last edited by X on Y" stamps on manager UIs are the next follow-up. |
 | Confirm-before-save | ✅ | ✅ | NEW (session 29). Generic `<ConfirmDialog>` primitive in `components/ui/`. Settings dialog fires when maintenance_mode flips OFF → ON. Layout section-delete swapped from `window.confirm()` to modal. |
@@ -107,7 +107,7 @@ PLATFORM  ● zinc
 └── Showcase                        → /admin/showcase
 ```
 
-Active link state: soft `bg-coral-50 text-coral-700` pill. All hrefs preserved (only `/admin/reviews` semantic changed — now the new reviews table; old comments archive moved to `/admin/legacy-comments`). See CLAUDE.md §41 for the full rationale.
+Active link state: soft `bg-coral-50 text-coral-700` pill. All hrefs preserved (only `/admin/reviews` semantic changed — now the new reviews table; old comments archive moved to `/admin/legacy-comments`). Full rationale: `docs/design-system.md` → "Admin IA + visual refresh".
 
 ---
 
@@ -359,7 +359,7 @@ deploy. Collections turns this into a CMS surface.
 
 **Data model:**
 - `collections` — what & how it looks (type, title, image, source_category, tags, audience, lifecycle)
-- `page_sections` — where & in what order (context: home/category/suggestions; per-bucket display_order). Migration 032 renamed `collection_placements` → `page_sections` and extended it to also hold widgets + dividers; collection placements are stored as rows with `section_type='collection'`. See CLAUDE.md §37 for the full layout system.
+- `page_sections` — where & in what order (context: home/category/suggestions; per-bucket display_order). Migration 032 renamed `collection_placements` → `page_sections` and extended it to also hold widgets + dividers; collection placements are stored as rows with `section_type='collection'`. See `docs/architecture.md` → "Admin layout system" for the full layout system.
 - An item belongs to a collection if `items.category = source_category` (when set) AND `metadata.tags @> selected_tags`
 
 **Two visual formats:**
@@ -385,7 +385,7 @@ deploy. Collections turns this into a CMS surface.
 **API:** `/api/admin/collections` (GET, POST), `/api/admin/collections/[id]` (GET, PATCH, DELETE), `/api/admin/collections/reorder` (POST), `/api/admin/collections/preview` (POST — runs the filter live), `/api/admin/collections/tags` (GET — autocomplete).
 
 ### 9B. Activities ✅
-Nearby attractions for hotels (CLAUDE.md §11: admin-managed only).
+Nearby attractions for hotels (admin-managed only — see CLAUDE.md "Business rules").
 
 **Why it exists:**
 Hotel detail pages were dead-ends — a user looking at a hotel had no way to know what to do nearby. Admin curates a global database of activities (skiing in Καλάβρυτα, rafting in Παρνασσός, museums in Αθήνα). Frontend (next pass) shows them on hotel detail pages via geographic proximity to the hotel's lat/lng.
@@ -653,7 +653,7 @@ The session-11 audit list below is preserved for posterity, but most items have 
 2. ~~Replace mock `/api/search` and `/api/recommendations`~~ — ✅ `/api/search` rewritten end-to-end in session 17 (Search v2 with structured Gemini filters). `/api/recommendations` is intentionally deferred until Phase B (pgvector recs).
 3. ~~Real leaderboard~~ — ✅ shipped session 19 (RPC `get_leaderboard` + real ranking).
 4. ~~Onboarding flow~~ — ✅ shipped session 20 (4 screens at `/onboarding`, gated server-side from the `(main)` layout).
-5. ~~**Detail pages Figma alignment**~~ ✅ DONE (session 24). All 9 detail components share the Figma-aligned template. New `<PersonBubble>` extracted. CLAUDE.md §25 codifies the rules (empty-state hide, no gray placeholders, no dead CTAs).
+5. ~~**Detail pages Figma alignment**~~ ✅ DONE (session 24). All 9 detail components share the Figma-aligned template. New `<PersonBubble>` extracted. CLAUDE.md "Detail page composition rules" + `docs/design-system.md` → "Detail page composition rules" codify the rules (empty-state hide, no gray placeholders, no dead CTAs).
 6. **Migration consolidation** — `scripts/sql/*` is the source of truth; consolidation into `supabase/migrations/` hasn't happened. `items.poster_url` / `backdrop_url` are present in production (added by deployment scripts) but no `scripts/sql/` file owns the ADD COLUMN. Not blocking but worth tidying.
 7. **Hooks from HOOKS.md** — partial: migration 029 added rating / follow / suggestion / bookmark-milestone triggers + the moments table (sessions 21). Still TBD: TMDB new-season webhook, dormant-14d, event-passed, streak threshold, anniversary.
 

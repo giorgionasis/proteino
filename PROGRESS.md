@@ -1,12 +1,77 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-22 (session 35 — admin flash fix + Collection manual-list mode + vibes revert + structured amenities + 5 CATEGORIES consumers wired to resolver)
+Last updated: 2026-05-22 (session 36 — Search v3 shipped (commit be06762) + project-docs restructure: CLAUDE.md 2624 → 280 lines, two new topical docs under `docs/`)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 35 (current) finished:**
+**Current state — session 36 (current) finished:**
+
+Two things landed: AI search v3 (which was queued as session-35's "next move") + a project-docs restructure that the user asked for after CLAUDE.md grew to 2624 lines / 188 KB.
+
+### Shipped — AI search v3 (commit `be06762`)
+
+Authored upstream before this session opened. Pulled cleanly via `git pull` — no new migrations. `SearchAnalysis` + `SearchExtractionSchema` (types/index.ts + lib/ai/gemini.ts) gained 16 optional fields: `amenities[]` / `seasons` / `has_awards` / `diet[]` / `when` / `language` / `country` / `level` / `origin` / `pages_min/max` / `calories_min/max` / `yields_min/max` / `is_trilogy`. SEARCH_PROMPT gained per-field rules + Greek/English alias examples. `lib/ai/taxonomy.ts:159-164` injects the canonical amenity vocabulary at runtime (mirrors migration 044 byte-for-byte). `PROMPT_VERSION` v16 → v17 invalidates the 30-day search cache.
+
+`/api/search/route.ts` applies the new fields per branch:
+- **Venue branch** — amenities AND-filter via `venueAmenityKeys` (dual-shape jsonb tolerant), `when` window for theater+events. Soft fallback when amenities knock everything out but no other signal carries.
+- **Non-venue branch** — `fetchByStructuredFilters` + `fetchExtensionFilteredIds` compose the new fields into per-category ext queries (movies: country/language/awards · series: + seasons · books: language/pages/is_trilogy · recipes: level/origin/calories/yields/diet).
+
+Drift audit passed: amenity vocabulary identical across migration 044 ↔ `taxonomy.ts:159-162` ↔ `match.ts:amenities` ↔ `admin-facets.ts:parseAmenities` ↔ `route.ts:venueAmenityKeys`. Two pre-existing minor drifts noted as low-priority follow-ups (`parseAmenities` vs `venueAmenityKeys` handling of string `"false"`; public `match.ts:when` mis-parses K2's `DD/MM/YYYY` via `new Date(d)` — search route's `parseEventDate` handles it correctly).
+
+Example queries the route now resolves:
+- `χαλάνδρι μπαρ ταράτσα` → bars in Χαλάνδρι with `amenities.roof_garden=true`
+- `ξενοδοχείο πισίνα μύκονος` → hotels with `pool` in Μύκονος
+- `βραβευμένη ελληνική ταινία` → movies, awards non-empty, country ilike `Ελλάδα`
+- `vegan κάτω από 300 θερμίδες` → recipes, diet⊇[vegan], calories ≤ 300
+- `theater αυτό το σαββατοκύριακο` → theater dates in next 7d
+
+Full reference: `docs/architecture.md` → "Search (v3)".
+
+### Shipped — project-docs restructure
+
+User raised the bloat concern after CLAUDE.md hit 2624 lines / 188 KB — most growth was shipped-feature narrative duplicating PROGRESS.md / git log. The split:
+
+| File | Before | After | Role |
+|---|---|---|---|
+| `CLAUDE.md` | 2624 lines | 280 lines (89% smaller) | Always-loaded briefing: project + invariants + decisions log + open follow-ups + key files + working conventions |
+| `docs/architecture.md` | — | 773 lines | Deep: schema, AI layer, search, recs (Phase B), dispatcher, moments, layout, related sections, filters, category resolver, SEO, reports, Biblionet, runtime, onboarding |
+| `docs/design-system.md` | — | 615 lines | Deep: tokens, layout chrome, detail-page rules, sub-cat+filters, image pipeline, icons, badge tier, motion+CSS gotchas, components catalog, admin UI, profile visuals, review flow, achievement modal, PWA rules |
+| `CLAUDE.md.old` | 2624 lines | (kept untracked) | Safety-net backup. Delete after 1-2 sessions confirm nothing crucial got lost. |
+
+Session narratives were NOT migrated — PROGRESS.md already had every session 22+ captured.
+
+**Discipline rule locked in CLAUDE.md** — going forward: PROGRESS.md is append-only history (new sessions add entries here). CLAUDE.md is a living briefing — only touch when an invariant changes, an open follow-up shifts, or a decision is locked. Topical docs touched only when their domain changed.
+
+Validation pass before commit: spot-checked invariants against code (PROMPT_VERSION=v17 in `cache-and-log.ts:32`, `lib/categories-meta.ts` + `match.ts` + `resolver.ts` + `gallery.ts` all exist, migration 044 file present). Cross-checked PROGRESS.md + AI.md + ADMIN.md + START.md for drift — flagged stale `§N` references + "Search v2" labels in those files; this commit fixes them as part of the same coherent change.
+
+### Files touched (session 36)
+
+- New: `docs/architecture.md`, `docs/design-system.md`
+- Replaced: `CLAUDE.md` (full rewrite — 89% smaller)
+- Untracked backup: `CLAUDE.md.old`
+- Updated cross-refs: `START.md`, `AI.md`, `ADMIN.md`, `PROGRESS.md` (this file)
+
+### Open follow-ups (next session)
+
+Carried from `CLAUDE.md` "Open follow-ups" — that's now the rolling source of truth:
+
+**Concrete + sized:**
+- **Admin tools → resolver** — 7 admin files still read `constants/categories.ts` directly (CollectionEditor / CollectionsList / LayoutManager / RelatedSectionsManager / SectionConfigDrawer / SuggestionEditor / NewSuggestionForm). ~30 min mechanical.
+- **First-paint flash audit pass 2** — apply the §51 server-fetch + skip-flag pattern to `/admin/content/regions`, `/admin/content/activities`, `/admin/users`. ~1h each.
+- **Amenity vocab → DB-driven** (§54 follow-up) — `taxonomy.ts:159-162` has canonical keys hardcoded. If admin edits migration 044, the prompt drifts until the file is re-edited. Read from `category_filters` rows on prompt assembly. ~1h.
+- **Public `match.ts:when` parser fix** — `new Date(d)` mis-parses K2's `DD/MM/YYYY`. Replace with route's `parseEventDate`. Narrow surface area.
+
+**Blocked on user decisions:**
+- **Phase B day 1** (pgvector recs) — embedding provider lock (OpenAI text-embedding-3-small recommended) + backfill scope (prod vs dev branch). Plan in `docs/architecture.md` → "Recommendations (Phase B)".
+- **Biblionet subcategory taxonomy** — expand to ~18 vs two-tier UI. Plan in `docs/architecture.md` → "Biblionet integration".
+
+**Long tail:** §39 SEO closing (admin fields for contentRating/ISBN/etc. + sitemap split at 5K + image sitemap + noindex on thin pages + K2→new URL 301 map) · real legal copy on `/terms` + `/privacy` · drop legacy `ratings` + `comments` tables · promote useful admin-only facets to public filters case-by-case · per-category visual identity polish.
+
+---
+
+**Previous state — session 35 finished:**
 
 Five shipped pieces across the admin + filtering surfaces, plus one shipped-then-reverted experiment with a documented lesson. Documented in CLAUDE.md §51–§54.
 

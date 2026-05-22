@@ -14,7 +14,7 @@ Set on Vercel (or whatever runtime hosts Next.js):
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Anon key (browser-safe) |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Service-role key (server-only; never expose) |
 | `TMDB_API_KEY` | optional | Movie/series cover enrichment ([themoviedb.org](https://www.themoviedb.org/settings/api)) |
-| `GOOGLE_BOOKS_API_KEY` | optional | Books cover enrichment (works without for low volume). Slated for removal once Biblionet path is wired (CLAUDE.md §44). |
+| `GOOGLE_BOOKS_API_KEY` | optional | Books cover enrichment (works without for low volume). Slated for removal once Biblionet path is wired (`docs/architecture.md` → "Biblionet integration"). |
 | `GOOGLE_PLACES_API_KEY` | optional | Venue photos (food/bars/hotels) |
 | `BIBLIONET_USERNAME` | optional today, required when §44 lands | Biblionet web service username. Books enrichment + future catalog mirror. |
 | `BIBLIONET_PASSWORD` | optional today, required when §44 lands | Biblionet web service password. Treat as secret — server-only. |
@@ -76,11 +76,11 @@ scripts/sql/040-admin-audit-stamps.sql
 
 **Note:** Migration 016 wipes the legacy `ratings` table and resets `items.rating_count` / `avg_rating` to 0 across all items. The legacy `comments` and `ratings` tables stay in the DB as archive but are NOT read by the new UI — all reviews from now on flow through the new `reviews` table (rating mandatory + reflection optional, one row per (user, item)).
 
-**Note:** Migration 032 renames `collection_placements` → `page_sections` and seeds widget rows for every (context, category, audience) bucket. Day-1 rendering is identical to the previous hardcoded JSX. Migration 033 completes the home seed (audience-split `movies_tonight` + 5 fallback carousels per audience). Migration 034 adds `related_sections_config` (admin-defined "More from {axis}" rules per category) with 8 seeded rules. See CLAUDE.md §37 + §38.
+**Note:** Migration 032 renames `collection_placements` → `page_sections` and seeds widget rows for every (context, category, audience) bucket. Day-1 rendering is identical to the previous hardcoded JSX. Migration 033 completes the home seed (audience-split `movies_tonight` + 5 fallback carousels per audience). Migration 034 adds `related_sections_config` (admin-defined "More from {axis}" rules per category) with 8 seeded rules. See `docs/architecture.md` → "Admin layout system" + "Detail-page related sections".
 
-**Note:** Migration 036 extends `moments.trigger_event` CHECK to include `'review_published'` and seeds 5 review-milestone celebrations (counts 1 / 5 / 10 / 25 / 50). Drops the existing CHECK constraint and re-adds it with the new value. Idempotent. See CLAUDE.md §42 + PROGRESS.md session 26.
+**Note:** Migration 036 extends `moments.trigger_event` CHECK to include `'review_published'` and seeds 5 review-milestone celebrations (counts 1 / 5 / 10 / 25 / 50). Drops the existing CHECK constraint and re-adds it with the new value. Idempotent. See `docs/architecture.md` → "Achievement / moments system" + PROGRESS.md session 26.
 
-**Note:** Migration 039 adds `users.admin_warnings jsonb DEFAULT '[]'` + a GIN index. Append-only audit log used by the consolidated review-reports drawer (CLAUDE.md §41) when an admin opts to warn a review's author or flag a reporter as abusive. Idempotent.
+**Note:** Migration 039 adds `users.admin_warnings jsonb DEFAULT '[]'` + a GIN index. Append-only audit log used by the consolidated review-reports drawer (`docs/architecture.md` → "Reports / moderation") when an admin opts to warn a review's author or flag a reporter as abusive. Idempotent.
 
 **Note:** Migration 040 adds `modified_by uuid REFERENCES users(id) ON DELETE SET NULL` + `modified_at timestamptz` columns plus partial indexes to: `moments`, `page_sections`, `collections`, `related_sections_config`, `category_filters`. Powers the `<RecentChanges>` widget on `/admin` Overview + the `/api/admin/audit-log` endpoint. Five PATCH endpoints stamp the columns via `lib/admin/audit.ts:executeWithAuditFallback` — which retries the UPDATE without stamps on Postgres code `42703` so the codebase still functions before the migration lands. Idempotent.
 

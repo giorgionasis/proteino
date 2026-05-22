@@ -13,9 +13,9 @@ Place this file in the project root alongside CLAUDE.md and HOOKS.md.
 | Surface | Status | Notes |
 |---|---|---|
 | Submission AI | ✅ Wired | Gemini Flash-Lite + cache. Live quality coach via `scoreDescriptionQuality`. |
-| Search AI | ✅ Wired (v2) | Structured-filter engine. See §13 for the full schema. |
+| Search AI | ✅ Wired (v3) | Structured-attribute extraction. See §13 below + `docs/architecture.md` → "Search (v3)" for the full schema. |
 | Recommendation AI | 📋 Phase B planned (session 30), not started | pgvector + nightly batch + LLM rerank. **5-day day-by-day plan locked — see §4.6.** Decisions pending: embedding provider lock + backfill scope. |
-| Books enrichment | 🔄 Migrating to Biblionet (session 30) | Smoke test infrastructure shipped — typed client + 8 endpoints validated. Google Books slated for removal. See CLAUDE.md §44. |
+| Books enrichment | 🔄 Migrating to Biblionet (session 30) | Smoke test infrastructure shipped — typed client + 8 endpoints validated. Google Books slated for removal. See `docs/architecture.md` → "Biblionet integration". |
 
 **🛑 Gemini billing not enabled** — free tier of `gemini-2.5-flash-lite` caps at **20 requests/day** (per-project, not per-key). Once exhausted, `analyzeSearchQuery` and `analyzeSubmission` return passthrough `{categories: []}` and the route falls through to title-only matching. Enable at https://aistudio.google.com → API key → Linked Google Cloud project → Billing. At our ~700-token prompts, paid tier is ~$0.0001 per call.
 
@@ -84,7 +84,7 @@ IDLE → LISTENING → ANALYZING → MATCHED → LOCKED → SYNCING → PREVIEW 
                                     NO_MATCH → SUGGEST_MANUAL
 ```
 
-Plus `DUPLICATE` and `ERROR` states added in session 12 — see CLAUDE.md §7 / §22.
+Plus `DUPLICATE` and `ERROR` states added in session 12 — see `docs/architecture.md` → "Onboarding flow" + `docs/design-system.md` → "Layout chrome" (Suggestion overlay state machine).
 
 ### Behavioural rules
 
@@ -129,7 +129,7 @@ The panel must feel alive — varied, contextual messages. Implementation in `co
 
 ## 3. Smart Search AI
 
-> Architecture + behaviour invariants live in CLAUDE.md §27 (Search v2). This section keeps the original UX principles + flow tier that still govern.
+> Architecture + behaviour invariants live in `docs/architecture.md` → "Search (v3)". This section keeps the original UX principles + flow tier that still govern.
 
 ### Search analysis flow (timing rules)
 
@@ -303,15 +303,15 @@ const getCrossCategory = async (userId: string, recentItem: Item) => {
 
 ### 4.6 Phase B execution plan — 5 days (locked session 30, not started)
 
-Day-by-day plan, honors the locked offline-batch architecture (CLAUDE.md §3 layer 2): nightly Edge Function computes embeddings + `analytics.precomputed_recs`; online home reads precomputed in <100ms with zero LLM at request time. Haiku reranks only the hero rec on-demand, capped 2/user/day.
+Day-by-day plan, honors the locked offline-batch architecture (`docs/architecture.md` → "Recommendations (Phase B)"): nightly Edge Function computes embeddings + `analytics.precomputed_recs`; online home reads precomputed in <100ms with zero LLM at request time. Haiku reranks only the hero rec on-demand, capped 2/user/day.
 
 | Day | Goal | User-visible win |
 |---|---|---|
 | 1 | **Item embeddings backfill.** Lock provider: OpenAI `text-embedding-3-small` ($0.02/1M tokens, 1536-dim matches existing `items.embedding` column). New `lib/embeddings/openai.ts` + `scripts/embed-items.ts`. Compose input text per category (movies: title+plot+cast+director; books: title+author+plot+subjects from Biblionet; venues: title+cuisine+type+city; recipes: title+ingredients+origin). Cost: ~1953 items × 200 tokens avg = **$0.008 one-shot**. Wire `app/api/recommendations/similar/route.ts` with pgvector cosine. | None — infrastructure |
-| 2 | **Item-to-item carousels on detail pages.** Replace hardcoded `<RelatedSections>` "Σχετικά" / "Από τον director" blocks (CLAUDE.md §38) with new `vector_similar` rule type — pulls `/similar` with cosine filter. Add `vector_similar` widget to `lib/layout/widgets.ts` for detail pages + `static_carousel` on home. Wire into all 9 detail components — existing `<CarouselPortrait>` / `<CarouselLandscape>` consume unchanged. | Every detail page on every category shows semantically related items. **Works for guests — no user activity required.** |
-| 3 | **User embeddings + offline batch infrastructure.** Migration: `analytics.user_embeddings` (or column on `users.embedding`, already exists per CLAUDE.md §5). `lib/embeddings/user.ts` with three fallback tiers: (a) active users ≥3 bookmarks/ratings in last 30d → weighted avg of interacted items (rating ×3, bookmark ×2, suggestion ×3, view ×1); (b) low-activity → avg of top-N items in onboarding categories; (c) zero-activity legacy K2 users → "popular last 30d" cluster center. Supabase Edge Function `embed-users-cron` daily at 04:00. Backfill cost: 627 users × ~50 tokens = **$0.0006 one-shot**. Daily cron: ~$0.01/month. | None |
+| 2 | **Item-to-item carousels on detail pages.** Replace hardcoded `<RelatedSections>` "Σχετικά" / "Από τον director" blocks (`docs/architecture.md` → "Detail-page related sections") with new `vector_similar` rule type — pulls `/similar` with cosine filter. Add `vector_similar` widget to `lib/layout/widgets.ts` for detail pages + `static_carousel` on home. Wire into all 9 detail components — existing `<CarouselPortrait>` / `<CarouselLandscape>` consume unchanged. | Every detail page on every category shows semantically related items. **Works for guests — no user activity required.** |
+| 3 | **User embeddings + offline batch infrastructure.** Migration: `analytics.user_embeddings` (or column on `users.embedding`, already exists per `docs/architecture.md` → "Database → Core tables"). `lib/embeddings/user.ts` with three fallback tiers: (a) active users ≥3 bookmarks/ratings in last 30d → weighted avg of interacted items (rating ×3, bookmark ×2, suggestion ×3, view ×1); (b) low-activity → avg of top-N items in onboarding categories; (c) zero-activity legacy K2 users → "popular last 30d" cluster center. Supabase Edge Function `embed-users-cron` daily at 04:00. Backfill cost: 627 users × ~50 tokens = **$0.0006 one-shot**. Daily cron: ~$0.01/month. | None |
 | 4 | **Precompute "Tailored for You" → online table.** Migration: `analytics.precomputed_recs` (`user_id`, `item_id`, `score`, `rank`, `reason_seed`, `computed_at`). Supabase Edge Function `precompute-recs-cron` daily at 04:30 (after user embeddings). For each user with `last_login_at` in last 30d → pgvector top-50 cosine, excluding bookmarked/rated/own-suggested. Writes ~50 rows per active user. Indexed on `(user_id, rank)` — `SELECT ... ORDER BY rank LIMIT 5` is <10ms. New `tailored_for_you` widget in `lib/layout/widgets.ts` (registered audience only). | Real personalized "Tailored for You" rail on home. Updates nightly. Page render still <100ms — no online compute. |
-| 5 | **Haiku reranking + reasoning copy.** `app/api/recommendations/rerank/route.ts` takes `userId`, fetches their precomputed top-50 + last 5 high-rated items, sends to Haiku: "rerank these 50 to top-5 + 1-line Greek reasoning referencing user's taste". Cap: 2 calls/user/day. Cached in `analytics.rerank_cache` for 24h. Wire onto **first card only** of "Tailored for You" rail + the "AI-personalized chips" on home (CLAUDE.md §7). Cost: ~$0.001/rerank × 2/day × 1000 active users = **~$2/day at scale**. | Real "Επειδή σου άρεσε X" reasoning copy. AI-driven home complete. |
+| 5 | **Haiku reranking + reasoning copy.** `app/api/recommendations/rerank/route.ts` takes `userId`, fetches their precomputed top-50 + last 5 high-rated items, sends to Haiku: "rerank these 50 to top-5 + 1-line Greek reasoning referencing user's taste". Cap: 2 calls/user/day. Cached in `analytics.rerank_cache` for 24h. Wire onto **first card only** of "Tailored for You" rail + the "AI-personalized chips" on home. Cost: ~$0.001/rerank × 2/day × 1000 active users = **~$2/day at scale**. | Real "Επειδή σου άρεσε X" reasoning copy. AI-driven home complete. |
 
 ### 4.6.1 Cold-start handling (concern raised session 30 + resolved)
 
@@ -332,7 +332,7 @@ The concern: "users haven't interacted enough yet — recommendations won't have
 | Haiku reranking @ 2/user/day | ~$60/month |
 | **Total monthly** | **~$60/month** |
 
-Within the 3-5% revenue target from CLAUDE.md §14.
+Within the 3-5% revenue target from CLAUDE.md "Major decisions log".
 
 ### 4.6.3 Decisions pending before day 1
 
@@ -693,9 +693,9 @@ Postgres `ai_query_cache` table keyed by `hash(provider|model|version|task|query
 
 ---
 
-## 13. Search v2 — additional implementation reference
+## 13. Search v3 — additional implementation reference
 
-> Architecture + behaviour invariants live in CLAUDE.md §27. This section keeps the parts AI.md is the natural home for: the full TypeScript schema, the `tokenMatches` body, the people-search column list, and the outstanding data gaps.
+> Architecture + behaviour invariants live in `docs/architecture.md` → "Search (v3)". This section keeps the parts AI.md is the natural home for: the full TypeScript schema, the `tokenMatches` body, the people-search column list, and the outstanding data gaps.
 
 ### 13.1 Extended `SearchAnalysis` schema
 
