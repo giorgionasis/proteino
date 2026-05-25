@@ -82,6 +82,51 @@ const STOPWORDS = new Set([
   "πολύ","λίγο","ωραία","καλή","καλό","κακό","τέλεια","τέλειο","υπέροχη","υπέροχο","εξαιρετική","εξαιρετικό",
   "γιατί","επειδή","διότι","όταν","αν","μήπως","χθες","σήμερα","απόψε","χθες",
   "ταινία","ταινίες","βιβλίο","βιβλία","σειρά","σειρές","επεισόδιο",
+  // Greek consumption/activity verbs — past + present, all persons.
+  // Without these, when Gemini extraction fails, the regex fallback in
+  // extractCandidateTitles picks the leading verb as the title — bug
+  // surfaced by scripts/test-submission-flow.mjs (bars/hotels/theater/
+  // events all returned "Ήπιαμε"/"Έμεινα"/"Είδα"/"Πήγα" as the title
+  // when the Vercel AI Gateway rate-limited Gemini calls).
+  // πίνω (drink)
+  "πίνω","πίνεις","πίνει","πίνουμε","πίνετε","πίνουν",
+  "ήπια","ήπιες","ήπιε","ήπιαμε","ήπιατε","ήπιαν",
+  // μένω (stay)
+  "μένω","μένεις","μένει","μένουμε","μένετε","μένουν",
+  "έμεινα","έμεινες","έμεινε","μείναμε","μείνατε","έμειναν",
+  // πάω / πηγαίνω (go)
+  "πάω","πας","πάει","πάμε","πάτε","πάνε",
+  "πήγα","πήγες","πήγε","πήγαμε","πήγατε","πήγαν",
+  "πηγαίνω","πηγαίνεις","πηγαίνει","πηγαίνουμε","πηγαίνετε","πηγαίνουν",
+  // τρώω / φάω (eat)
+  "τρώω","τρως","τρώει","τρώμε","τρώτε","τρώνε",
+  "έφαγα","έφαγες","έφαγε","φάγαμε","φάγατε","έφαγαν",
+  // βλέπω (see, watch)
+  "βλέπω","βλέπεις","βλέπει","βλέπουμε","βλέπετε","βλέπουν",
+  "είδαν","είδες","είδε","είδαμε","είδατε",
+  // ακούω (hear, listen)
+  "ακούω","ακούς","ακούει","ακούμε","ακούτε","ακούνε","ακούν",
+  "άκουσε","άκουσες","ακούσαμε","ακούσατε","άκουσαν",
+  // διαβάζω (read)
+  "διαβάζω","διαβάζεις","διαβάζει","διαβάζουμε","διαβάζετε","διαβάζουν",
+  "διάβασες","διάβασε","διαβάσαμε","διαβάσατε","διάβασαν",
+  // φτιάχνω (make, cook)
+  "φτιάχνω","φτιάχνεις","φτιάχνει","φτιάχνουμε","φτιάχνετε","φτιάχνουν",
+  "έφτιαξα","έφτιαξες","έφτιαξε","φτιάξαμε","φτιάξατε","έφτιαξαν",
+  // μαγειρεύω (cook)
+  "μαγειρεύω","μαγειρεύεις","μαγειρεύει","μαγειρέψαμε","μαγείρεψα","μαγείρεψες",
+  // δοκιμάζω (try, taste)
+  "δοκιμάζω","δοκιμάζεις","δοκιμάζει",
+  "δοκίμασα","δοκίμασες","δοκίμασε","δοκιμάσαμε","δοκιμάσατε","δοκίμασαν",
+  // επισκέπτομαι (visit)
+  "επισκέφθηκα","επισκέφθηκες","επισκέφθηκε","επισκεφθήκαμε","επισκεφτήκαμε",
+  // μου άρεσε / μ' άρεσε family (loved)
+  "άρεσε","άρεσαν","αρέσει","αρέσουν",
+  // κερδίζω (won — common in "με κέρδισε")
+  "κέρδισε","κέρδισα","κέρδισες","κερδίσαμε",
+  // English participles missing from the original list
+  "tried","visited","ate","drank","cooked","cooking","drinking","eating",
+  "staying","stayed","trying","tasted","tasting",
 ]);
 
 /**
@@ -118,12 +163,22 @@ function extractCandidateTitles(text: string): string[] {
   // uppercase letter (any script: Latin, Greek, Cyrillic, …). We use
   // Unicode property classes \p{Lu} + \p{L} because JS's \b and \w are
   // ASCII-only and would never fire on Greek input.
+  //
+  // Single-word matches whose lowercase form is a STOPWORDS entry are
+  // skipped — otherwise a leading Greek verb ("Ήπιαμε", "Έμεινα", "Είδα",
+  // "Πήγα") becomes the candidate title when Gemini extraction fails.
+  // Real single-word titles ("Anora", "Severance", "Conclave") still
+  // pass because they aren't in STOPWORDS.
   const propRe = new RegExp(
     "\\p{Lu}[\\p{L}\\d'\\-]*(?:\\s+\\p{Lu}[\\p{L}\\d'\\-]*)*",
     "gu"
   );
   let m: RegExpExecArray | null;
-  while ((m = propRe.exec(text)) !== null) push(m[0]);
+  while ((m = propRe.exec(text)) !== null) {
+    const phrase = m[0];
+    if (!phrase.includes(" ") && STOPWORDS.has(phrase.toLowerCase())) continue;
+    push(phrase);
+  }
 
   // 3. Lowercase fallback — group runs of consecutive non-stopword tokens.
   // Tokens shorter than 3 chars or in the stopword list act as separators.
@@ -168,6 +223,13 @@ function extractCandidateTitles(text: string): string[] {
 interface TmdbMatch {
   id: number;
   title: string;
+  /** Original-language title from TMDB (`original_title` for movies,
+   *  `original_name` for series). We need both because TMDB returns the
+   *  localized (el-GR) title in `title`, so a user typing the Latin
+   *  original ("Severance") would mis-score against the localized
+   *  variant ("Διαχωρισμός") — scoreTitleMatch takes max(title,
+   *  original_title) to handle this. */
+  original_title: string | null;
   category: "movies" | "series";
   poster_url: string | null;
   backdrop_url: string | null;
@@ -216,6 +278,7 @@ async function tmdbMatch(category: "movies" | "series", title: string): Promise<
     return {
       id: top.id,
       title: top.title ?? top.name ?? title,
+      original_title: top.original_title ?? top.original_name ?? null,
       category,
       poster_url: top.poster_path ? `https://image.tmdb.org/t/p/w500${top.poster_path}` : null,
       backdrop_url: top.backdrop_path ? `https://image.tmdb.org/t/p/w1280${top.backdrop_path}` : null,
@@ -266,6 +329,8 @@ async function tmdbMatch(category: "movies" | "series", title: string): Promise<
   return {
     id: detail.id,
     title: detail.title ?? detail.name ?? top.title ?? top.name ?? title,
+    original_title:
+      detail.original_title ?? detail.original_name ?? top.original_title ?? top.original_name ?? null,
     category,
     poster_url: detail.poster_path ? `https://image.tmdb.org/t/p/w500${detail.poster_path}` : null,
     backdrop_url: detail.backdrop_path ? `https://image.tmdb.org/t/p/w1280${detail.backdrop_path}` : null,
@@ -414,7 +479,14 @@ export async function GET(req: NextRequest) {
       candidates.map(async (c) => {
         const m = await tmdbMatch(candidateCategory, c).catch(() => null);
         if (!m) return null;
-        return { candidate: c, match: m, score: scoreTitleMatch(c, m.title) };
+        // Score against BOTH localized title and original_title — TMDB
+        // returns el-GR translations in `title`, so a user typing the
+        // Latin original ("Severance") would mis-score against the
+        // localized variant ("Διαχωρισμός"). Take max so an exact
+        // original-title hit lands in the high tier.
+        const localizedScore = scoreTitleMatch(c, m.title);
+        const originalScore = m.original_title ? scoreTitleMatch(c, m.original_title) : 0;
+        return { candidate: c, match: m, score: Math.max(localizedScore, originalScore) };
       })
     );
     const ranked = scored

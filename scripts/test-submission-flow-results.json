@@ -1,0 +1,693 @@
+[
+  {
+    "test": {
+      "id": "movies",
+      "text": "Είδα την ταινία Anora, εξαιρετική ερμηνεία από τη Mikey Madison, με κέρδισε για τα καλά.",
+      "note": "Leading verb 'Είδα' (regression: should NOT become the title). Latin-script title. Actor name. Real TMDB-indexed Oscar winner.",
+      "expect": {
+        "category": "movies",
+        "title_contains": "Anora",
+        "enrichment": "tmdb",
+        "tier": "high|medium"
+      }
+    },
+    "status": 200,
+    "body": {
+      "matched": true,
+      "title": "Anora",
+      "category": "movies",
+      "confidence": 0.95,
+      "progress": 100,
+      "message": "Γιατί σου άρεσε; Αυτό κάνει την πρόταση δυνατή",
+      "matchData": {
+        "source": "tmdb",
+        "tmdb_id": 1064213,
+        "poster_url": "https://image.tmdb.org/t/p/w500/wjc24x9hucbKm7WG1pY7CUIglxy.jpg",
+        "backdrop_url": "https://image.tmdb.org/t/p/w1280/qvyOfwTC3qdbzkqdXWSSEMHtjBZ.jpg",
+        "year": 2024,
+        "runtime": 139,
+        "plot": "Η Anora, μία νεαρή σεξεργάτρια από το Μπρούκλιν, αρπάζει την ευκαιρία να ζήσει το παραμύθι της Σταχτοπούτας όταν συναντά και παντρεύεται αυθόρμητα τον γιο ενός Ρώσου ολιγάρχη. Τα νέα μαθαίνονται στη Ρωσία και το παραμύθι της απειλείται καθώς οι γονείς του καταφθάνουν στη Νέα Υόρκη για να ακυρώσουν τον γάμο.",
+        "director": "Σον Μπέικερ",
+        "cast": [
+          {
+            "name": "Μάικι Μάντισον",
+            "character": "Ani",
+            "avatar": "https://image.tmdb.org/t/p/w185/nsWQNYBTBYE2TCzGpyXTpA0TTEz.jpg"
+          },
+          {
+            "name": "Марк Эйдельштейн",
+            "character": "Ivan",
+            "avatar": "https://image.tmdb.org/t/p/w185/1M4zBlIRCdsQtJfi9Yn6uStGtsK.jpg"
+          },
+          {
+            "name": "Юра Борисов",
+            "character": "Igor",
+            "avatar": "https://image.tmdb.org/t/p/w185/zLcD2UmXJG6m3qOQhNZs13SQRIp.jpg"
+          },
+          {
+            "name": "Karren Karagulian",
+            "character": "Toros",
+            "avatar": "https://image.tmdb.org/t/p/w185/rxyx8OFgShe0Kolptm5LpbsOUJj.jpg"
+          },
+          {
+            "name": "Vache Tovmasyan",
+            "character": "Garnik",
+            "avatar": "https://image.tmdb.org/t/p/w185/cKHEEer9V0zK96f1gE0gvQ5IvZq.jpg"
+          },
+          {
+            "name": "Luna Sofía Miranda",
+            "character": "Lulu",
+            "avatar": "https://image.tmdb.org/t/p/w185/eSEfNzd7f3Eg6LxWkiA1hjN51YN.jpg"
+          },
+          {
+            "name": "Lindsey Normington",
+            "character": "Diamond",
+            "avatar": "https://image.tmdb.org/t/p/w185/2sEruLIIjLpyVAYHMSpraMPlFFb.jpg"
+          },
+          {
+            "name": "Дарья Екамасова",
+            "character": "Galina Zakharov",
+            "avatar": "https://image.tmdb.org/t/p/w185/ehOZQn0EcYe0m7Qf59Bo6A8niIq.jpg"
+          }
+        ],
+        "genres": [
+          "Δράμα",
+          "Κωμωδία",
+          "Ρομαντική"
+        ],
+        "genre_ids": [
+          18,
+          35,
+          10749
+        ],
+        "country": "United States of America",
+        "language": "en",
+        "tried_candidate": "Anora",
+        "confidence_tier": "high",
+        "best_score": 100,
+        "alternatives": [
+          {
+            "title": "Μπίλι Μάντισον",
+            "year": 1995,
+            "poster_url": "https://image.tmdb.org/t/p/w500/sOdgtJdFalL9kRKaeJItARLTAEq.jpg",
+            "score": 80,
+            "category": "movies",
+            "match_data": {
+              "source": "tmdb",
+              "tmdb_id": 11017,
+              "poster_url": "https://image.tmdb.org/t/p/w500/sOdgtJdFalL9kRKaeJItARLTAEq.jpg",
+              "backdrop_url": "https://image.tmdb.org/t/p/w1280/xtgQkD280doGaFOL3c2LVokz3tt.jpg",
+              "year": 1995,
+              "runtime": 89,
+              "plot": "Ο Μπίλι Μάντισον είναι ένας νεόπλουτος κακομαθημένος νεαρός, που περνά ανέμελα τον καιρό του κολυμπώντας στην πισίνα του υπερπολυτελούς σπιτιού του, πίνοντας μπύρες και ξενυχτώντας. Κάποια στιγμή, όμως, ο πατέρας τού Μπίλι, Ντάρεν, αποφασίζει να δοκιμάσει τις ικανότητές του προκειμένου να αναλάβει τη διοίκηση της οικογενειακής επιχείρησής τους. Έτσι, του ανακοινώνει ότι πρέπει να επιστρέψει στο σχολείο και να παρακολουθήσει εντατικά μαθήματα 24 εβδομάδων προκειμένου να αποκτήσει την στοιχειώδη μόρφωση για να ηγηθεί της επιχείρησης, αλλιώς η διεύθυνση θα περάσει στα χέρια του γλοιώδους υποδιευθυντή, Έρικ Γκόρντον. Έτσι, ο Μπίλι αναγκάζεται να κόψει όλες τις κακές συνήθειες του και να συμμορφωθεί με τις επιταγές του πατέρα του. Τα ευτράπελα αρχίζουν",
+              "director": "Tamra Davis",
+              "cast": [
+                {
+                  "name": "Άνταμ Σάντλερ",
+                  "character": "Billy Madison",
+                  "avatar": "https://image.tmdb.org/t/p/w185/iTMnXrPfC1rmom6a9q4hy6YSJWG.jpg"
+                },
+                {
+                  "name": "Bradley Whitford",
+                  "character": "Eric Gordon",
+                  "avatar": "https://image.tmdb.org/t/p/w185/oeDv2qZWTxELLaNtOIoeG72leNY.jpg"
+                },
+                {
+                  "name": "Josh Mostel",
+                  "character": "Principal Max Anderson",
+                  "avatar": "https://image.tmdb.org/t/p/w185/zX8vyQ9JdWsr1cmPvvyrw01aPiQ.jpg"
+                },
+                {
+                  "name": "Bridgette Wilson-Sampras",
+                  "character": "Veronica Vaughn",
+                  "avatar": "https://image.tmdb.org/t/p/w185/zq6uzzL87CtfgxD4G3bLTcgUUTe.jpg"
+                },
+                {
+                  "name": "Darren McGavin",
+                  "character": "Brian Madison",
+                  "avatar": "https://image.tmdb.org/t/p/w185/xD9rZ6SLGPVs6QHjart68QhjVTt.jpg"
+                },
+                {
+                  "name": "Νορμ ΜακΝτόναλντ",
+                  "character": "Frank",
+                  "avatar": "https://image.tmdb.org/t/p/w185/pGOpdt9Xy9YO2nUEWgp8G89KC5r.jpg"
+                },
+                {
+                  "name": "Mark Beltzman",
+                  "character": "Jack",
+                  "avatar": "https://image.tmdb.org/t/p/w185/97oUiYEjKWdATDRDvJvL3Lug4qo.jpg"
+                },
+                {
+                  "name": "Λάρι Χάνκιν",
+                  "character": "Carl Alphonse",
+                  "avatar": "https://image.tmdb.org/t/p/w185/2uR8SZ9geiSQOpBhKrerh9qY7CX.jpg"
+                }
+              ],
+              "genres": [
+                "Κωμωδία"
+              ],
+              "genre_ids": [
+                35
+              ],
+              "country": "United States of America",
+              "language": "en",
+              "tried_candidate": "madison"
+            }
+          },
+          {
+            "title": "Τα Καλά Παιδιά",
+            "year": 1990,
+            "poster_url": "https://image.tmdb.org/t/p/w500/9OkCLM73MIU2CrKZbqiT8Ln1wY2.jpg",
+            "score": 60,
+            "category": "movies",
+            "match_data": {
+              "source": "tmdb",
+              "tmdb_id": 769,
+              "poster_url": "https://image.tmdb.org/t/p/w500/9OkCLM73MIU2CrKZbqiT8Ln1wY2.jpg",
+              "backdrop_url": "https://image.tmdb.org/t/p/w1280/gILte6Zd7m1YneIr6MVhh30S9pr.jpg",
+              "year": 1990,
+              "runtime": 146,
+              "plot": "Ο Χένρι Χιλ μεγαλώνει σε μια ιταλοαμερικάνικη γειτονιά του Μπρούκλιν και ονειρεύεται να διεισδύσει κάποτε στο κύκλωμα των ισχυρών της Μαφίας. Κάποια στιγμή αποφασίζει να κάνει μια ληστεία με τους γκάνγκστερ φίλους του, Τζίμι και Τόμι. Κατά τη διάρκεια της ληστείας, αυτοί σκοτώνουν οποιοδήποτε παίρνει μέρος σ’ αυτή και έτσι ξεκινάνε να σκαρφαλώνουν στην ιεραρχία της μαφίας. Ο ένας φόνος διαδέχεται τον άλλο και τα πράγματα γίνονται όλο και πιο ριψοκίνδυνα…",
+              "director": "Μάρτιν Σκορσέζε",
+              "cast": [
+                {
+                  "name": "Ρόμπερτ Ντε Νίρο",
+                  "character": "James Conway",
+                  "avatar": "https://image.tmdb.org/t/p/w185/cT8htcckIuyI1Lqwt1CvD02ynTh.jpg"
+                },
+                {
+                  "name": "Ray Liotta",
+                  "character": "Henry Hill",
+                  "avatar": "https://image.tmdb.org/t/p/w185/jdwGJbJNSRQiG2kB5MJxiu2clCQ.jpg"
+                },
+                {
+                  "name": "Τζο Πέσι",
+                  "character": "Tommy DeVito",
+                  "avatar": "https://image.tmdb.org/t/p/w185/zbAdhqbMfRXSz26TjxJvB5f2eL5.jpg"
+                },
+                {
+                  "name": "Lorraine Bracco",
+                  "character": "Karen Hill",
+                  "avatar": "https://image.tmdb.org/t/p/w185/tAtpCzN4sTOy1RHpMpJj52zTO4S.jpg"
+                },
+                {
+                  "name": "Paul Sorvino",
+                  "character": "Paul Cicero",
+                  "avatar": "https://image.tmdb.org/t/p/w185/1gF0UskusEdDcNaBDJ2CMsz5Agi.jpg"
+                },
+                {
+                  "name": "Frank Sivero",
+                  "character": "Frankie Carbone",
+                  "avatar": "https://image.tmdb.org/t/p/w185/eqvhj0iNtcsN6EJhd21Goqi1DSq.jpg"
+                },
+                {
+                  "name": "Tony Darrow",
+                  "character": "Sonny Bunz",
+                  "avatar": "https://image.tmdb.org/t/p/w185/kc6cGKm2yYx5ekHo4zGizhMLBge.jpg"
+                },
+                {
+                  "name": "Mike Starr",
+                  "character": "Frenchy",
+                  "avatar": "https://image.tmdb.org/t/p/w185/hJGhV91dSUiFJ8GwGDTEEri79LX.jpg"
+                }
+              ],
+              "genres": [
+                "Δράμα",
+                "Αστυνομική"
+              ],
+              "genre_ids": [
+                18,
+                80
+              ],
+              "country": "United States of America",
+              "language": "en",
+              "tried_candidate": "καλά"
+            }
+          }
+        ]
+      },
+      "quality": {
+        "score": 34,
+        "label": "fair",
+        "tip": "Γιατί σου άρεσε; Αυτό κάνει την πρόταση δυνατή",
+        "badge": "Καλό ξεκίνημα"
+      }
+    },
+    "elapsed_ms": 8853
+  },
+  {
+    "test": {
+      "id": "series",
+      "text": "Παρακολούθησα τη νέα σεζόν του Severance στο Apple TV+, η συνέχεια ήταν εξαιρετική και η ατμόσφαιρα πιο σκοτεινή από την πρώτη σεζόν.",
+      "note": "σεζόν keyword forces series branch (regression for the 'σειρά → movie' bug). Channel mention. Latin-script title.",
+      "expect": {
+        "category": "series",
+        "title_contains": "Severance",
+        "enrichment": "tmdb",
+        "tier": "high|medium"
+      }
+    },
+    "status": 200,
+    "body": {
+      "matched": true,
+      "title": "Διαχωρισμός",
+      "category": "series",
+      "confidence": 0.95,
+      "progress": 100,
+      "message": "Πες την αιτία — γιατί το προτείνεις",
+      "matchData": {
+        "source": "tmdb",
+        "tmdb_id": 95396,
+        "poster_url": "https://image.tmdb.org/t/p/w500/nKFVPIq1FgaznPRe12mqAbmDsUs.jpg",
+        "backdrop_url": "https://image.tmdb.org/t/p/w1280/ixgFmf1X59PUZam2qbAfskx2gQr.jpg",
+        "year": 2022,
+        "plot": "Ο Μαρκ ηγείται μιας ομάδας υπαλλήλων των οποίων οι αναμνήσεις έχουν διαχωριστεί χειρουργικά σε αναμνήσεις δουλειάς και προσωπικής ζωής. Όταν ένας μυστηριώδης συνάδελφος εμφανίζεται εκτός δουλειάς, ξεκινά ένα ταξίδι για να ανακαλύψει την αλήθεια για τις δουλειές τους.",
+        "director": "Dan Erickson",
+        "cast": [
+          {
+            "name": "Adam Scott",
+            "character": "Mark Scout",
+            "avatar": "https://image.tmdb.org/t/p/w185/b82C29R6fGiPoqIglQ4lzS6q2YX.jpg"
+          },
+          {
+            "name": "Britt Lower",
+            "character": "Helly Riggs",
+            "avatar": "https://image.tmdb.org/t/p/w185/5XIcTMDSyj7hRICQAcnY9U83ujF.jpg"
+          },
+          {
+            "name": "Tramell Tillman",
+            "character": "Seth Milchick",
+            "avatar": "https://image.tmdb.org/t/p/w185/bEA15zMnkcXlRroYjKrFUWiiK7y.jpg"
+          },
+          {
+            "name": "Zach Cherry",
+            "character": "Dylan George",
+            "avatar": "https://image.tmdb.org/t/p/w185/fT3Wv8ef0Vn0daHWAObCp2Bd4Y.jpg"
+          },
+          {
+            "name": "Jen Tullock",
+            "character": "Devon Scout-Hale",
+            "avatar": "https://image.tmdb.org/t/p/w185/n8SF2SEuJLRGrY3BNHgXdgMfGAK.jpg"
+          },
+          {
+            "name": "Ντίτσεν Λάκμαν",
+            "character": "Ms. Casey",
+            "avatar": "https://image.tmdb.org/t/p/w185/ySRHqthzU1gcEhV5rt7awZCzcwd.jpg"
+          },
+          {
+            "name": "Sarah Bock",
+            "character": "Eustice Huang",
+            "avatar": "https://image.tmdb.org/t/p/w185/LasHm2Geh7htM53btbYty29ddo.jpg"
+          },
+          {
+            "name": "John Turturro",
+            "character": "Irving Bailiff",
+            "avatar": "https://image.tmdb.org/t/p/w185/63zA58rSyJxBMLBdgeMjjETmpDQ.jpg"
+          }
+        ],
+        "genres": [
+          "Δράμα",
+          "Μυστηρίου",
+          "Επ. Φαντασία - Φαντασίας"
+        ],
+        "genre_ids": [
+          18,
+          9648,
+          10765
+        ],
+        "country": "United States of America",
+        "language": "en",
+        "tried_candidate": "Severance",
+        "confidence_tier": "high",
+        "best_score": 100,
+        "alternatives": [
+          {
+            "title": "Untitled Elizabeth Banks Apple TV Series",
+            "year": null,
+            "poster_url": null,
+            "score": 60,
+            "category": "series",
+            "match_data": {
+              "source": "tmdb",
+              "tmdb_id": 320582,
+              "poster_url": null,
+              "backdrop_url": null,
+              "year": null,
+              "plot": "",
+              "director": "Liz Heldens",
+              "cast": [
+                {
+                  "name": "Ελίζαμπεθ Μπανκς",
+                  "character": "Heidi",
+                  "avatar": "https://image.tmdb.org/t/p/w185/zrkI1dYucpTM8Qydtrtro9MgQPb.jpg"
+                },
+                {
+                  "name": "Ρομπ Ντιλέινι",
+                  "character": "",
+                  "avatar": "https://image.tmdb.org/t/p/w185/xirfT1znRkkughLiPemKu3NhkKQ.jpg"
+                }
+              ],
+              "genres": [
+                "Κωμωδία"
+              ],
+              "genre_ids": [
+                35
+              ],
+              "country": "United States of America",
+              "language": "en",
+              "tried_candidate": "Apple TV"
+            }
+          },
+          {
+            "title": "Στην Πρώτη Γραμμή",
+            "year": 2001,
+            "poster_url": "https://image.tmdb.org/t/p/w500/bF0o2cJFVM4JPIOTc4GVMho7fkj.jpg",
+            "score": 60,
+            "category": "series",
+            "match_data": {
+              "source": "tmdb",
+              "tmdb_id": 4613,
+              "poster_url": "https://image.tmdb.org/t/p/w500/bF0o2cJFVM4JPIOTc4GVMho7fkj.jpg",
+              "backdrop_url": "https://image.tmdb.org/t/p/w1280/2yDV0xLyqW88dn5qE7YCRnoYmfy.jpg",
+              "year": 2001,
+              "plot": "Βασισμένο στις συνετεύξεις, τα απομνημονεύματα και στα γράμματα των επιζώντων του 5ου Λόχου, η σειρά μας εξιστορεί τις δραματικές εμπειρίες των αλεξιπτωτιστών αρχής γενομένης από την εκπαίδευση τους έως και το τέλος του πολέμου.",
+              "director": null,
+              "cast": [
+                {
+                  "name": "Michael Cudlitz",
+                  "character": "Denver (Bull) Randleman",
+                  "avatar": "https://image.tmdb.org/t/p/w185/1snLOta9L2DAhmOTvNIn7OSxzQC.jpg"
+                },
+                {
+                  "name": "Rick Gomez",
+                  "character": "George Luz",
+                  "avatar": "https://image.tmdb.org/t/p/w185/gmVYPHJgmRVIzhaVYMns4kgBVqm.jpg"
+                },
+                {
+                  "name": "Scott Grimes",
+                  "character": "Donald G. Malarkey",
+                  "avatar": "https://image.tmdb.org/t/p/w185/k5OCDhwZoFuNtN0o4EDkpBXQsFp.jpg"
+                },
+                {
+                  "name": "Ντέμιαν Λιούις",
+                  "character": "Richard D. Winters",
+                  "avatar": "https://image.tmdb.org/t/p/w185/puOXtVatFnAxoOmsFO8z7KTfyJW.jpg"
+                },
+                {
+                  "name": "Ron Livingston",
+                  "character": "Lewis Nixon",
+                  "avatar": "https://image.tmdb.org/t/p/w185/pr5CjWnkaf5WKTIYh8wtNufjmyb.jpg"
+                },
+                {
+                  "name": "James Madio",
+                  "character": "Frank J. Perconte",
+                  "avatar": "https://image.tmdb.org/t/p/w185/v17uyHhMLooVWKjMRS4NoGeTPyB.jpg"
+                },
+                {
+                  "name": "Neal McDonough",
+                  "character": "Lynn D. (Buck) Compton",
+                  "avatar": "https://image.tmdb.org/t/p/w185/3mI3i1CpjATSCta1Tb2qsyl1KCh.jpg"
+                },
+                {
+                  "name": "Ντόνι Γουόλμπεργκ",
+                  "character": "C. Carwood Lipton",
+                  "avatar": "https://image.tmdb.org/t/p/w185/8OQTlgl7eGAFlKTF2o8rZZT0MoF.jpg"
+                }
+              ],
+              "genres": [
+                "Δράμα",
+                "Πολεμική - Πολιτική"
+              ],
+              "genre_ids": [
+                18,
+                10768
+              ],
+              "country": "United States of America",
+              "language": "en",
+              "tried_candidate": "πρώτη"
+            }
+          }
+        ]
+      },
+      "quality": {
+        "score": 34,
+        "label": "fair",
+        "tip": "Πες την αιτία — γιατί το προτείνεις",
+        "badge": "Καλό ξεκίνημα"
+      }
+    },
+    "elapsed_ms": 8711
+  },
+  {
+    "test": {
+      "id": "books",
+      "text": "Διάβασα τον Άρχοντα των Δαχτυλιδιών του Tolkien, υπέροχο fantasy με τεράστια λεπτομέρεια και ιστορική βάση.",
+      "note": "Greek-translated title of Latin-script work. Author follows after το/του. Tests english_title_hint + english_author_hint fallback to Google Books.",
+      "expect": {
+        "category": "books",
+        "title_contains": "Άρχοντ|Lord",
+        "enrichment": "google-books",
+        "tier": "high|medium"
+      }
+    },
+    "status": 200,
+    "body": {
+      "matched": false,
+      "title": "Άρχοντα",
+      "category": null,
+      "confidence": 0.8674999999999999,
+      "progress": 100,
+      "message": "Τι σε έκανε να το προτείνεις σε άλλους;",
+      "matchData": {
+        "source": "heuristic",
+        "derived_title": "Άρχοντα",
+        "confidence_tier": null,
+        "gemini_extraction": null,
+        "alternatives": []
+      },
+      "quality": {
+        "score": 26,
+        "label": "poor",
+        "tip": "Τι σε έκανε να το προτείνεις σε άλλους;",
+        "badge": "Συνέχισε..."
+      }
+    },
+    "elapsed_ms": 7510
+  },
+  {
+    "test": {
+      "id": "recipes",
+      "text": "Έφτιαξα τσιπς από κολοκυθάκια στο φούρνο, υγιεινό και νόστιμο, ιδανικό για snack την παρέα.",
+      "note": "No external API for recipes — Gemini-only soft lock. Tests whether category detection picks 'recipes' from έφτιαξα + στο φούρνο, and whether title extraction is reasonable.",
+      "expect": {
+        "category": "recipes",
+        "title_contains": "τσιπς|κολοκυθ",
+        "enrichment": null,
+        "tier": "high|medium|low"
+      }
+    },
+    "status": 200,
+    "body": {
+      "matched": false,
+      "title": "τσιπς",
+      "category": null,
+      "confidence": 0.8275,
+      "progress": 100,
+      "message": "Πες την αιτία — γιατί το προτείνεις",
+      "matchData": {
+        "source": "heuristic",
+        "derived_title": "τσιπς",
+        "confidence_tier": null,
+        "gemini_extraction": null,
+        "alternatives": []
+      },
+      "quality": {
+        "score": 26,
+        "label": "poor",
+        "tip": "Πες την αιτία — γιατί το προτείνεις",
+        "badge": "Συνέχισε..."
+      }
+    },
+    "elapsed_ms": 7602
+  },
+  {
+    "test": {
+      "id": "food",
+      "text": "Πήγαμε για φαγητό στην Σπονδή στο Παγκράτι, εκπληκτικό fine dining με ελληνικά υλικά και επιμέλεια στις γεύσεις.",
+      "note": "Athens fine-dining venue. Tests location_hint extraction + Google Places match. πάμε/φάγαμε style leading verb.",
+      "expect": {
+        "category": "food",
+        "title_contains": "Σπονδή|Spondi",
+        "enrichment": "google-places",
+        "tier": "high|medium"
+      }
+    },
+    "status": 200,
+    "body": {
+      "matched": false,
+      "title": "Σπονδή",
+      "category": null,
+      "confidence": 0.88,
+      "progress": 100,
+      "message": "Είναι λίγο γενικό — πες γιατί ξεχωρίζει",
+      "matchData": {
+        "source": "heuristic",
+        "derived_title": "Σπονδή",
+        "confidence_tier": null,
+        "gemini_extraction": null,
+        "alternatives": []
+      },
+      "quality": {
+        "score": 26,
+        "label": "poor",
+        "tip": "Είναι λίγο γενικό — πες γιατί ξεχωρίζει",
+        "badge": "Συνέχισε..."
+      }
+    },
+    "elapsed_ms": 7799
+  },
+  {
+    "test": {
+      "id": "bars",
+      "text": "Ήπιαμε cocktails στο Baba Au Rum κοντά στο Σύνταγμα, ένα από τα καλύτερα cocktail bars της Αθήνας, η ατμόσφαιρα σε ταξιδεύει.",
+      "note": "Internationally listed Athens cocktail bar. Tests Places + categorizeGooglePlace (cocktail-bar should land in 'bars', not 'food').",
+      "expect": {
+        "category": "bars",
+        "title_contains": "Baba",
+        "enrichment": "google-places",
+        "tier": "high|medium"
+      }
+    },
+    "status": 200,
+    "body": {
+      "matched": false,
+      "title": "Baba Au Rum",
+      "category": null,
+      "confidence": 0.9125,
+      "progress": 100,
+      "message": "Γιατί σου άρεσε; Αυτό κάνει την πρόταση δυνατή",
+      "matchData": {
+        "source": "heuristic",
+        "derived_title": "Baba Au Rum",
+        "confidence_tier": null,
+        "gemini_extraction": null,
+        "alternatives": []
+      },
+      "quality": {
+        "score": 34,
+        "label": "fair",
+        "tip": "Γιατί σου άρεσε; Αυτό κάνει την πρόταση δυνατή",
+        "badge": "Καλό ξεκίνημα"
+      }
+    },
+    "elapsed_ms": 7647
+  },
+  {
+    "test": {
+      "id": "hotels",
+      "text": "Έμεινα στο Coco-Mat Athens BC ξενοδοχείο με υπέροχη θέα στην Ακρόπολη, design hotel με ψυχή και τέλειο πρωινό.",
+      "note": "Greek-Athens design hotel. Tests Places venue + hotels disambiguation. ξενοδοχείο keyword.",
+      "expect": {
+        "category": "hotels",
+        "title_contains": "Coco|Mat|BC",
+        "enrichment": "google-places",
+        "tier": "high|medium"
+      }
+    },
+    "status": 200,
+    "body": {
+      "matched": false,
+      "title": "Coco-Mat Athens BC",
+      "category": null,
+      "confidence": 0.875,
+      "progress": 100,
+      "message": "Είναι λίγο γενικό — πες γιατί ξεχωρίζει",
+      "matchData": {
+        "source": "heuristic",
+        "derived_title": "Coco-Mat Athens BC",
+        "confidence_tier": null,
+        "gemini_extraction": null,
+        "alternatives": []
+      },
+      "quality": {
+        "score": 26,
+        "label": "poor",
+        "tip": "Είναι λίγο γενικό — πες γιατί ξεχωρίζει",
+        "badge": "Συνέχισε..."
+      }
+    },
+    "elapsed_ms": 7976
+  },
+  {
+    "test": {
+      "id": "theater",
+      "text": "Είδα την παράσταση Άμλετ στο Εθνικό Θέατρο σε σκηνοθεσία Στάθη Λιβαθινού, μια εξαιρετική σύγχρονη ανάγνωση του κλασικού.",
+      "note": "No external enrichment — Gemini-only. Tests theater keyword detection (παράσταση/θέατρο/σκηνοθεσία) + director_hint extraction.",
+      "expect": {
+        "category": "theater",
+        "title_contains": "Άμλετ|Hamlet",
+        "enrichment": null,
+        "tier": "high|medium|low"
+      }
+    },
+    "status": 200,
+    "body": {
+      "matched": false,
+      "title": "Άμλετ",
+      "category": null,
+      "confidence": 0.8999999999999999,
+      "progress": 100,
+      "message": "Γιατί σου άρεσε; Αυτό κάνει την πρόταση δυνατή",
+      "matchData": {
+        "source": "heuristic",
+        "derived_title": "Άμλετ",
+        "confidence_tier": null,
+        "gemini_extraction": null,
+        "alternatives": []
+      },
+      "quality": {
+        "score": 34,
+        "label": "fair",
+        "tip": "Γιατί σου άρεσε; Αυτό κάνει την πρόταση δυνατή",
+        "badge": "Καλό ξεκίνημα"
+      }
+    },
+    "elapsed_ms": 8746
+  },
+  {
+    "test": {
+      "id": "events",
+      "text": "Πήγα στο Release Athens festival, στη συναυλία των Massive Attack στο Πλατώ Φαλήρου, καταπληκτική ατμόσφαιρα και ηχητική.",
+      "note": "No external enrichment. Tests event/συναυλία/festival detection + performer extraction.",
+      "expect": {
+        "category": "events",
+        "title_contains": "Release|Massive",
+        "enrichment": null,
+        "tier": "high|medium|low"
+      }
+    },
+    "status": 200,
+    "body": {
+      "matched": false,
+      "title": "Release Athens",
+      "category": null,
+      "confidence": 0.9025,
+      "progress": 100,
+      "message": "Γιατί σου άρεσε; Αυτό κάνει την πρόταση δυνατή",
+      "matchData": {
+        "source": "heuristic",
+        "derived_title": "Release Athens",
+        "confidence_tier": null,
+        "gemini_extraction": null,
+        "alternatives": []
+      },
+      "quality": {
+        "score": 34,
+        "label": "fair",
+        "tip": "Γιατί σου άρεσε; Αυτό κάνει την πρόταση δυνατή",
+        "badge": "Καλό ξεκίνημα"
+      }
+    },
+    "elapsed_ms": 8092
+  }
+]
