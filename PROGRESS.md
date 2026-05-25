@@ -1,12 +1,94 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-22 (session 37 — concrete+sized follow-up sweep: admin resolver migration, shared parseEventDate, DB-driven amenity vocab, flash-fix pass 2)
+Last updated: 2026-05-25 (session 38 — submission flow rework: AI match bug fixes + 9-category test runner · category-override chip · recipe wizard with manual + link-paste paths · Schema.org JSON-LD scraper)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 37 (current) finished:**
+**Current state — session 38 (current) finished:**
+
+Submission flow gets two major reworks driven by the same audit. The user asked for a per-category behavioural test of the AI submission endpoint; the test runner that came out of that session immediately surfaced two real bugs (heuristic title regression + TMDB localisation scoring) AND a missing UX category (recipes can't reuse the free-text-match flow because recipes are CREATED data, not REFERENCED). 5 implementation commits + this docs commit.
+
+### Shipped — AI match bug fixes + 9-category test runner (commit `4ebe934`)
+
+Two bugs surfaced whenever Gemini extraction misses the candidate title:
+
+1. **STOPWORDS expanded with Greek verb conjugations.** When Gemini fails (e.g. Vercel AI Gateway rate-limit), the regex fallback in `extractCandidateTitles` was picking the first capital-starting word — which is almost always a leading verb. Added past + present + all-person conjugations of πίνω / μένω / πάω / πηγαίνω / τρώω / φάω / βλέπω / ακούω / διαβάζω / φτιάχνω / μαγειρεύω / δοκιμάζω / επισκέπτομαι + αρέσει + κερδίζω family + English participles missing from the original list. The proper-noun-phrase regex (phase 2) ALSO now honours STOPWORDS for single-word matches — `"Ήπιαμε"` is filtered but `"Anora"` / `"Severance"` / `"Conclave"` still pass.
+
+2. **TMDB localisation poisons `scoreTitleMatch`.** User types "Severance", TMDB returns Greek `el-GR` "Διαχωρισμός", and the scorer was comparing only against the localised title → score=20 → tier=low. Added `original_title` to `TmdbMatch` (wired from search + detail responses), candidate scoring takes `Math.max(localised, original)` so the original-title hit lands in the high tier.
+
+Test runner: `scripts/test-submission-flow.mjs` sends 9 hand-authored Greek submission texts (one per category) through `/api/ai/match` and writes a `.md` + `.json` report. Stress-tests leading-verb regressions, Latin-vs-Greek title scoring, venue-vs-bar reclassification, gemini-only soft lock for theater/events/recipes. Run against a live dev server: `node scripts/test-submission-flow.mjs`. Post-fix verified: heuristic path now extracts real titles ("Baba Au Rum" / "Coco-Mat Athens BC" / "Άμλετ" / "Release Athens") instead of leading verbs.
+
+3rd bug surfaced but NOT fixed (carry to follow-ups): venue/books branches in route.ts only check `geminiExtraction?.category / categoryHint`, ignoring the regex-detected `candidateCategory`. So even with a clean title from heuristic, those branches don't fire Google Places / Books lookups when Gemini is unavailable.
+
+### Shipped — recipe foundation: canonical units + migration 045 + public options API (commit `d894058`)
+
+Foundation for the wizard. The user explicitly asked: "we should predifined them in a dropdown to have ομοιομορφία σε όλες τις συνταγές" — uniformity across recipes was the load-bearing reason. Saved as feedback memory `feedback-memorable-ui-sophisticated-ux`.
+
+- `lib/recipes/units.ts` — canonical 19-entry `RECIPE_UNITS` catalogue grouped (common / volume / weight / count / special). Each entry: stable key + Greek abbreviation (κ.σ., κ.γ., φλ., γρ.) + full spelled-out form. Stored value in `ingredients[].unit` is the LABEL string directly — matches the admin's existing storage shape, no migration of existing rows required.
+- Migration **045** — idempotent `INSERT ... ON CONFLICT DO NOTHING` seed of `extra_field_options` (category=recipes): 19 unit rows + 20 common ingredient rows + 3 level rows. Admin can extend/edit via `/admin/extra-fields`; migration won't overwrite anything that's already there.
+- `GET /api/recipes/options` — public endpoint, returns `{ units, common_ingredients, levels }` in the shape both admin SuggestionEditor + new wizard expect. Pulls from `extra_field_options` first; per-group falls back to static `lib/recipes/units.ts` when a group is empty.
+- `SuggestionEditor.RecipeExtraFields`: the hardcoded UNITS fallback now imports `RECIPE_UNIT_LABELS` so admin + public stay in sync.
+
+### Shipped — category-override chip + bottom-sheet picker (commit `51f2cda`)
+
+Phase 1 of the recipe-flow rework. Surfaces the AI-detected category as a small chip below the textarea; tap opens a slide-up `<CategoryPicker>` (portal-mounted, transform-gpu + ease-spring animation). The brand promise — "type and AI figures it out" — stays the default; the chip is a quiet escape hatch.
+
+Visual states:
+- AI-detected → zinc-50 chip + "— Άλλαξε" hint
+- User manually picked → coral-50 chip + "Επιλέχθηκε" badge
+
+`useSubmission` exposes `manualCategory` + `setManualCategory(slug | null)` + derived `effectiveCategory = manualCategory ?? analysis.category`. Downstream routing reads `effectiveCategory`; `analysis.category` stays raw so the IntelligencePanel keeps reflecting what the AI sees. New funnel event `category_override` carries `{ ai_category, picked }` so we can measure override rate per category.
+
+### Shipped — recipe wizard manual path (commit `8b3ce60`)
+
+Phase 2a. When `effectiveCategory === "recipes"` AND the overlay is in a typing-surface state, `<RecipeWizard>` takes over the textarea + IntelligencePanel area entirely. Single scrollable screen with sections: Title → Ingredients → Steps → Reflection → Rating → Optional metadata (collapsible — yields / calories / prep+cook / level / nutrition).
+
+- `components/submission/recipe/UnitSelect.tsx` — closed-list `<select>` sourced from `/api/recipes/options`, fallback to canonical static list, optgroup headers when on fallback.
+- `components/submission/recipe/IngredientList.tsx` — rows with qty + UnitSelect + name (+ datalist autocomplete from `common_ingredients`). Enter on name input adds a new row + focuses it. Storage shape `{qty, unit, name, link?}` matches what admin SuggestionEditor already writes.
+- `components/submission/recipe/StepList.tsx` — auto-grow textareas + paste-block splitter (pasting a multi-line chunk into an empty step splits on `\n` and creates one step per line, stripping `1.` / `2)` numbering so a copied printout cleans up automatically).
+- `useSubmission.publishRecipe(data)` — recipe-specific publish path. Refactored `submitToSuggestions()` out of `publish()` so both paths share the duplicate / error / success branching.
+- `app/api/suggestions/route.ts` — `SubmitBody.recipe_data` optional field; new-item branch inserts an `item_recipes` row with the user's structured input (no external enrichment for recipes — the user's input IS the source of truth).
+
+### Shipped — link-import path with Schema.org JSON-LD scraper (commit `f2bca29`)
+
+Phase 2b. Closes the loop on "memorable UI" — paste a chef-site URL → wizard pre-fills title + ingredients + steps + yields + cook/prep times → user edits + publishes.
+
+- `lib/enrichment/recipe-scraper.ts` — `detectRecipeUrl(text)` + `scrapeRecipe(url)`. 8s timeout, Greek-friendly user-agent. Parses every `<script type="application/ld+json">` block, walks `@graph` / array wrappers, finds the first `@type` containing "Recipe". Field mappers handle the messy reality: scalar/array/`{text|@value}` objects, HowToStep + HowToSection (Yoast-style nested), ISO-8601 durations with a numeric last-ditch fallback, ingredient line parser that recognises whole/decimal/fraction qtys + vulgar-fraction glyphs (½ ⅓ ¾) + Greek + English unit phrases ("κουταλιά της σούπας" → "κ.σ.").
+- `POST /api/recipes/scrape` — accepts `{url}` OR `{text}`. Auth-required. Returns `{recipe: ScrapedRecipe}` on success, structured error codes (`no_url` / `no_recipe` / `scrape_error`) so the link bar can show different copy per failure mode.
+- `components/submission/recipe/LinkImportBar.tsx` — collapsible. Single text link by default; expand → URL input + Enter-to-submit + Φόρτωση button. On success collapses to a small "✓ Εισαγωγή από <host>" pill. Failure stays expanded with reason-specific copy. Wizard merges scraped fields into state WITHOUT clobbering user edits (title only fills when empty; ingredient + step arrays only replace when the user hasn't started any).
+
+Per-site adapters slot exists but not populated — Schema.org JSON-LD covers most modern Greek recipe sites (akispetretzikis / argiro / pentanostimo all observed to emit it). Add per-host adapters as we discover gaps in real-world testing.
+
+### Files touched (session 38)
+
+- New: `scripts/test-submission-flow.mjs` + `.md` + `.json` results · `scripts/sql/045-recipe-units-seed.sql` · `lib/recipes/units.ts` · `lib/enrichment/recipe-scraper.ts` · `app/api/recipes/options/route.ts` · `app/api/recipes/scrape/route.ts` · `components/submission/CategoryPicker.tsx` · `components/submission/recipe/{UnitSelect,IngredientList,StepList,RecipeWizard,LinkImportBar}.tsx`
+- Refactored: `app/api/ai/match/route.ts` (stopwords + TMDB scoring) · `app/api/suggestions/route.ts` (recipe_data path) · `hooks/useSubmission.ts` (manualCategory + publishRecipe + shared submitter) · `lib/funnel/types.ts` (category_override event) · `components/submission/SuggestionOverlay.tsx` (chip + wizard routing) · `components/admin/SuggestionEditor.tsx` (synced unit fallback)
+- Memory: `~/.claude/projects/-Users-georgenasis-Code-proteino/memory/feedback-memorable-ui-sophisticated-ux.md`
+
+**Stats:** 5 implementation commits + 1 migration (045). `npx tsc --noEmit` → 0 errors throughout.
+
+### Migration to apply on next deploy
+
+**045** — `extra_field_options` seed for category=recipes (19 units + 20 common_ingredients + 3 levels). Idempotent — safe to re-run, won't overwrite admin edits.
+
+### Open follow-ups (next session — locked)
+
+**Concrete + sized:**
+- **Browser-test the recipe flow end-to-end.** Boot dev → FAB → type "Έφτιαξα τσιπς από κολοκυθάκια" → confirm chip appears → tap → pick "Συνταγές" → wizard mounts → fill in ingredients/steps/rating → publish → verify item_recipes row written with structured data → published screen renders. Then test link-paste: collapse "Έχω link" → paste a chef-site URL (akispetretzikis or argiro) → confirm pre-fill works. Issues found get filed as scoped fixes. ~30 min for the user.
+- **Bug #3 from session 38's test report.** `/api/ai/match` venue/books branches only check Gemini-derived category; they should also use the regex-detected `candidateCategory` as a fallback so Google Places / Books lookups still fire when Gemini is unavailable. ~20 min.
+- **Per-site recipe adapters** when Schema.org JSON-LD coverage gaps surface from real-world testing. Each adapter is ~50 LOC and a known-host case in `scrapeRecipe`'s dispatcher.
+
+**Blocked on user decisions:**
+- **Phase B day 1** (pgvector recs) — embedding provider lock (OpenAI `text-embedding-3-small` recommended) + backfill scope. Plan in `docs/architecture.md`.
+- **Biblionet subcategory taxonomy** — expand to ~18 vs two-tier UI. Plan in `docs/architecture.md`.
+
+**Long tail:** §39 SEO closing (admin fields for contentRating/ISBN/etc. + sitemap split at 5K + image sitemap + noindex on thin pages + K2→new URL 301 map) · real legal copy on `/terms` + `/privacy` · drop legacy `ratings`/`comments` tables · promote useful admin-only facets to public filters case-by-case · per-category visual identity polish.
+
+---
+
+**Previous state — session 37 finished:**
 
 Pure follow-up sweep. Every "concrete + sized" item from CLAUDE.md's open-follow-ups list shipped in one session — no new features, no scope creep, no migrations. 4 implementation commits + 3 small docs commits, all green through `npx tsc --noEmit`.
 

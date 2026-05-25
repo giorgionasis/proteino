@@ -197,12 +197,18 @@ Full token reference + image pipeline + icon registry + motion system in `docs/d
 | Detail-page related sections | Separate rules table | Different cardinality + admin UX than layout |
 | Filter system | Public filters (curated, structured) + admin-only Explorer facets (data inspection) | `category_filters` for user UI; `ADMIN_FACETS` is a data-exploration tool, not a promotion queue — search v3 handles nuance |
 | Search v3 | Structured-attribute extraction | 16 fields beyond title/category/location |
+| Recipe submission | Dedicated wizard with link-paste + manual paths, NOT free-text-match | Recipes are CREATED data, not REFERENCED. Other 8 categories identify existing entities; recipes need ingredients + steps to produce usable items. See PROGRESS.md session 38. |
+| Recipe units | Predefined dropdown sourced from `extra_field_options.recipes.unit` (seed: migration 045) | Uniformity across recipes — admin extends via `/admin/extra-fields`. Canonical fallback list in `lib/recipes/units.ts`. Stored value = label string |
+| Category override | Free-text default + chip + manual picker | AI brand promise stays primary; chip is a quiet escape hatch for the 5% case (also unblocks recipe-wizard trigger). `useSubmission.effectiveCategory = manualCategory ?? analysis.category` |
 
 ---
 
 ## Open follow-ups (rolling — update this section, not narrative)
 
-**Concrete + sized:** _(none open — see "Blocked on user decisions" + "Long tail")_
+**Concrete + sized:**
+- **Browser-test the session-38 recipe flow end-to-end.** FAB → type a recipe-shaped sentence → confirm chip appears + correct icon → tap → pick "Συνταγές" → wizard mounts → fill / paste a chef URL → publish → verify `item_recipes` row written + Published screen renders. Issues file as scoped fixes. ~30 min for the user.
+- **AI match route 3rd bug** (uncovered by test runner). `/api/ai/match` venue/books branches don't fire Google Places / Books lookups when Gemini's down — they only check Gemini-derived category, not regex-detected `candidateCategory`. ~20 min code fix.
+- **Per-site recipe adapters** when Schema.org JSON-LD coverage gaps surface in real-world testing (akispetretzikis / argiro / pentanostimo all observed to emit JSON-LD, but worth confirming). Each adapter ~50 LOC + a known-host case in `scrapeRecipe`'s dispatcher.
 
 **Blocked on user decisions:**
 - **Phase B day 1** (pgvector recs) — needs embedding-provider lock (OpenAI text-embedding-3-small recommended) + backfill scope (prod direct vs dev first). Plan in docs/architecture.md.
