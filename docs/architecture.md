@@ -771,3 +771,72 @@ All under `users.preferences` jsonb (mig 022): `interests` array, `onboarded_at`
 - `POST /api/onboarding/parse-interests` — Gemini `extractInterests` + deterministic keyword fallback.
 
 `<FollowButton>` is controllable (added `useEffect` to sync with `following` prop in session 20). `/onboarding` needs its own `AuthProvider` wrap in the layout — it lives outside `(main)` so otherwise the auth store stays null.
+
+---
+
+## Recipe submission (session 38)
+
+Recipes are the only category that fails the "AI identifies an existing entity" pattern the other 8 follow — a recipe submission produces a new item from scratch and needs structured `ingredients` + `steps` to be useful to other users. From session 38 forward, recipes route into a dedicated wizard instead of the free-text-match flow.
+
+### Trigger
+
+`useSubmission.effectiveCategory = manualCategory ?? analysis?.category`. When that resolves to `"recipes"` AND the overlay is in a typing-surface state, `SuggestionOverlay` swaps the textarea + IntelligencePanel area for `<RecipeWizard>`. Two ways the user lands there:
+
+1. **AI auto-detection** — Gemini extracts `category: "recipes"` at high confidence (e.g. "Έφτιαξα τσιπς από κολοκυθάκια"). The wizard takes over without user action.
+2. **Manual override** — `<CategoryChip>` below the textarea shows the AI's guess; tapping opens `<CategoryPicker>` (portal-mounted slide-up sheet); picking "Συνταγές" sets `manualCategory="recipes"` and fires the wizard. Useful for ambiguous text or when the user wants to start from a recipe link.
+
+### Wizard architecture (`components/submission/recipe/`)
+
+Single scrollable screen with sections; not a multi-step flow. Rationale: users abandoning mid-flow lose context; one screen always shows the whole shape. Sections from top:
+
+1. `<LinkImportBar>` — collapsible URL paste (Phase 2b). Default state is one text link "Έχω link από συνταγή ›".
+2. **Title** — pre-filled from `analysis.title` if Gemini extracted one; backfills on late AI extraction if user hasn't edited yet.
+3. **Ingredients** — `<IngredientList>`. Rows of `{qty, unit, name, link?}` matching exactly what admin SuggestionEditor writes to `item_recipes.ingredients`. Enter on name input adds a new row + focuses it.
+4. **Steps** — `<StepList>`. Auto-grow textareas + paste-block splitter (pasting a multi-line chunk into an empty step splits on `\n` and creates one step per line, stripping `1.` / `2)` numbering automatically).
+5. **Reflection** — pre-filled with the textarea text the user already typed before the wizard fired. Single textarea, the "γιατί" portion of the recipe.
+6. **Rating** — 5 stars, mandatory.
+7. **Optional metadata** — collapsed by default. Yields / calories / prep+cook minutes / level / nutrition (vegan / no_milk / no_sugar). Auto-expands when the link scraper imports any of these values.
+
+### Units catalogue — single source of truth
+
+`lib/recipes/units.ts:RECIPE_UNITS` defines a 19-entry canonical list grouped (common / volume / weight / count / special). Each entry: stable key + Greek abbreviation (κ.σ., κ.γ., φλ., γρ.) + full spelled-out form (κουταλιά της σούπας, …).
+
+- **Storage shape:** the LABEL string itself (`"κ.σ."`) is what lands in `ingredients[].unit` — matches admin SuggestionEditor's existing storage from day one. No key→label mapping at write time.
+- **DB seed:** migration **045** `INSERT … ON CONFLICT DO NOTHING` into `extra_field_options` (`category=recipes`, `field_group=unit`). Admin can extend/edit via `/admin/extra-fields` UI.
+- **Runtime resolution:** `GET /api/recipes/options` returns `{ units, common_ingredients, levels }` — pulls from `extra_field_options` first; per-group falls back to static `RECIPE_UNIT_LABELS` when the table is empty (fresh dev DB, pre-migration). Both the wizard's `<UnitSelect>` and `SuggestionEditor.RecipeExtraFields` consume this endpoint OR the static fallback.
+
+### `/api/suggestions` recipe_data extension
+
+`SubmitBody.recipe_data?` carries the wizard's structured payload alongside the standard submission fields. When category=recipes AND recipe_data is present, the new-item branch inserts an `item_recipes` row:
+
+```
+ingredients : jsonb array of {qty, unit, name, link?}
+steps       : jsonb array of strings
+yields      : int
+calories    : int
+level       : text  (Easy / Medium / Hard)
+duration    : jsonb {prep, cook, total} in minutes
+nutrition   : jsonb {vegan?, no_milk?, no_sugar?} (only true keys persisted)
+```
+
+No external enrichment for recipes — the user's own structured input IS the source of truth. `useSubmission.publishRecipe(data)` builds the payload; the shared `submitToSuggestions()` handler (refactored out of `publish()`) keeps the duplicate / error / success branching identical to the standard flow.
+
+### Recipe scraper (`lib/enrichment/recipe-scraper.ts`)
+
+Schema.org Recipe JSON-LD extractor — covers most Greek + international recipe sites that emit SEO-friendly markup. Strategy:
+
+1. `detectRecipeUrl(text)` — finds first http(s) URL, trims trailing punctuation.
+2. `scrapeRecipe(url)` — fetches HTML (8s timeout, Greek-friendly user-agent), regex-extracts every `<script type="application/ld+json">` block, walks `@graph` + array wrappers, finds the first `@type` containing "Recipe", maps to `ScrapedRecipe`.
+3. Per-host adapter slot exists in the dispatch path but unpopulated — Schema.org JSON-LD coverage is good enough for v1 (akispetretzikis / argiro / pentanostimo observed to emit it). Add per-host adapters as coverage gaps surface.
+
+Ingredient line parser recognises whole/decimal/fraction qtys + vulgar-fraction glyphs (½ ⅓ ¾), Greek + English unit phrases (multi-word "κουταλιά της σούπας" → "κ.σ.", "tablespoon" → "κ.σ."), keeps everything after the unit as the ingredient name. ISO-8601 duration parser handles `PT15M` / `PT1H30M` + a numeric last-ditch fallback for sites that emit "30 min" as plain text.
+
+### `POST /api/recipes/scrape`
+
+- Auth-required. Body: `{ url }` OR `{ text }` (extracts URL via `detectRecipeUrl`).
+- Returns `{ recipe: ScrapedRecipe }` on success. Structured error codes (`no_url` / `no_recipe` / `scrape_error`) so `<LinkImportBar>` shows different copy per failure mode.
+- Fail-soft — on any extraction failure the wizard keeps the form open and the user fills manually. No error state blocks them.
+
+### Open follow-ups
+
+See CLAUDE.md "Open follow-ups" — concrete + sized list. Notable: real-world browser test of the full flow, per-site adapters when JSON-LD gaps surface, fix `/api/ai/match` bug #3 (venue/books branches don't use regex-detected fallback category when Gemini's down — exposed by `scripts/test-submission-flow.mjs`).

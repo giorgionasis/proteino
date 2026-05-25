@@ -105,22 +105,47 @@ Plus `DUPLICATE` and `ERROR` states added in session 12 — see `docs/architectu
 
 ### Input modes (4 designed, only Text wired today)
 
-Text · Scan (OCR camera) · Link (URL paste) · Voice (STT) · List (bulk paste). Buttons exist in the UI; only Text path is implemented end-to-end.
+Text · Scan (OCR camera) · Link (URL paste) · Voice (STT) · List (bulk paste). Buttons exist in the UI; only Text path is implemented end-to-end. **Recipe link paste is wired separately** via `<LinkImportBar>` inside the recipe wizard — Schema.org JSON-LD scraper handles import (see "Recipe submission" below).
+
+### Category override chip (session 38)
+
+Below the textarea, surfaces the AI-detected category as a chip; tap opens `<CategoryPicker>`. `useSubmission.effectiveCategory = manualCategory ?? analysis.category` — downstream branching (recipe wizard trigger, publish payload) reads `effectiveCategory`; `analysis.category` stays raw so IntelligencePanel coaching reflects what the AI sees. Funnel event `category_override` measures override rate per category.
+
+### Recipe submission — dedicated wizard, not free-text-match (session 38)
+
+When `effectiveCategory === "recipes"`, the textarea + IntelligencePanel area swaps for `<RecipeWizard>` (single scrollable screen — title / ingredients / steps / reflection / rating / optional metadata). Recipes are CREATED data, not REFERENCED — a free-text description doesn't produce a usable item. Architecture details in `docs/architecture.md` → "Recipe submission".
+
+Submission path: `useSubmission.publishRecipe(data)` → `submitToSuggestions()` (refactored shared handler) → `POST /api/suggestions` with `recipe_data` payload → new-item branch inserts `item_recipes` row with the user's structured input.
 
 ### Metadata enrichment dispatch (Syncing phase)
 
 ```typescript
 const enrichers = {
   movie / series : TMDB              // ✅ wired user-side
-  book           : Google Books      // admin-only today
-  food / bar     : Google Places     // admin-only today
+                                     //    (session 38: scoring takes max(localised, original_title))
+  book           : Google Books      // ✅ wired user-side; Biblionet swap parked
+  food / bar     : Google Places     // ✅ wired user-side
   hotel          : Google Places + Booking API stub
   theater / event: Ticketmaster      // admin-only today
-  recipe         : none (user-generated)
+  recipe         : Schema.org JSON-LD scraper // ✅ wired session 38 via <LinkImportBar>
+                                              //    POST /api/recipes/scrape
 }
 ```
 
 Enrichment NEVER blocks submission. If API fails → publish anyway with user data only.
+
+### Heuristic fallback when Gemini is unavailable (session 38)
+
+When Gemini extraction returns null (rate limit, network error, schema mismatch), `/api/ai/match` falls back to regex extraction in `extractCandidateTitles`. Two improvements landed session 38:
+
+- **STOPWORDS** expanded with Greek verb conjugations (past + present + all persons of πίνω / μένω / πάω / πηγαίνω / τρώω / φάω / βλέπω / ακούω / διαβάζω / φτιάχνω / μαγειρεύω / δοκιμάζω / επισκέπτομαι + αρέσει + κερδίζω families). Before this, the regex picked leading verbs ("Ήπιαμε" / "Έμεινα" / "Πήγα") as the title.
+- **Proper-noun-phrase regex** (phase 2 in the extractor) also honours STOPWORDS for single-word matches now — "Ήπιαμε" filtered, "Anora" / "Severance" / "Conclave" still pass.
+
+3rd bug surfaced but NOT yet fixed: venue/books branches in `route.ts` only check Gemini-derived category, ignoring the regex-detected `candidateCategory` — so even with a clean fallback title, Google Places / Books lookups don't fire when Gemini's down. Carry-over in CLAUDE.md follow-ups.
+
+### Test runner — `scripts/test-submission-flow.mjs`
+
+9 hand-authored Greek submission texts (one per category) hit `/api/ai/match` and write a `.md` + `.json` report. Stress-tests leading-verb regressions, Latin-vs-Greek title scoring, venue-vs-bar reclassification, gemini-only soft lock for theater/events. Run against a live dev server. Re-run after any prompt or route change to spot regressions.
 
 ### ProteínoIntelligence panel
 The panel must feel alive — varied, contextual messages. Implementation in `components/ai/ProteinoIntelligence.tsx`; copy variants per state live in code rather than spec'd here so they can iterate freely.

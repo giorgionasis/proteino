@@ -586,6 +586,47 @@ Each `ReviewCard` gets `appearAnimation={!!liveReview && r.id === liveReview.id}
 
 ---
 
+## Submission flow — category chip + recipe wizard (session 38)
+
+The free-text-first submission UX gained two surfaces this session. Architecture details in `docs/architecture.md` → "Recipe submission"; the visual contract below.
+
+### Category override chip + picker
+
+Below the textarea during `typing` / `match_found` states. Two visual states:
+
+| State | Background | Border | Trailing affordance |
+|---|---|---|---|
+| AI-detected | zinc-50 | zinc-200 | `— Άλλαξε` muted hint |
+| User manually picked | coral-50 | coral-200 | `Επιλέχθηκε` coral badge |
+
+Chip is `h-9 px-3 rounded-full` with `gap-2` icon + label. Hidden during the empty state (nothing to override) and during full-screen takeovers.
+
+**`<CategoryPicker>`** — portal-mounted slide-up bottom sheet. 3×3 emoji grid using the resolver-overlaid category list (`{slug, labelEl, icon}[]`). Active selection is coral-bordered. Footer "Επανέφερε στο AI" link visible only when manual override is set. Uses the mounted-until-animation-done pattern (300ms ease-spring translate + backdrop fade); honours `Escape` close. The brand promise stays "type and we'll figure it out" — the chip is a quiet escape hatch, not a step in the flow.
+
+### Recipe wizard
+
+Replaces the textarea + IntelligencePanel area when `effectiveCategory === "recipes"`. Single scrollable screen with the header LOCKED-variant chrome (no-bottom-border, `"Συνταγή"` coral pill, "← Άλλαξε κατηγορία" link).
+
+Sections in order:
+
+1. **`<LinkImportBar>`** — collapsed default is a single text link `Έχω link από συνταγή ›`. Tap expands to URL input + Φόρτωση button + × dismiss. On success collapses to `✓ Εισαγωγή από <host>` pill (dismissible). On failure stays expanded with reason-specific copy + `συμπλήρωσε χειροκίνητα` hint.
+2. **Title** — single text input, pre-filled from AI extraction.
+3. **`<IngredientList>`** — stacked rows of `[# count] [qty input] [unit select] [name input + autocomplete] [× delete]`. Enter on name adds + focuses a new row. Last row's "+ Πρόσθεσε υλικό" link is coral. Empty list never — clearing the last row resets it instead of unmounting.
+4. **`<StepList>`** — numbered steps. Number badge `w-7 h-7 bg-coral-600 text-white rounded-full`. Auto-grow textareas. Paste-block-friendly: pasting multi-line content into an empty step splits on `\n` and strips `1.` / `2)` numbering automatically.
+5. **Reflection** — single textarea, pre-filled from the text typed before the wizard fired.
+6. **Rating** — 5 stars, mandatory. Coral fill at active count, zinc outline beyond.
+7. **Optional metadata** — collapsible (`▾` rotates). Two-col grid of NumberFields (yields / calories / prep / cook) with suffix labels (`άτομα` / `kcal` / `min`). Level chip group + Nutrition chip group (vegan / no_milk / no_sugar) — emerald-active vs zinc-default.
+
+Publish CTA at the bottom — same gradient `linear-gradient(to right, #FE6F5E, #FF9980)` as the standard Verify button. Disabled until title + ≥1 ingredient + ≥1 step + rating > 0. Helper text below explains what's missing when disabled.
+
+### `<UnitSelect>` dropdown
+
+Closed-list `<select>` sourced from `/api/recipes/options`. When DB rows are present, renders as a flat list (admin's display_order wins). When falling back to static `RECIPE_UNIT_LABELS`, renders with `<optgroup>` headers: **Συνήθεις · Όγκος · Βάρος · Μέτρηση · Ειδικά**.
+
+`useRecipeOptions()` hook fetches once on mount; returns the static fallback while loading so the wizard renders immediately.
+
+---
+
 ## Achievement modal
 
 `<AchievementUnlockedModal>` portal-mounts to body, 3-phase mount, body-scroll lock, X + backdrop close. **No auto-dismiss.**
