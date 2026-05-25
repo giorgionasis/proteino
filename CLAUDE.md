@@ -195,7 +195,7 @@ Full token reference + image pipeline + icon registry + motion system in `docs/d
 | Books data source | Biblionet only | Drop Google Books entirely. Production wiring blocked on subcategory taxonomy decision |
 | Category layout | DB-driven via page_sections | Admin edits home + 9 categories without code change |
 | Detail-page related sections | Separate rules table | Different cardinality + admin UX than layout |
-| Filter system | Public filters + admin-only facets | `category_filters` + `ADMIN_FACETS` registry |
+| Filter system | Public filters (curated, structured) + admin-only Explorer facets (data inspection) | `category_filters` for user UI; `ADMIN_FACETS` is a data-exploration tool, not a promotion queue — search v3 handles nuance |
 | Search v3 | Structured-attribute extraction | 16 fields beyond title/category/location |
 
 ---
@@ -212,7 +212,6 @@ Full token reference + image pipeline + icon registry + motion system in `docs/d
 - §39 SEO closing — admin fields for contentRating / ISBN / numberOfEpisodes / starRating / openingHours / organizer / recipe video; sitemap split at 5K; image sitemap; `noindex` on thin pages; K2 → new URL 301 map.
 - Real legal copy on `/terms` + `/privacy`.
 - Drop legacy `ratings` + `comments` tables once archive is confirmed unwanted.
-- Promote useful admin-only facets to public filters case-by-case.
 - Per-category visual identity polish.
 
 ---
