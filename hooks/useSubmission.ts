@@ -124,6 +124,14 @@ interface UseSubmissionReturn {
   state: SubmissionState;
   text: string;
   analysis: SubmissionAnalysis | null;
+  /** User-picked category override. Takes precedence over the AI's
+   *  detected category for downstream routing decisions (recipe
+   *  wizard trigger, preview/publish payload). `null` means "AI
+   *  decides". Set via setManualCategory. */
+  manualCategory: CategorySlug | null;
+  /** AI-detected category merged with the manual override. The UI
+   *  reads this for flow decisions; `analysis.category` stays raw. */
+  effectiveCategory: CategorySlug | null;
   /** Real-time quality coaching. Recomputed on every keystroke from the
    *  raw text — independent of AI matching, so the panel keeps evolving
    *  even after the match is locked and AI has stopped re-firing. */
@@ -153,6 +161,13 @@ interface UseSubmissionReturn {
   coachingReady: boolean;
   setText: (value: string) => void;
   setRating: (value: number) => void;
+  /** Pin the category. AI keeps running but its category is ignored
+   *  for routing decisions until cleared (pass `null` to clear).
+   *  When the override changes the effective category to "recipes",
+   *  the suggestion overlay routes into the recipe wizard.
+   *  Also flagged in the funnel so we can measure how often users
+   *  override the AI's guess. */
+  setManualCategory: (category: CategorySlug | null) => void;
   /** Drop the current locked match → go back to "typing" so the AI can re-match. */
   unlock: () => void;
   /** Medium-tier "Ναι, αυτό" — user confirms the AI's primary pick → lock. */
@@ -188,6 +203,10 @@ export function useSubmission(): UseSubmissionReturn {
   const [coachingStatus, setCoachingStatus] = useState<"idle" | "thinking" | "fresh">("idle");
   const [coachingReady, setCoachingReady] = useState<boolean>(false);
   const [analysisInFlight, setAnalysisInFlight] = useState<boolean>(false);
+  // Manual category override — when set, wins over analysis.category for
+  // downstream routing (recipe wizard trigger, publish payload). Cleared
+  // when the user resets the overlay.
+  const [manualCategory, setManualCategory_] = useState<CategorySlug | null>(null);
   const freshSettleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Separate, longer debounce for the semantic quality tip — only fires
@@ -756,8 +775,33 @@ export function useSubmission(): UseSubmissionReturn {
     if (freshSettleRef.current) { clearTimeout(freshSettleRef.current); freshSettleRef.current = null; }
     rejectedMatchesRef.current.clear();
     lockedKeyRef.current = null;
+    setManualCategory_(null);
     setState("empty");
   };
+
+  // Manual category override. Wraps the raw setter with a funnel
+  // track event so we can measure how often the AI's guess gets
+  // overridden vs accepted — signal we'll need to tune the prompt or
+  // the visual hint placement over time.
+  const setManualCategory = (category: CategorySlug | null) => {
+    setManualCategory_(category);
+    if (category) {
+      funnel.track("category_override", {
+        state: stateRef.current as FunnelState,
+        payload: {
+          ai_category: analysis?.category ?? null,
+          picked: category,
+        },
+      });
+    }
+  };
+
+  // Effective category = manual override > AI extraction. Reads
+  // analysis.category from useRef snapshot semantics — useState
+  // identity means this recomputes on every render (cheap, no memo
+  // needed under React Compiler).
+  const effectiveCategory: CategorySlug | null =
+    manualCategory ?? (analysis?.category as CategorySlug | null) ?? null;
 
   // Visible "AI is working" state — true if EITHER the submission
   // match analysis OR the coaching tip stream is in flight. Lets the
@@ -771,6 +815,8 @@ export function useSubmission(): UseSubmissionReturn {
     state,
     text,
     analysis,
+    manualCategory,
+    effectiveCategory,
     quality,
     rating,
     isPublishing,
@@ -781,6 +827,7 @@ export function useSubmission(): UseSubmissionReturn {
     coachingReady,
     setText,
     setRating,
+    setManualCategory,
     unlock,
     confirmMatch,
     rejectMatch,

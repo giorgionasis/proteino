@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from "react";
 import { Camera, Link2, List, Mic, RotateCcw, Star, X } from "lucide-react";
 import { OverlayHeader } from "@/components/layout/Header";
 import { useSubmission, type AchievementData } from "@/hooks/useSubmission";
+import { CategoryPicker } from "@/components/submission/CategoryPicker";
+import { CATEGORIES } from "@/constants/categories";
+import type { CategorySlug } from "@/types";
 import { AchievementProgress } from "@/components/submission/AchievementProgress";
 import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
 import { FollowButton } from "@/components/ui/FollowButton";
@@ -60,6 +63,50 @@ function InputModes() {
         </button>
       ))}
     </div>
+  );
+}
+
+// ── Category override chip ────────────────────────────────────────────────────
+//
+// Surfaces the effective category (AI-detected or user-picked) below
+// the textarea. Tap opens <CategoryPicker> so the user can correct or
+// switch. Two visual states:
+//   - AI-detected: zinc-100 background, neutral, "Άλλαξε" affordance
+//   - User-picked: coral-50 background, coral border + label, "Επιλέχθηκες"
+// The brand promise stays "type and we'll figure it out" — the chip is
+// a quiet escape hatch, not a step in the flow.
+
+function CategoryChip({
+  category,
+  isManual,
+  onPress,
+}: {
+  category: CategorySlug;
+  isManual: boolean;
+  onPress: () => void;
+}) {
+  const meta = CATEGORIES.find((c) => c.slug === category);
+  if (!meta) return null;
+  return (
+    <button
+      type="button"
+      onClick={onPress}
+      className={cn(
+        "inline-flex items-center gap-2 self-start",
+        "h-9 px-3 rounded-full border text-sm font-medium",
+        "transition-colors duration-150 ease-soft active:scale-[0.97]",
+        isManual
+          ? "bg-coral-50 border-coral-200 text-coral-700"
+          : "bg-zinc-50 border-zinc-200 text-zinc-700 hover:bg-zinc-100",
+      )}
+      aria-label={`Κατηγορία: ${meta.labelEl}. Άλλαξε.`}
+    >
+      <span className="text-base leading-none">{meta.icon}</span>
+      <span>{meta.labelEl}</span>
+      <span className={cn("text-xs ml-0.5", isManual ? "text-coral-500" : "text-zinc-400")}>
+        {isManual ? "Επιλέχθηκε" : "— Άλλαξε"}
+      </span>
+    </button>
   );
 }
 
@@ -1198,6 +1245,8 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
     state: hookState,
     text,
     analysis,
+    manualCategory,
+    effectiveCategory,
     quality,
     rating,
     isPublishing,
@@ -1208,6 +1257,7 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
     coachingReady,
     setText,
     setRating,
+    setManualCategory,
     unlock,
     confirmMatch,
     rejectMatch,
@@ -1217,6 +1267,9 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
     publish,
     reset,
   } = useSubmission();
+  // Bottom-sheet picker open state — controlled here so the chip
+  // press + the picker mount stay co-located.
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [progress, setProgress] = useState(0);
   const [msgIndex, setMsgIndex] = useState(0);
   // Mobile keyboard awareness — when keyboard pushes the viewport
@@ -1525,6 +1578,18 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
 
         {hookState === "empty" && <InputModes />}
 
+        {/* Category override chip — surfaces the AI-detected (or user-
+            picked) category with a tap to open <CategoryPicker>. Shown
+            only after the user has typed something; recipe wizard
+            triggers off effectiveCategory === "recipes" (next phase). */}
+        {hookState !== "empty" && effectiveCategory && (
+          <CategoryChip
+            category={effectiveCategory}
+            isManual={!!manualCategory}
+            onPress={() => setPickerOpen(true)}
+          />
+        )}
+
         {/* IntelligencePanel — single inline render with density mode
             toggled by useKeyboardOpen. Compact mode (keyboard up):
             LOCKED card → 1-line chip, progress bar gone, ready banner
@@ -1581,6 +1646,17 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
         </button>
       </div>
 
+      {/* Category picker — portal-mounted to body. Always rendered so
+          the close animation can play; CategoryPicker itself handles
+          mount/unmount timing internally. */}
+      <CategoryPicker
+        open={pickerOpen}
+        current={effectiveCategory}
+        isManual={!!manualCategory}
+        onPick={(slug) => setManualCategory(slug)}
+        onClear={() => setManualCategory(null)}
+        onClose={() => setPickerOpen(false)}
+      />
     </div>
   );
 }

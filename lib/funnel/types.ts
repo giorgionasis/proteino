@@ -13,6 +13,7 @@ export type FunnelEventName =
   | "match_locked"
   | "match_rejected"
   | "alternative_chosen"
+  | "category_override"
   | "rating_set"
   | "publish_attempted"
   | "publish_succeeded"
