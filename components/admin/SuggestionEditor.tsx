@@ -12,6 +12,7 @@ import { OpenAsUserButton } from "./OpenAsUserButton";
 import { IconToggleGrid } from "./IconToggleGrid";
 import { Icon } from "@/components/ui/Icon";
 import { HOTEL_AMENITY_GROUPS, RECIPE_NUTRITION_OPTIONS, HOTEL_PROPERTY_TYPES, FOOD_AMENITY_OPTIONS, oscarIconForCategory } from "@/lib/icons";
+import { RECIPE_UNIT_LABELS } from "@/lib/recipes/units";
 import { cn } from "@/lib/utils/cn";
 import { useUnsavedGuard } from "@/hooks/useUnsavedGuard";
 
@@ -1825,7 +1826,13 @@ function RecipeExtraFields({ ref, data, extraOptions }: { ref?: React.Ref<ExtFie
     }
   }));
 
-  const UNITS = getOpts(extraOptions, "unit", ["κ.γ.", "κ.σ.", "κούπα", "κούπες", "γρ.", "κιλό", "ml", "lt", "τεμ", "φέτες", "ματσάκι"]);
+  // Fallbacks pulled from lib/recipes/units.ts — the canonical
+  // source-of-truth shared with the user-facing recipe wizard. Migration
+  // 045 seeds extra_field_options with the same list, so admin edits
+  // there override these defaults; the static import only kicks in on a
+  // fresh DB before the seed lands. Keep this branch in sync if the
+  // catalogue grows.
+  const UNITS = getOpts(extraOptions, "unit", RECIPE_UNIT_LABELS);
   const LEVELS = getOpts(extraOptions, "level", ["Easy", "Medium", "Hard"]);
   const COMMON_INGREDIENTS = getOpts(extraOptions, "common_ingredient", ["αλεύρι", "ζάχαρη", "βούτυρο", "αυγά", "γάλα", "αλάτι", "πιπέρι", "ελαιόλαδο", "κρεμμύδι", "σκόρδο"]);
 
