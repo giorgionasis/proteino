@@ -5,6 +5,7 @@ import { Camera, Link2, List, Mic, RotateCcw, Star, X } from "lucide-react";
 import { OverlayHeader } from "@/components/layout/Header";
 import { useSubmission, type AchievementData } from "@/hooks/useSubmission";
 import { CategoryPicker } from "@/components/submission/CategoryPicker";
+import { RecipeWizard } from "@/components/submission/recipe/RecipeWizard";
 import { CATEGORIES } from "@/constants/categories";
 import type { CategorySlug } from "@/types";
 import { AchievementProgress } from "@/components/submission/AchievementProgress";
@@ -1265,6 +1266,7 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
     dismissAndReject,
     verify,
     publish,
+    publishRecipe,
     reset,
   } = useSubmission();
   // Bottom-sheet picker open state — controlled here so the chip
@@ -1490,6 +1492,44 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
         onRetry={() => reset()}
         onClose={handleDismiss}
       />
+    );
+  }
+
+  // Recipe wizard takes over when the effective category is recipes
+  // AND we're still in the typing surface (not syncing/preview/published
+  // — those already early-returned above). The wizard owns its own
+  // local state for ingredients/steps/metadata; the surrounding hook
+  // continues to track funnel + duplicate flow. Triggers from either
+  // a high-confidence AI detection OR a manual category-picker override.
+  if (
+    (hookState === "typing" || hookState === "match_found" || hookState === "empty") &&
+    effectiveCategory === "recipes"
+  ) {
+    return (
+      <>
+        <RecipeWizard
+          initialTitle={analysis?.title ?? null}
+          initialReflection={text}
+          initialRating={rating}
+          isPublishing={isPublishing}
+          onPublish={(data) => publishRecipe(data)}
+          onCancel={() => {
+            // "Άλλαξε κατηγορία" — clear the manual override and let
+            // the user re-pick. Doesn't reset their typed text; they
+            // might want to keep it as the seed for a different
+            // category.
+            setManualCategory(null);
+          }}
+        />
+        <CategoryPicker
+          open={pickerOpen}
+          current={effectiveCategory}
+          isManual={!!manualCategory}
+          onPick={(slug) => setManualCategory(slug)}
+          onClear={() => setManualCategory(null)}
+          onClose={() => setPickerOpen(false)}
+        />
+      </>
     );
   }
 

@@ -258,6 +258,19 @@ interface SubmitBody {
   ai_match_data?: Record<string, unknown> | null;
   ai_quality_score?: number | null;
   cover_url?: string | null;
+  /** Recipe wizard's structured payload — present only when
+   *  category="recipes". Written verbatim into the new item_recipes
+   *  row (jsonb columns match the storage shape the admin
+   *  SuggestionEditor already uses). */
+  recipe_data?: {
+    ingredients: Array<{ qty?: string; unit?: string; name: string; link?: string }>;
+    steps: string[];
+    yields: number | null;
+    calories: number | null;
+    level: string | null;
+    duration: { prep?: number | null; cook?: number | null; total?: number | null } | null;
+    nutrition: Record<string, boolean> | null;
+  };
 }
 
 /**
@@ -506,6 +519,24 @@ export async function POST(req: NextRequest) {
       const { error: extErr } = await (admin.from(extTable) as any)
         .insert(buildVenueExtPayload(itemId, venueCat, md));
       if (extErr) console.error(`[suggestions] insert ${extTable} for new ${itemId}:`, extErr.message);
+    }
+    // Recipes — wizard-supplied structured data. Same storage shape as
+    // the admin SuggestionEditor (ingredients/steps as jsonb arrays,
+    // nutrition + duration as jsonb objects). No external API to enrich
+    // from — the user's own input is the source of truth.
+    if (category === "recipes" && body.recipe_data) {
+      const rd = body.recipe_data;
+      const { error: extErr } = await (admin.from("item_recipes") as any).insert({
+        item_id:     itemId,
+        ingredients: rd.ingredients.filter((i) => i.name?.trim()),
+        steps:       rd.steps.filter((s) => s?.trim()),
+        yields:      rd.yields,
+        calories:    rd.calories,
+        level:       rd.level,
+        duration:    rd.duration,
+        nutrition:   rd.nutrition,
+      });
+      if (extErr) console.error(`[suggestions] insert item_recipes for new ${itemId}:`, extErr.message);
     }
 
     // Image pipeline: when AI matched a TMDB / Books / Places result,

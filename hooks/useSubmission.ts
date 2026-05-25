@@ -187,6 +187,23 @@ interface UseSubmissionReturn {
   dismissAndReject: () => void;
   verify: () => Promise<void>;
   publish: () => Promise<void>;
+  /** Recipe wizard's publish path. Carries the wizard's structured
+   *  payload (ingredients / steps / nutrition / metadata) along with
+   *  the standard fields. Routes to the same response handler as
+   *  publish() — duplicate / error / success branches identical. */
+  publishRecipe: (data: {
+    title: string;
+    reflection: string;
+    rating: number;
+    ingredients: Array<{ qty: string; unit: string; name: string; link?: string }>;
+    steps: string[];
+    yields: number | null;
+    calories: number | null;
+    level: string | null;
+    prep_min: number | null;
+    cook_min: number | null;
+    nutrition: Record<string, boolean>;
+  }) => Promise<void>;
   reset: () => void;
 }
 
@@ -644,44 +661,17 @@ export function useSubmission(): UseSubmissionReturn {
     setState("preview");
   };
 
-  const publish = async () => {
-    if (state !== "preview") return;
-    if (!analysis?.matched || !analysis.title || !analysis.category) {
-      setErrorMessage("Δεν υπάρχει αντιστοιχία AI για αποθήκευση.");
-      setState("error");
-      return;
-    }
-
-    // Stay on the Preview screen during the API call; just flip an inline
-    // busy flag for the Share button. Avoids the dark syncing-screen flash
-    // (we already used that takeover during Verify → Preview enrichment).
+  // Shared POST + response handler. Used by both publish() (standard
+  // flow, payload built from analysis) and publishRecipe() (wizard
+  // flow, payload includes recipe_data). Keeps the duplicate / error /
+  // success branching in one place — refactoring once instead of
+  // diverging two paths.
+  const submitToSuggestions = async (
+    payload: Record<string, unknown>,
+    funnelMeta: { category: string; has_rating: boolean },
+  ): Promise<void> => {
     setIsPublishing(true);
-    funnel.track("publish_attempted", {
-      payload: { category: analysis.category, has_rating: rating > 0 },
-    });
-
-    // Pull poster_url out of matchData so the API can write items.cover_url
-    // immediately (legacy reads), keeping the full match payload around in
-    // ai_match_data for the API to spread into items + extension tables.
-    const md = (analysis.matchData ?? {}) as Record<string, any>;
-    const cover = typeof md.poster_url === "string"
-      ? md.poster_url
-      : typeof md.backdrop_url === "string"
-        ? md.backdrop_url
-        : null;
-
-    const payload = {
-      category: analysis.category as CategorySlug,
-      title: analysis.title,
-      reflection: text.trim() || null,
-      rating: rating > 0 ? rating : null,
-      cover_url: cover,
-      // confidence is 0-1; AI.md §2 quality is 0-100. Scale to match.
-      ai_quality_score: typeof analysis.confidence === "number"
-        ? Math.round(analysis.confidence * 100)
-        : null,
-      ai_match_data: analysis.matchData ?? null,
-    };
+    funnel.track("publish_attempted", { payload: funnelMeta });
 
     try {
       let res: Response;
@@ -746,8 +736,8 @@ export function useSubmission(): UseSubmissionReturn {
       });
       funnel.track("publish_succeeded", {
         payload: {
-          suggestion_id:    body.suggestion_id,
-          item_slug:        body.item_slug,
+          suggestion_id:        body.suggestion_id,
+          item_slug:            body.item_slug,
           new_suggestion_count: body.new_suggestion_count,
         },
         counters: { published: true },
@@ -756,6 +746,94 @@ export function useSubmission(): UseSubmissionReturn {
     } finally {
       setIsPublishing(false);
     }
+  };
+
+  const publish = async () => {
+    if (state !== "preview") return;
+    if (!analysis?.matched || !analysis.title || !analysis.category) {
+      setErrorMessage("Δεν υπάρχει αντιστοιχία AI για αποθήκευση.");
+      setState("error");
+      return;
+    }
+
+    // Pull poster_url out of matchData so the API can write items.cover_url
+    // immediately (legacy reads), keeping the full match payload around in
+    // ai_match_data for the API to spread into items + extension tables.
+    const md = (analysis.matchData ?? {}) as Record<string, any>;
+    const cover = typeof md.poster_url === "string"
+      ? md.poster_url
+      : typeof md.backdrop_url === "string"
+        ? md.backdrop_url
+        : null;
+
+    await submitToSuggestions(
+      {
+        category: analysis.category as CategorySlug,
+        title: analysis.title,
+        reflection: text.trim() || null,
+        rating: rating > 0 ? rating : null,
+        cover_url: cover,
+        // confidence is 0-1; AI.md §2 quality is 0-100. Scale to match.
+        ai_quality_score: typeof analysis.confidence === "number"
+          ? Math.round(analysis.confidence * 100)
+          : null,
+        ai_match_data: analysis.matchData ?? null,
+      },
+      { category: analysis.category, has_rating: rating > 0 },
+    );
+  };
+
+  /** Recipe wizard's publish path. Carries `recipe_data` alongside
+   *  the standard submission fields; the API route uses it to insert
+   *  the matching `item_recipes` row. analysis stays optional because
+   *  the user may have overridden the category manually before any AI
+   *  extraction landed. */
+  const publishRecipe = async (data: {
+    title: string;
+    reflection: string;
+    rating: number;
+    ingredients: Array<{ qty: string; unit: string; name: string; link?: string }>;
+    steps: string[];
+    yields: number | null;
+    calories: number | null;
+    level: string | null;
+    prep_min: number | null;
+    cook_min: number | null;
+    nutrition: Record<string, boolean>;
+  }) => {
+    // Mirror useSubmission's rating state so the Published screen +
+    // achievement modal pick it up the same way they do for other
+    // categories.
+    setRating_(data.rating);
+
+    await submitToSuggestions(
+      {
+        category: "recipes" as CategorySlug,
+        title: data.title,
+        reflection: data.reflection || null,
+        rating: data.rating > 0 ? data.rating : null,
+        ai_match_data: analysis?.matchData ?? null,
+        ai_quality_score: typeof analysis?.confidence === "number"
+          ? Math.round(analysis.confidence * 100)
+          : null,
+        recipe_data: {
+          ingredients: data.ingredients,
+          steps: data.steps,
+          yields: data.yields,
+          calories: data.calories,
+          level: data.level,
+          duration: data.prep_min || data.cook_min
+            ? {
+                prep:  data.prep_min ?? null,
+                cook:  data.cook_min ?? null,
+                total: (data.prep_min ?? 0) + (data.cook_min ?? 0) || null,
+              }
+            : null,
+          nutrition: Object.keys(data.nutrition).length > 0 ? data.nutrition : null,
+        },
+      },
+      { category: "recipes", has_rating: data.rating > 0 },
+    );
   };
 
   const reset = () => {
@@ -835,6 +913,7 @@ export function useSubmission(): UseSubmissionReturn {
     dismissAndReject,
     verify,
     publish,
+    publishRecipe,
     reset,
   };
 }
