@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { IngredientList, type Ingredient } from "./IngredientList";
 import { StepList } from "./StepList";
 import { useRecipeOptions } from "./UnitSelect";
+import { LinkImportBar } from "./LinkImportBar";
 import { cn } from "@/lib/utils/cn";
 
 export interface RecipeFormData {
@@ -144,6 +145,40 @@ export function RecipeWizard({
 
       {/* Body — scrollable single-screen wizard */}
       <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 space-y-6">
+        {/* Link import — quietly at the top. Paste a URL from a known
+            recipe site, get the wizard pre-filled. Shipping with
+            JSON-LD parser only; per-site adapters added on demand. */}
+        <LinkImportBar
+          onRecipeScraped={(recipe) => {
+            // Pre-fill fields. Don't clobber what the user already
+            // edited — only fill empties.
+            if (recipe.title && !title.trim()) setTitle(recipe.title);
+            if (recipe.ingredients.length > 0) {
+              const hasUserIngredients = ingredients.some((i) => i.name.trim());
+              if (!hasUserIngredients) {
+                setIngredients(
+                  recipe.ingredients.map((i) => ({
+                    qty:  i.qty ?? "",
+                    unit: i.unit ?? "",
+                    name: i.name,
+                  })),
+                );
+              }
+            }
+            if (recipe.steps.length > 0) {
+              const hasUserSteps = steps.some((s) => s.trim());
+              if (!hasUserSteps) setSteps(recipe.steps);
+            }
+            if (recipe.yields !== null && !yields) setYields(String(recipe.yields));
+            if (recipe.prep_min !== null && !prepMin) setPrepMin(String(recipe.prep_min));
+            if (recipe.cook_min !== null && !cookMin) setCookMin(String(recipe.cook_min));
+            // Open the optional section since we filled metadata into it.
+            if (recipe.yields !== null || recipe.prep_min !== null || recipe.cook_min !== null) {
+              setShowOptional(true);
+            }
+          }}
+        />
+
         {/* Title */}
         <section>
           <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">
