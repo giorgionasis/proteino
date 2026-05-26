@@ -1,19 +1,19 @@
 /**
- * Backfill item embeddings using OpenAI text-embedding-3-small.
+ * Backfill item embeddings using Google text-embedding-004 via AI Gateway.
  *
  * Usage:
  *   npx tsx scripts/embed-items.ts              # embed items missing embeddings
  *   npx tsx scripts/embed-items.ts --force       # re-embed ALL items
  *   npx tsx scripts/embed-items.ts --dry-run     # show what would be embedded
  *
- * Env: OPENAI_API_KEY, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ * Env: AI_GATEWAY_API_KEY, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  */
 
 import { config } from "dotenv";
 config({ path: ".env.local" });
 
 import { createClient } from "@supabase/supabase-js";
-import { embedBatch } from "../lib/embeddings/openai";
+import { embedBatch } from "../lib/embeddings/google-direct";
 import { composeEmbeddingText } from "../lib/embeddings/compose";
 
 const BATCH_SIZE = 50;
@@ -52,8 +52,8 @@ async function main() {
     console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
     process.exit(1);
   }
-  if (!process.env.OPENAI_API_KEY) {
-    console.error("Missing OPENAI_API_KEY");
+  if (!process.env.GEMINI_API_KEY) {
+    console.error("Missing GEMINI_API_KEY");
     process.exit(1);
   }
 
@@ -157,11 +157,10 @@ async function main() {
     console.log(`  [${category}] Done — ${catItems.length} items`);
   }
 
-  const costEstimate = (totalTokensEstimate / 1_000_000) * 0.02;
   console.log(`\nSummary:`);
   console.log(`  Embedded: ${totalEmbedded} items`);
   console.log(`  Est. tokens: ~${totalTokensEstimate.toLocaleString()}`);
-  console.log(`  Est. cost: ~$${costEstimate.toFixed(4)}`);
+  console.log(`  Cost: free (Google text-embedding-004 via AI Gateway)`);
 }
 
 main().catch((err) => {

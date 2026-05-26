@@ -22,7 +22,7 @@ import { getTaxonomy, renderTaxonomyForPrompt } from "./taxonomy";
  * the legacy direct-Gemini code path in lib/ai/index.ts during dev).
  */
 const MODEL_FLASH = "google/gemini-2.5-flash-lite";
-const MODEL_EMBEDDING = "google/text-embedding-004";
+const MODEL_EMBEDDING = "google/gemini-embedding-001";
 
 export const GEMINI_PROVIDER_LABEL = "gemini-gateway";
 export const GEMINI_MODEL_ID = MODEL_FLASH;

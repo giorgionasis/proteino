@@ -200,7 +200,7 @@ Full token reference + image pipeline + icon registry + motion system in `docs/d
 | Recipe submission | Dedicated wizard with link-paste + manual paths, NOT free-text-match | Recipes are CREATED data, not REFERENCED. Other 8 categories identify existing entities; recipes need ingredients + steps to produce usable items. See PROGRESS.md session 38. |
 | Recipe units | Predefined dropdown sourced from `extra_field_options.recipes.unit` (seed: migration 045) | Uniformity across recipes — admin extends via `/admin/extra-fields`. Canonical fallback list in `lib/recipes/units.ts`. Stored value = label string |
 | Category override | Free-text default + chip + manual picker | AI brand promise stays primary; chip is a quiet escape hatch for the 5% case (also unblocks recipe-wizard trigger). `useSubmission.effectiveCategory = manualCategory ?? analysis.category` |
-| Embedding provider | OpenAI text-embedding-3-small (1536-dim) | $0.02/1M tokens, matches existing `items.embedding vector(1536)` schema. No migration needed. Re-embed with large if catalog grows past 50K. |
+| Embedding provider | Google gemini-embedding-001 (3072 native → truncated to 768 via Matryoshka) | Free via direct API, AI Gateway for runtime. pgvector caps at 2000-dim indexes so truncation required. Migration 046 resizes 1536→768 + upgrades IVFFlat→HNSW. |
 
 ---
 
@@ -208,7 +208,7 @@ Full token reference + image pipeline + icon registry + motion system in `docs/d
 
 **Concrete + sized:**
 - **Phase B days 2-5** — item-to-item carousels on detail pages (day 2), user embeddings + offline batch (day 3), precomputed recs table (day 4), Haiku rerank (day 5). Day 1 infrastructure shipped in session 39. Plan in docs/architecture.md.
-- **Run `scripts/embed-items.ts`** on production once `OPENAI_API_KEY` is provisioned. Dry-run with `--dry-run` first. ~$0.008 one-shot cost.
+- **Run `scripts/embed-items.ts`** on production after applying migration 046. Dry-run with `--dry-run` first. Free (Google text-embedding-004 via AI Gateway).
 
 **Blocked on user decisions:**
 - **Biblionet subcategory taxonomy** — expand to ~18 vs two-tier UI. Plan in docs/architecture.md.

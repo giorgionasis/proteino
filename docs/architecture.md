@@ -12,7 +12,7 @@ Two Supabase schemas:
 - **`public`** — online, real-time. Users, items, suggestions, reviews, bookmarks, follows, notifications, achievements/badges, devices, categories, regions, page_sections, related_sections_config, content_reports, moments, etc.
 - **`analytics`** — offline batch. user_embeddings, item_embeddings, activity_log, precomputed_recs, search_log, ai_usage_log, ai_query_cache.
 
-`pgvector` extension provisioned. `embedding vector(1536)` column exists on both `items` and `users`.
+`pgvector` extension provisioned. `embedding vector(768)` column exists on both `items` and `users` (resized from 1536 in migration 046 for Google gemini-embedding-001, truncated from 3072 native to 768 via Matryoshka — pgvector indexes cap at 2000 dims). HNSW index replaces IVFFlat.
 
 ### Hybrid base + extension tables
 
@@ -282,16 +282,17 @@ Read via `venueAmenityKeys` (route-local) — tolerates array-of-strings + objec
 
 Locked architecture: 3 layers per CLAUDE.md "Architecture invariants".
 
-### Day 1 — Item embeddings (SHIPPED, session 39)
-- Provider: **OpenAI `text-embedding-3-small`** ($0.02/1M tokens, 1536-dim matches schema). **Locked.**
-- `lib/embeddings/openai.ts:embedText(text)` + `embedBatch(texts)` — batches up to 100/call.
+### Day 1 — Item embeddings (SHIPPED, session 39 + provider switch session 40)
+- Provider: **Google `gemini-embedding-001`** (3072 native → truncated to 768 via Matryoshka). **Locked.** Backfill uses direct Gemini API (`lib/embeddings/google-direct.ts`); runtime uses AI Gateway (`lib/embeddings/google.ts`). Free, no extra API key needed.
+- Migration **046** resizes all vector columns from `vector(1536)` to `vector(768)`, drops IVFFlat index, creates HNSW. pgvector indexes cap at 2000 dims, so truncation is required.
+- `lib/embeddings/google.ts:embedText(text)` + `embedBatch(texts)` — via AI SDK `embed()` + `gateway.textEmbeddingModel()`. `lib/embeddings/google-direct.ts` — same API via `@google/generative-ai` SDK for bulk backfill (avoids gateway rate limits).
 - `lib/embeddings/compose.ts:composeEmbeddingText(item, ext)` — per-category text composition.
 - `scripts/embed-items.ts` backfills all items (`--dry-run` / `--force`). Per-category text composition:
   - Movies/Series: `title + original_title + plot + cast + genres + director`
   - Books: `title + author + plot + subjects`
   - Food/Bars: `title + cuisine + type + description + city`
   - Recipes: `title + ingredients + origin + tips`
-- Cost: ~400K tokens = **$0.008 one-shot**.
+- Cost: **free** (Google text-embedding-004 via AI Gateway).
 - `GET /api/recommendations/similar?item_id=<uuid>&limit=<n>` — pgvector cosine top-N via `match_items` RPC. No auth required (works for guests).
 
 ### Day 2 — Item-to-item carousels (detail pages)
@@ -320,7 +321,7 @@ Locked architecture: 3 layers per CLAUDE.md "Architecture invariants".
 
 | Item | Cost |
 |---|---|
-| Item embeddings backfill | $0.008 one-shot |
+| Item embeddings backfill | free (Google via AI Gateway) |
 | User embeddings backfill | $0.0006 one-shot |
 | Daily user refresh | ~$0.01/month |
 | Daily precompute cron | $0 (pure pgvector) |
@@ -333,9 +334,9 @@ Locked architecture: 3 layers per CLAUDE.md "Architecture invariants".
 - User embeddings have 3 fallback tiers — every user gets a usable embedding from day 3.
 - Quality grows organically as users bookmark/rate.
 
-### Decisions locked (session 39)
+### Decisions locked (session 39, updated session 40)
 
-1. **Embedding provider** — OpenAI `text-embedding-3-small` (1536-dim, $0.02/1M). Re-embed with large if catalog passes 50K items.
+1. **Embedding provider** — Google `gemini-embedding-001` (3072 native, truncated to 768 via Matryoshka). pgvector indexes cap at 2000 dims. Free via direct API + AI Gateway.
 2. **Backfill scope** — production direct. Column is nullable, backfill is one-shot idempotent, zero risk to existing data.
 
 ---
