@@ -282,16 +282,17 @@ Read via `venueAmenityKeys` (route-local) — tolerates array-of-strings + objec
 
 Locked architecture: 3 layers per CLAUDE.md "Architecture invariants".
 
-### Day 1 — Item embeddings
-- Provider: **OpenAI `text-embedding-3-small`** ($0.02/1M tokens, 1536-dim matches schema). Pending lock.
-- `lib/embeddings/openai.ts:embedText(text)` — batches up to 100/call.
-- `scripts/embed-items.ts` backfills all ~1953 items. Per-category text composition:
+### Day 1 — Item embeddings (SHIPPED, session 39)
+- Provider: **OpenAI `text-embedding-3-small`** ($0.02/1M tokens, 1536-dim matches schema). **Locked.**
+- `lib/embeddings/openai.ts:embedText(text)` + `embedBatch(texts)` — batches up to 100/call.
+- `lib/embeddings/compose.ts:composeEmbeddingText(item, ext)` — per-category text composition.
+- `scripts/embed-items.ts` backfills all items (`--dry-run` / `--force`). Per-category text composition:
   - Movies/Series: `title + original_title + plot + cast + genres + director`
   - Books: `title + author + plot + subjects`
   - Food/Bars: `title + cuisine + type + description + city`
   - Recipes: `title + ingredients + origin + tips`
 - Cost: ~400K tokens = **$0.008 one-shot**.
-- Wire `/api/recommendations/similar` — pgvector cosine top-N.
+- `GET /api/recommendations/similar?item_id=<uuid>&limit=<n>` — pgvector cosine top-N via `match_items` RPC. No auth required (works for guests).
 
 ### Day 2 — Item-to-item carousels (detail pages)
 - Day-1 win, works for guests. Replace hardcoded "Σχετικά" / "Από τον ίδιο director" `<RelatedSections>` blocks with new `vector_similar_items` rule.
@@ -332,10 +333,10 @@ Locked architecture: 3 layers per CLAUDE.md "Architecture invariants".
 - User embeddings have 3 fallback tiers — every user gets a usable embedding from day 3.
 - Quality grows organically as users bookmark/rate.
 
-### Decisions pending before day 1
+### Decisions locked (session 39)
 
-1. **Embedding provider lock** — text-embedding-3-small (recommended) vs text-embedding-3-large ($0.13/1M, vector(3072) migration) vs Cohere multilingual ($0.10/1M, vector(1024) migration).
-2. **Backfill scope** — production directly vs dev branch first.
+1. **Embedding provider** — OpenAI `text-embedding-3-small` (1536-dim, $0.02/1M). Re-embed with large if catalog passes 50K items.
+2. **Backfill scope** — production direct. Column is nullable, backfill is one-shot idempotent, zero risk to existing data.
 
 ---
 

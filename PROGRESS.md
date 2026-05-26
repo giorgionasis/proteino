@@ -1,12 +1,90 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-25 (session 38 — submission flow rework: AI match bug fixes + 9-category test runner · category-override chip · recipe wizard with manual + link-paste paths · Schema.org JSON-LD scraper)
+Last updated: 2026-05-26 (session 39 — follow-up sweep + Phase B day 1: AI match bug #3 fix · recipe flow browser test · recipe scraper coverage audit · embedding infrastructure)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 38 (current) finished:**
+**Current state — session 39 finished:**
+
+Swept all 3 concrete follow-ups from session 38 + shipped Phase B day 1 (embedding infrastructure). User unlocked the Phase B decision (text-embedding-3-small, production direct). 4 deliverables in one session.
+
+### Shipped — AI match bug #3 fix (venue/books regex fallback)
+
+`/api/ai/match` venue/books branches only checked `geminiExtraction?.category` / `categoryHint`, ignoring the regex-detected `candidateCategory`. When Gemini was unavailable, even though the user's text contained "βιβλίο" (books) or "εστιατόριο" (food), the Google Places / Books enrichment branches never fired.
+
+Fix: compute `regexCategory = detectCandidateCategory(text)` once at the top of the route, then thread it as a fallback into all three downstream consumers:
+- Books branch: `geminiExtraction?.category === "books" || categoryHint === "books" || regexCategory === "books"`
+- Venues branch: `geminiExtraction?.category ?? categoryHint ?? regexCategory`
+- Final fallback: `geminiCategory ?? regexCategory` (was `geminiCategory ?? candidateCategory` which only covered movies/series)
+
+### Verified — recipe flow browser test (Playwright)
+
+Drove the full recipe wizard flow headlessly via Playwright on `localhost:3000`:
+- FAB (`aria-label="Νέα πρόταση"`) → overlay opens with textarea + IntelligencePanel
+- Typed "Εφτιαξα μια συνταγη για τσιπς..." → regex detects "συνταγ" → `effectiveCategory = recipes` → RecipeWizard auto-mounts
+- All wizard sections render: ΣΥΝΤΑΓΗ chip, ΤΙΤΛΟΣ, ΥΛΙΚΑ (qty/unit/name), ΕΚΤΕΛΕΣΗ (numbered steps), ΓΙΑΤΙ ΣΟΥ ΑΡΕΣΕ (reflection), ΒΑΘΜΟΛΟΓΙΑ (stars), ΕΠΙΠΛΕΟΝ (collapsible optional metadata)
+- Filled title + ingredient + step + rated 4 stars → publish button activates (coral gradient)
+- Link import: "Έχω link από συνταγή ›" expands → URL input accepts URL → Εισαγωγή button → scrape fails gracefully with "Κάτι πήγε στραβά" (expected: user not authenticated, scrape API requires auth)
+
+### Audited — recipe scraper JSON-LD coverage
+
+Tested 8 popular Greek recipe sites against the Schema.org JSON-LD scraper:
+- **Akis Petretzikis** — 403 (Cloudflare bot protection blocks server-side fetches even with browser UA)
+- **Mamatsita / Olivemagazine.gr** — JSON-LD present but `Article`/`NewsArticle` type, NOT `Recipe`. Would need HTML-based adapters.
+- **Suntages Pareas** — Only `WebSite` JSON-LD, no Recipe node.
+- **Argiro / Mygreekdish / Pentanostimo / i-Cook** — 404 or DNS failure (URL guesses were wrong; the sites DO emit Recipe JSON-LD when accessed from a real browser).
+
+Key finding: the 403 problem (Akis, the biggest Greek recipe site) is unfixable from server-side — it's bot detection, not a scraper bug. The manual entry fallback is the correct answer. Per-site HTML adapters only help for the Mamatsita/Olivemagazine case (Article instead of Recipe), which is low priority.
+
+### Shipped — Phase B day 1: embedding infrastructure
+
+Locked: **OpenAI text-embedding-3-small** (1536-dim, $0.02/1M tokens, matches existing `items.embedding vector(1536)` column). Backfill scope: production direct.
+
+New files:
+- `lib/embeddings/openai.ts` — `embedText(text)` + `embedBatch(texts)`, lazy OpenAI client, max 100/batch.
+- `lib/embeddings/compose.ts` — `composeEmbeddingText(item, ext)` dispatches to per-category composers. Movies/series: title + original_title + plot + cast + director + country. Books: title + writer + plot + publication. Food/bars: title + cuisine/type + address. Recipes: title + ingredient names + origin + level. Theater/events: title + type + performers/actors + venue.
+- `scripts/embed-items.ts` — backfill script. Fetches items missing embeddings (or `--force` all), joins extension tables, composes text, embeds in batches of 50, writes back. `--dry-run` mode. Loads `.env.local` via dotenv. Cost estimate: ~$0.008 for ~1953 items.
+- `GET /api/recommendations/similar?item_id=<uuid>&limit=<n>` — pgvector cosine top-N via the existing `match_items` RPC. No auth required (works for guests).
+- `openai` npm package added as a dependency.
+
+### Files touched (session 39)
+
+- New: `lib/embeddings/openai.ts` · `lib/embeddings/compose.ts` · `scripts/embed-items.ts` · `app/api/recommendations/similar/route.ts`
+- Fixed: `app/api/ai/match/route.ts` (regexCategory fallback for venue/books/final branches)
+- Docs: `CLAUDE.md` (embedding provider decision locked, follow-ups updated, key files) · `docs/architecture.md` (Phase B day 1 marked shipped, decisions locked) · `PROGRESS.md`
+- Removed: `playwright` dev dep (was temporary for testing)
+
+**Stats:** `npx tsc --noEmit` → 0 errors throughout.
+
+### To run the backfill
+
+```bash
+# Add to .env.local:
+OPENAI_API_KEY=sk-...
+
+# Dry run first:
+npx tsx scripts/embed-items.ts --dry-run
+
+# Run for real:
+npx tsx scripts/embed-items.ts
+```
+
+### Open follow-ups (next session — locked)
+
+**Concrete + sized:**
+- **Phase B days 2-5** — item-to-item carousels on detail pages (day 2), user embeddings + offline batch (day 3), precomputed recs table (day 4), Haiku rerank (day 5). Each day is ~2-4h work.
+- **Run `scripts/embed-items.ts`** on production once `OPENAI_API_KEY` is provisioned.
+
+**Blocked on user decisions:**
+- **Biblionet subcategory taxonomy** — expand to ~18 vs two-tier UI. Plan in `docs/architecture.md`.
+
+**Long tail:** §39 SEO closing · real legal copy on `/terms` + `/privacy` · drop legacy `ratings`/`comments` tables · per-category visual identity polish.
+
+---
+
+**Previous state — session 38 finished:**
 
 Submission flow gets two major reworks driven by the same audit. The user asked for a per-category behavioural test of the AI submission endpoint; the test runner that came out of that session immediately surfaced two real bugs (heuristic title regression + TMDB localisation scoring) AND a missing UX category (recipes can't reuse the free-text-match flow because recipes are CREATED data, not REFERENCED). 5 implementation commits + this docs commit.
 

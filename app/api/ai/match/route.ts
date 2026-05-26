@@ -451,6 +451,10 @@ export async function GET(req: NextRequest) {
   const candidates = titleHint
     ? [titleHint]
     : extractCandidateTitles(text);
+  // Regex-detected category — computed once, used as fallback across
+  // all enrichment branches when Gemini is unavailable.
+  const regexCategory = detectCandidateCategory(text);
+
   // Category resolution: Gemini's category_hint is authoritative when
   // present (it read the full text + DB taxonomy). Regex only fires as
   // emergency fallback when no hint at all. Old hybrid let regex's
@@ -461,8 +465,8 @@ export async function GET(req: NextRequest) {
   const candidateCategory: "movies" | "series" | null =
     isValidCat(categoryHint)
       ? categoryHint
-      : isValidCat(detectCandidateCategory(text))
-        ? detectCandidateCategory(text) as "movies" | "series"
+      : isValidCat(regexCategory)
+        ? regexCategory as "movies" | "series"
         : null;
 
   // Try TMDB for movies/series. Books → Google Books, venues → Google
@@ -589,7 +593,7 @@ export async function GET(req: NextRequest) {
   // Falls through to the generic fallback below when no hit ≥60 —
   // user still gets a soft Gemini-only lock.
   const categoryForBooks =
-    geminiExtraction?.category === "books" || categoryHint === "books" ? "books" : null;
+    geminiExtraction?.category === "books" || categoryHint === "books" || regexCategory === "books" ? "books" : null;
   if (categoryForBooks === "books") {
     const bookTitle = (geminiExtraction?.title || titleHint || candidates[0] || "").trim();
     if (bookTitle) {
@@ -660,7 +664,7 @@ export async function GET(req: NextRequest) {
   // location_hint from Gemini bias-narrows the search ("Δίοενυσος Πλάκα
   // Αθήνα") so a venue with a common name doesn't match the wrong city.
   const venueCategory = (() => {
-    const cat = geminiExtraction?.category ?? categoryHint;
+    const cat = geminiExtraction?.category ?? categoryHint ?? regexCategory;
     if (cat === "food" || cat === "bars" || cat === "hotels") return cat;
     return null;
   })();
@@ -737,7 +741,7 @@ export async function GET(req: NextRequest) {
   // No external verification — Ticketmaster integration for theater
   // and events is a future enrichment slot.
   const geminiCategory = (geminiExtraction?.category ?? categoryHint) as CategorySlug | null;
-  const finalCategory = geminiCategory ?? candidateCategory;
+  const finalCategory = geminiCategory ?? regexCategory;
   const finalTitle =
     geminiExtraction?.title?.trim()
       || titleHint
