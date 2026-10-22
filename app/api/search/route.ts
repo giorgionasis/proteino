@@ -882,15 +882,23 @@ function computeIntent(text: string, categories: CategorySlug[]): "lookup" | "di
 // ── Ranking ───────────────────────────────────────────────────────────────
 
 function scoreTitleMatch(query: string, title: string): number {
-  const q = query.toLowerCase().trim();
-  const t = title.toLowerCase().trim();
+  // Accent-folded on both sides: "ανεμοδαρμενα" must score like
+  // "ανεμοδαρμένα". The LAST query token may also match as a prefix of a
+  // title token — search runs as the user types, so it is usually partial
+  // ("ανεμοδα"). Only the last one: earlier words are complete, and
+  // prefix-matching them lets "για" hit "γιαουρτιού".
+  const q = foldGreek(query).trim();
+  const t = foldGreek(title).trim();
   if (!q || !t) return 0;
   if (t === q) return 100;
   if (t.startsWith(q)) return 80;
   if (t.includes(q)) return 60;
   const qTokens = tokenize(q);
-  const tTokens = new Set(tokenize(t));
-  const overlap = qTokens.filter((tok) => tTokens.has(tok)).length;
+  const tTokens = tokenize(t);
+  const last = qTokens.length - 1;
+  const overlap = qTokens.filter((tok, i) =>
+    tTokens.some((tt) => tt === tok || (i === last && tok.length >= 3 && tt.startsWith(tok))),
+  ).length;
   if (overlap === 0) return 0;
   return Math.min(50, overlap * 15);
 }
@@ -954,7 +962,16 @@ export async function GET(req: NextRequest) {
   let llmAnalysis: SearchAnalysis | null = null;
   let llmFailed = false;
   try {
-    llmAnalysis = await getAIService().analyzeSearchQuery(q);
+    // Hard 4s budget. When the AI Gateway rate-limits, the SDK's retry
+    // backoff could hold the request for 40s+ while the client gives up
+    // at 8s and shows an error. Past the budget we take the regex
+    // fallback below and still answer in time.
+    llmAnalysis = await Promise.race([
+      getAIService().analyzeSearchQuery(q),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("analyzeSearchQuery timed out after 4s")), 4000),
+      ),
+    ]);
   } catch (err) {
     console.error("[search] AI analyzeSearchQuery failed; using regex fallback:", err);
     llmFailed = true;
@@ -1519,10 +1536,14 @@ export async function GET(req: NextRequest) {
       return q;
     };
 
-    // Title ilike — only when structured didn't fill items, OR there
-    // were no structured signals at all (proper-noun queries like
-    // "Lucifer" / "Inception" land here).
-    if (items.length === 0) {
+    let titleHitCount = 0;
+    // Title ilike — ALWAYS runs, and direct title hits are merged in
+    // ahead of structured results (rankScore weights titleScore ×5, so
+    // they win). It used to run only when structured returned nothing,
+    // which let a hallucinated signal hide an exact title: Gemini read
+    // "ανεμοδαρμένα" as genre=Δράμα, structured returned 40 dramas, and
+    // "Ανεμοδαρμένα ύψη" itself never made the list.
+    {
       let { data, error: itemsErr } = await buildQuery(true, true);
       if (itemsErr && (itemsErr as any).code === "42703") {
         const retryNoOrig = await buildQuery(true, false);
@@ -1533,7 +1554,10 @@ export async function GET(req: NextRequest) {
           data = retryNoOrig.data;
         }
       }
-      items = data ?? [];
+      const titleHits: any[] = data ?? [];
+      titleHitCount = titleHits.length;
+      const titleIds = new Set(titleHits.map((it) => it.id));
+      items = [...titleHits, ...items.filter((it: any) => !titleIds.has(it.id))];
     }
 
     // Cross-category title fallback. When Gemini guessed the wrong
@@ -1543,7 +1567,7 @@ export async function GET(req: NextRequest) {
     // category filter — if a real title matches, it should win
     // regardless of category. Fixes the "Gemini wrong category"
     // failure mode where users see garbage from the wrong category.
-    if (items.length === 0 && categories.length > 0 && q.length >= 3) {
+    if (titleHitCount === 0 && categories.length > 0 && q.length >= 3) {
       const widerQ = (admin.from("items") as any)
         .select(
           "id, title, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, avg_rating, rating_count, suggestion_count, created_at",
@@ -1553,7 +1577,8 @@ export async function GET(req: NextRequest) {
         .limit(20);
       const { data: wider } = await widerQ;
       if (wider && wider.length > 0) {
-        items = wider;
+        const widerIds = new Set(wider.map((it: any) => it.id));
+        items = [...wider, ...items.filter((it: any) => !widerIds.has(it.id))];
         // We dropped the category filter — clear analysis.categories
         // so the UI doesn't show a misleading CATEGORY pill.
         analysis.categories = [];
@@ -1592,6 +1617,42 @@ export async function GET(req: NextRequest) {
         .order("suggestion_count", { ascending: false })
         .limit(20);
       items = fallback ?? [];
+    }
+  }
+
+  // 2b. Global title pass — runs for EVERY query, in every branch. A
+  //     title match must never depend on Gemini's interpretation: it
+  //     read "ανεμοδα" as food and "κουρδιστό πορτοκάλι" as theater, and
+  //     the venue branch has no title search at all, so the actual
+  //     titles were missing. Every meaningful query word (category
+  //     triggers + stopwords removed) must appear in the folded title or
+  //     original title; hits merge in front and scoreTitleMatch ranks them.
+  {
+    const titleTokens = tokenize(q)
+      .map(foldGreek)
+      .filter((t) => t.length >= 3 && !STOPWORDS_FOLDED.has(t))
+      .map((t) => t.replace(/[%_\\,()]/g, ""))
+      .filter(Boolean);
+    if (titleTokens.length > 0) {
+      let tq = (admin.from("items") as any)
+        .select(
+          "id, title, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, avg_rating, rating_count, suggestion_count, created_at",
+        )
+        .eq("is_published", true)
+        .limit(20);
+      for (const t of titleTokens) {
+        tq = tq.or(`title_normalized.ilike.%${t}%,original_title_normalized.ilike.%${t}%`);
+      }
+      const { data: titleHits } = await tq;
+      if (titleHits?.length) {
+        const ids = new Set(titleHits.map((it: any) => it.id));
+        items = [...titleHits, ...items.filter((it: any) => !ids.has(it.id))];
+        // Real titles outside the detected category → the category guess
+        // was wrong; drop the CATEGORY pill instead of contradicting it.
+        if (categories.length > 0 && !titleHits.some((it: any) => categories.includes(it.category))) {
+          analysis.categories = [];
+        }
+      }
     }
   }
 
