@@ -1,9 +1,13 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateCategory } from "@/lib/revalidate";
 
 // GET /api/admin/category-filters/settings?category=movies
 export async function GET(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const sb = createAdminClient();
   const url = new URL(req.url);
   const category = url.searchParams.get("category");
@@ -23,6 +27,9 @@ export async function GET(req: NextRequest) {
 // PATCH /api/admin/category-filters/settings
 // Body: { category, has_nearby?, sort_options? }
 export async function PATCH(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { category, has_nearby, sort_options } = body;
   if (!category) return NextResponse.json({ error: "category required" }, { status: 400 });

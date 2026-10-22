@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getCategoriesResolved } from "@/lib/categories-meta";
@@ -13,6 +14,9 @@ import { getCategoriesResolved } from "@/lib/categories-meta";
  * Writes go through PATCH /api/admin/categories/[slug].
  */
 export async function GET() {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const cats = await getCategoriesResolved();
   return NextResponse.json({ categories: cats });
 }

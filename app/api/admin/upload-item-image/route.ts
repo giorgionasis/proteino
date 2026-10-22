@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { SLOTS, MAX_INPUT_BYTES, type Slot } from "@/lib/image-pipeline";
@@ -40,6 +41,9 @@ export const maxDuration = 60;
  * Returns: { images: <updated images jsonb> }
  */
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const contentType = req.headers.get("content-type") ?? "";
   const sb = createAdminClient();
 

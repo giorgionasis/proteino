@@ -1,8 +1,12 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateHome } from "@/lib/revalidate";
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const body = await req.json();
   const patch: Record<string, any> = {};
@@ -32,6 +36,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 }
 
 export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const sb = createAdminClient();
   const { error } = await sb.from("movies_tonight").delete().eq("id", params.id);

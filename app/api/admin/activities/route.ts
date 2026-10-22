@@ -1,9 +1,13 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateCategory } from "@/lib/revalidate";
 
 // GET /api/admin/activities?category_id=...&type_id=...&q=...&page=0
 export async function GET(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const sb = createAdminClient();
   const url = new URL(req.url);
   const categoryId = url.searchParams.get("category_id");
@@ -32,6 +36,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { type_id, name } = body;
   if (!type_id) return NextResponse.json({ error: "type_id required" }, { status: 400 });

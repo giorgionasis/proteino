@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAIService } from "@/lib/ai";
 import { CATEGORY_SLUGS } from "@/constants/categories";
 import { stripDiacritics } from "@/lib/utils/textSearch";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/onboarding/parse-interests
@@ -48,6 +49,9 @@ function heuristicExtract(text: string): string[] {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = await rateLimit(req, "parse-interests", { max: 20, windowSec: 600 });
+  if (limited) return limited;
+
   const body = await req.json().catch(() => null) as { text?: unknown } | null;
   const text = typeof body?.text === "string" ? body.text.trim() : "";
   if (text.length < 4) {

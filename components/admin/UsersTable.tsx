@@ -4,16 +4,11 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { AdminPagination } from "./AdminPagination";
+import { USERS_PAGE_SIZE, USER_SORT_OPTIONS } from "@/lib/admin/users-list";
 import type { Database } from "@/types/database";
 
-const PAGE_SIZE = 10;
-
-const SORT_OPTIONS = [
-  { label: "Recent Registered", column: "created_at", ascending: false },
-  { label: "Old Registered", column: "created_at", ascending: true },
-  { label: "Most Suggestions", column: "suggestion_count", ascending: false },
-  { label: "Recent Login", column: "last_login_at", ascending: false },
-];
+const PAGE_SIZE = USERS_PAGE_SIZE;
+const SORT_OPTIONS = USER_SORT_OPTIONS;
 
 type WarningKind = "review_hidden" | "abusive_reporter" | "manual";
 
@@ -107,47 +102,19 @@ export function UsersTable({ initialRows, initialTotal }: UsersTableProps) {
 
   const fetchData = async () => {
     setLoading(true);
-    const supabase = getSupabase();
-    const sort = SORT_OPTIONS[sortIdx];
-
-    let query = supabase
-      .from("users")
-      .select(
-        "id, handle, display_name, email, avatar_url, level, suggestion_count, rating_count, last_login_at, created_at, is_verified, admin_warnings",
-        { count: "exact" }
-      );
-
-    if (debouncedSearch) {
-      query = query.or(`display_name.ilike.%${debouncedSearch}%,email.ilike.%${debouncedSearch}%,handle.ilike.%${debouncedSearch}%`);
-    }
-
-    query = query.order(sort.column, { ascending: sort.ascending, nullsFirst: false });
-
-    const from = (page - 1) * PAGE_SIZE;
-    query = query.range(from, from + PAGE_SIZE - 1);
-
-    const { data, count, error } = await query;
-
-    if (error) {
+    // Private columns (email, warnings, last login) are server-only since
+    // migration 047 — go through the admin-gated route.
+    const qs = new URLSearchParams({ search: debouncedSearch, sort: String(sortIdx), page: String(page) });
+    try {
+      const res = await fetch(`/api/admin/users?${qs}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? res.statusText);
+      setRows(json.rows as UserRow[]);
+      setTotalItems(json.total ?? 0);
+    } catch (error) {
       console.error("Users fetch error:", error);
       setRows([]);
       setTotalItems(0);
-    } else {
-      setRows((data || []).map((u: any) => ({
-        id: u.id,
-        handle: u.handle,
-        name: u.display_name,
-        email: u.email,
-        avatarUrl: u.avatar_url,
-        level: u.level,
-        suggestions: u.suggestion_count,
-        ratingCount: u.rating_count,
-        lastLogin: u.last_login_at,
-        registered: u.created_at,
-        isVerified: u.is_verified,
-        warnings: Array.isArray(u.admin_warnings) ? u.admin_warnings : [],
-      })));
-      setTotalItems(count ?? 0);
     }
     setLoading(false);
   };

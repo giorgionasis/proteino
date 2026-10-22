@@ -19,7 +19,7 @@ Set on Vercel (or whatever runtime hosts Next.js):
 | `BIBLIONET_USERNAME` | optional today, required when §44 lands | Biblionet web service username. Books enrichment + future catalog mirror. |
 | `BIBLIONET_PASSWORD` | optional today, required when §44 lands | Biblionet web service password. Treat as secret — server-only. |
 | `BIBLIONET_BASE_URL` | optional | Override Biblionet endpoint. Defaults to `https://biblionet.gr/webservice`. Set to legacy `https://biblionet.gr/wp-json/biblionetwebservice` to swap. |
-| `OPENAI_API_KEY` | optional today, required when Phase B day 1 lands | OpenAI embedding key for `text-embedding-3-small`. Used by `lib/embeddings/openai.ts`. |
+| `GEMINI_API_KEY` | for embedding backfill | Direct Gemini API key used by `scripts/embed-items.ts` (`gemini-embedding-001`, free tier). Runtime embeddings go through `AI_GATEWAY_API_KEY`. |
 | `NEXT_PUBLIC_SITE_URL` | recommended | Canonical site origin (e.g. `https://proteino.gr`). Used by JSON-LD `@id`, sitemap loc, canonical URLs, OG `og:url`. Defaults to `https://proteino.gr` if unset. |
 | `ADMIN_DEV_BYPASS` | **must NOT be set** | If `=1` and `NODE_ENV !== production`, skips /admin auth. Refused in prod. |
 
@@ -72,6 +72,11 @@ scripts/sql/037-items-admin-review.sql
 scripts/sql/038-nearby-related-section.sql
 scripts/sql/039-user-admin-warnings.sql
 scripts/sql/040-admin-audit-stamps.sql
+...
+scripts/sql/046-vector-768-dimension.sql
+scripts/sql/047-users-column-privileges.sql
+scripts/sql/048-rate-limits.sql
+scripts/sql/049-rate-limit-service-role-grant.sql
 ```
 
 **Note:** Migration 016 wipes the legacy `ratings` table and resets `items.rating_count` / `avg_rating` to 0 across all items. The legacy `comments` and `ratings` tables stay in the DB as archive but are NOT read by the new UI — all reviews from now on flow through the new `reviews` table (rating mandatory + reflection optional, one row per (user, item)).
@@ -107,6 +112,8 @@ node scripts/geocode-venues.js               # all venue tables
 node scripts/geocode-venues.js --table=item_food --limit=100   # scoped
 
 # Optional: bulk-enrich items missing covers (uses TMDB/Books/Places)
+# NOTE: /api/admin/upload-item-image requires an admin session since session 40 —
+# bulk-enrich.js (no auth) gets 401 until it is ported to call lib/item-image-upload directly.
 ENRICH_BASE_URL=https://your-deploy.vercel.app node scripts/bulk-enrich.js --dry-run
 ENRICH_BASE_URL=https://your-deploy.vercel.app node scripts/bulk-enrich.js
 ```

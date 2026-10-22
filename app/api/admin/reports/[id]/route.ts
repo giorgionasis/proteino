@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
@@ -28,6 +29,9 @@ const MIN_NOTE_LEN = 5;
  * columns (suggestions added in migration 015; comments from migration 003).
  */
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();

@@ -1,8 +1,12 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateCategory } from "@/lib/revalidate";
 
 export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const sb = createAdminClient();
   const { data, error } = await sb
@@ -15,6 +19,9 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
 }
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const body = await req.json();
   const patch: Record<string, any> = {};
@@ -44,6 +51,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 }
 
 export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const sb = createAdminClient();
   const { error } = await sb.from("activities").delete().eq("id", params.id);

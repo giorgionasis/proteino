@@ -11,6 +11,7 @@
  * RLS doesn't mask draft / inactive rows).
  */
 
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidateCategory, revalidateHome } from "@/lib/revalidate";
@@ -26,6 +27,9 @@ const VALID_AUDIENCES = new Set(["all", "registered", "guest"]);
 const VALID_TYPES = new Set(["collection", "widget", "divider"]);
 
 export async function GET(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const sp = req.nextUrl.searchParams;
   const context = sp.get("context");
   const category = sp.get("category");
@@ -67,6 +71,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const {
     context, category, section_type, widget_key, collection_id,

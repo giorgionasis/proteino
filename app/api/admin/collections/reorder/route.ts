@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateFrontend } from "@/lib/revalidate";
@@ -8,6 +9,9 @@ import { revalidateFrontend } from "@/lib/revalidate";
 // because the same collection can appear in multiple buckets with different
 // orderings.
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { context, category, ordered_placement_ids } = body as {
     context: "home" | "category" | "suggestions";

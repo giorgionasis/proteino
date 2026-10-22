@@ -8,6 +8,7 @@
  * pick up the new rule on next navigation.
  */
 
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidateCategory } from "@/lib/revalidate";
@@ -19,6 +20,9 @@ const VALID_CATEGORIES = new Set([
 ]);
 
 export async function GET() {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const sb = createAdminClient();
   const { data, error } = await (sb.from("related_sections_config") as any)
     .select("*")
@@ -29,6 +33,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { category, field, title_template, min_items, item_limit, display_order, is_active, radius_km } = body as {
     category: string;

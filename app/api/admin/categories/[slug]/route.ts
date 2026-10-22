@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidateAfterCategoryEdit } from "../route";
@@ -27,6 +28,9 @@ interface PatchBody {
  * the first edit creates the row.
  */
 export async function PATCH(req: NextRequest, props: { params: Promise<{ slug: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const { slug } = await props.params;
   if (!VALID_SLUGS.has(slug as any)) {
     return NextResponse.json({ error: "Unknown category slug" }, { status: 404 });
@@ -99,5 +103,8 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ slug: s
  *  `{ orders: { slug, display_order }[] }`. One write per row; small
  *  surface (9 categories max). */
 export async function POST(req: NextRequest, _props: { params: Promise<{ slug: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   return NextResponse.json({ error: "Use POST /api/admin/categories/reorder" }, { status: 405 });
 }

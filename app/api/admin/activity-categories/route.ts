@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -14,6 +15,9 @@ function slugify(text: string): string {
 }
 
 export async function GET() {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const sb = createAdminClient();
   const { data, error } = await sb
     .from("activity_categories")
@@ -24,6 +28,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { name, icon, slug } = body;
   if (!name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });

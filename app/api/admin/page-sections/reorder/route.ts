@@ -10,11 +10,15 @@
  * full renumber.
  */
 
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidateCategory, revalidateHome } from "@/lib/revalidate";
 
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { context, category, ordered_ids } = body as {
     context: "home" | "category" | "suggestions";

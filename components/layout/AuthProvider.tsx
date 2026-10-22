@@ -42,10 +42,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 async function fetchProfile(userId: string, supabase: SupabaseClient): Promise<User | null> {
-  const { data } = await supabase
-    .from("users")
-    .select("*")
-    .eq("id", userId)
-    .single();
+  // Own row incl. private columns — table SELECT is limited to public
+  // columns since migration 047, so read through get_my_profile().
+  const { data } = await (supabase.rpc as any)("get_my_profile").maybeSingle();
+  if (data && (data as User).id !== userId) return null;
   return data as User | null;
 }

@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
@@ -31,6 +32,9 @@ interface AuditEntry {
 const PER_TABLE_LIMIT = 8;
 
 export async function GET(req: Request) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   // Auth gate
   const sbAuth = await createClient();
   const { data: { user } } = await sbAuth.auth.getUser();

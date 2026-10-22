@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
@@ -16,6 +17,9 @@ import { NextResponse } from "next/server";
  * - dataQuality: NULL-subcategory items + items with no cover (amber if > 0)
  */
 export async function GET() {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const sb = createAdminClient();
 
   const [unpubRes, reportedRes, nullSubcatRes, missingCoverRes, pendingReviewReportsRes] = await Promise.all([

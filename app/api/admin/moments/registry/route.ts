@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { NextResponse } from "next/server";
 import { PREDICATE_SCHEMAS } from "@/lib/moments";
 
@@ -7,5 +8,8 @@ import { PREDICATE_SCHEMAS } from "@/lib/moments";
  * cheap, no DB hit.
  */
 export async function GET() {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   return NextResponse.json(PREDICATE_SCHEMAS);
 }

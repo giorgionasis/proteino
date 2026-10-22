@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidateAfterCategoryEdit } from "../route";
@@ -17,6 +18,9 @@ interface ReorderBody {
  * with a batched RPC — sequential upserts are <50ms total.
  */
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   let body: ReorderBody;
   try {
     body = await req.json();

@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateCategory } from "@/lib/revalidate";
@@ -23,6 +24,9 @@ import { revalidateCategory } from "@/lib/revalidate";
  * fails.
  */
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const sourceId = params.id;
 

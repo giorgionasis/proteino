@@ -1,8 +1,12 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/admin/settings — all settings as { key: { value, description } }
 export async function GET() {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const sb = createAdminClient();
   const { data, error } = await sb.from("app_settings").select("*").order("key");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -12,6 +16,9 @@ export async function GET() {
 // PATCH /api/admin/settings
 // Body: { updates: { key: value }[] } — values are JSON-encodable (string, bool, number, object)
 export async function PATCH(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const updates = body.updates as Record<string, unknown> | undefined;
   if (!updates || typeof updates !== "object") {

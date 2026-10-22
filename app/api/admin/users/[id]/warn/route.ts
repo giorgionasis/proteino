@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
@@ -27,6 +28,9 @@ type Kind = (typeof VALID_KINDS)[number];
 const MIN_NOTE_LEN = 5;
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const targetUserId = params.id;
   if (!targetUserId) {

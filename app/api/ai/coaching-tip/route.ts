@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { streamObject } from "ai";
 import { COACHING_PROMPT, CoachingSchema } from "@/lib/ai/gemini";
 import { getStreamingFlashModel, streamingAvailable } from "@/lib/ai/stream-model";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/ai/coaching-tip
@@ -23,6 +24,9 @@ import { getStreamingFlashModel, streamingAvailable } from "@/lib/ai/stream-mode
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
+  const limited = await rateLimit(req, "ai-coaching-tip", { max: 40, windowSec: 600 });
+  if (limited) return limited;
+
   if (!streamingAvailable()) {
     return new Response(JSON.stringify({ error: "AI not configured" }), {
       status: 503,

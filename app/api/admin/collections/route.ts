@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateFrontend } from "@/lib/revalidate";
@@ -35,6 +36,9 @@ type Placement = {
 // GET /api/admin/collections?context=home              — placements + collections
 // GET /api/admin/collections?context=category&category=movies
 export async function GET(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const supabase = createAdminClient();
   const url = new URL(req.url);
   const context = url.searchParams.get("context");
@@ -77,6 +81,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/admin/collections — create collection + placements
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const supabase = createAdminClient();
 

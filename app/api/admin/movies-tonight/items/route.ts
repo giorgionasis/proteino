@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -5,6 +6,9 @@ import { NextRequest, NextResponse } from "next/server";
 // Autocomplete: searches movie items by title. Used by the admin's
 // "+ New Movie" form to pick an existing item.
 export async function GET(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const url = new URL(req.url);
   const search = (url.searchParams.get("q") ?? "").trim();
 

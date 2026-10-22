@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { executeWithAuditFallback, getAdminAuditUserId } from "@/lib/admin/audit";
@@ -13,6 +14,9 @@ import { executeWithAuditFallback, getAdminAuditUserId } from "@/lib/admin/audit
  */
 
 export async function GET() {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const sb = createAdminClient();
   const { data, error } = await sb
     .from("moments")
@@ -25,6 +29,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json().catch(() => ({}));
 
   const row = {

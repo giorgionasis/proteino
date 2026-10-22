@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -13,6 +14,9 @@ import { NextRequest, NextResponse } from "next/server";
  * so the palette can render any list without per-type templates.
  */
 export async function GET(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   if (q.length < 2) return NextResponse.json({ groups: [] });

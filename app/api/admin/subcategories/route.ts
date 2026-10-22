@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateCategory } from "@/lib/revalidate";
@@ -21,6 +22,9 @@ function slugify(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { category, name } = body;
 
@@ -58,6 +62,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("subcategories")

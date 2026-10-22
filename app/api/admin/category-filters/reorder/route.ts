@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateCategory } from "@/lib/revalidate";
@@ -5,6 +6,9 @@ import { revalidateCategory } from "@/lib/revalidate";
 // POST /api/admin/category-filters/reorder
 // Body: { category, ordered_ids: string[] }
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { category, ordered_ids } = body as { category: string; ordered_ids: string[] };
 

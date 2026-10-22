@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -18,6 +19,9 @@ const EXT_TABLES: Record<string, string> = {
 // items in declared order and ignores every other input. Mirrors the
 // hydrator in lib/collections.ts.
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const {
     source_category,

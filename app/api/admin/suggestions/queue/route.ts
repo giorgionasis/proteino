@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -14,6 +15,9 @@ import { NextRequest, NextResponse } from "next/server";
  * Ordering is created_at DESC (newest first), matching the list's default.
  */
 export async function GET(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const url = new URL(req.url);
   const cursor = url.searchParams.get("cursor");
   const filter = (url.searchParams.get("filter") ?? "unpublished") as "unpublished" | "all";

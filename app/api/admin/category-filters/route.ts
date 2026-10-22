@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateCategory } from "@/lib/revalidate";
@@ -12,6 +13,9 @@ import {
 // `modified_by` id so the admin UI can render audit footers without a
 // follow-up roundtrip. The shape was a bare array before.
 export async function GET(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const sb = createAdminClient();
   const url = new URL(req.url);
   const category = url.searchParams.get("category");
@@ -29,6 +33,9 @@ export async function GET(req: NextRequest) {
 // POST /api/admin/category-filters
 // Body: { category, filter_id, label, widget, placeholder?, options?, is_quick? }
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { category, filter_id, label, widget } = body;
   if (!category || !filter_id?.trim() || !label?.trim() || !widget) {

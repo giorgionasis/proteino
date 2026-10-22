@@ -361,10 +361,8 @@ export default async function CategoryPage(props: Props) {
   // Thessaloniki user who scrolls still finds Athens venues.
   const VENUE = new Set(["food", "bars", "hotels", "theater", "events"]);
   if (VENUE.has(category) && viewer) {
-    const { data: viewerRow } = await userClient
-      .from("users")
+    const { data: viewerRow } = await (userClient.rpc as any)("get_my_profile")
       .select("region_id")
-      .eq("id", viewer.id)
       .maybeSingle();
     const viewerRegion = (viewerRow as { region_id?: string | null } | null)?.region_id ?? null;
     const matchSet = await getRegionMatchSet(sb, viewerRegion);

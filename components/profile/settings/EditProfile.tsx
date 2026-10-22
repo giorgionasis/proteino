@@ -34,11 +34,9 @@ export function EditProfile() {
         const meta = session.user.user_metadata ?? {};
         setAvatarUrl(meta.avatar_url ?? meta.picture ?? "");
 
-        const { data } = await supabase
-          .from("users")
+        const { data } = await (supabase.rpc as any)("get_my_profile")
           .select("handle, display_name, bio, avatar_url, gender, birthday, region")
-          .eq("id", session.user.id)
-          .single();
+          .maybeSingle();
 
         const row = data as Record<string, string | null> | null;
         if (row) {

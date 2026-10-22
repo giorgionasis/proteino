@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
@@ -5,6 +6,9 @@ import { revalidateItem } from "@/lib/revalidate";
 import { mergeGalleryIntoImages, type GalleryImage } from "@/lib/images/gallery";
 
 export async function PUT(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { suggestionId, itemId, category, itemData, suggestionData, extData, metadataPatch, gallery } = body;
 

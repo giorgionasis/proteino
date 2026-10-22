@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -15,6 +16,9 @@ import { NextRequest, NextResponse } from "next/server";
  * we return { candidates: [] } — admin can still type/upload manually.
  */
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { category, title, year, address } = body as {
     category: string;

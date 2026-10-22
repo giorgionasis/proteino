@@ -93,6 +93,11 @@ The 9 detail pages are visual variations of one archetype. Violating these break
 
 ## Other load-bearing invariants
 
+### Security gates (session 40 — don't regress)
+- **Every `/api/admin/*` handler opens with `requireAdmin()`** (`lib/admin/require-admin.ts`). The proxy skips `/api/` and admin routes write with the service-role client, so this is the only gate. `node scripts/check-admin-gates.mjs` fails on any ungated handler (`--fix` inserts it).
+- **`public.users` has column-level grants** (migration 047). anon/authenticated can SELECT only public-profile columns and UPDATE only `display_name, bio, gender, birthday, region, region_id`. A new `users` column is invisible to browser/user-session clients until added to the GRANT. Read your OWN private fields via `rpc("get_my_profile").select(...)`; other users' private fields only server-side with `createAdminClient()`.
+- **Public routes that spend AI tokens call `rateLimit()`** (`lib/rate-limit.ts`, migration 048, Postgres-backed per-IP, fails open).
+
 ### Reviews are the single source of truth
 - `reviews` table (migration 016) replaces both `ratings` and the user-on-item dimension of `comments`. Every user-on-item interaction = one row.
 - Trigger `trg_sync_review_votes` keeps `reviews.vote_up`/`vote_down` synced from `review_votes`. Self-vote blocked at API.

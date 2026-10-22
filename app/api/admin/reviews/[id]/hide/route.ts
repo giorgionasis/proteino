@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
@@ -15,6 +16,9 @@ import { NextRequest, NextResponse } from "next/server";
  * Service-role write; auth gate is admin role on `public.users`.
  */
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const { id } = params;
   if (!id) return NextResponse.json({ error: "Missing review id" }, { status: 400 });

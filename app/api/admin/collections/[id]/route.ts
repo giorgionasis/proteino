@@ -1,9 +1,13 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateFrontend } from "@/lib/revalidate";
 import { executeWithAuditFallback, getAdminAuditUserId } from "@/lib/admin/audit";
 
 export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const supabase = createAdminClient();
   const { data, error } = await supabase
@@ -17,6 +21,9 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
 }
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const body = await req.json();
   const supabase = createAdminClient();
@@ -126,6 +133,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 }
 
 export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const supabase = createAdminClient();
   // Placements cascade via FK ON DELETE CASCADE

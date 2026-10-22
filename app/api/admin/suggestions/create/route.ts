@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
@@ -31,6 +32,9 @@ function slugify(text: string): string {
  * full editor experience (extension fields, media tabs, etc.).
  */
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { title, category, subcategory_id, cover_url, reflection, is_published } = body;
 

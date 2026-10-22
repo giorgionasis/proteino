@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateHome } from "@/lib/revalidate";
@@ -5,6 +6,9 @@ import { revalidateHome } from "@/lib/revalidate";
 // GET /api/admin/movies-tonight?from=2026-05-04&to=2026-05-10
 // Returns airings within the date range with the embedded movie item.
 export async function GET(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const sb = createAdminClient();
   const url = new URL(req.url);
   const from = url.searchParams.get("from");
@@ -28,6 +32,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { item_id, channel, air_date, air_time, is_published } = body;
 

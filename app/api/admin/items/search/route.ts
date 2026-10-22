@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -16,6 +17,9 @@ import { NextRequest, NextResponse } from "next/server";
  * - Capped at 30; default 10.
  */
 export async function GET(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   const category = url.searchParams.get("category");

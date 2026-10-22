@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateHome } from "@/lib/revalidate";
@@ -15,6 +16,9 @@ interface DraftRow {
 // title match. Returns { matched: [...with item_id], unmatched: [...] }.
 // Does NOT insert — preview-only. Caller commits via normal POST per row.
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const rows = body.rows as DraftRow[];
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -94,6 +98,9 @@ export async function POST(req: NextRequest) {
 // Body: { rows: { item_id, channel, air_date, air_time }[] }
 // Inserts all rows, skipping duplicates (uses ON CONFLICT DO NOTHING via upsert).
 export async function PUT(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const rows = body.rows as { item_id: string; channel: string; air_date: string; air_time: string }[];
   if (!Array.isArray(rows) || rows.length === 0) {

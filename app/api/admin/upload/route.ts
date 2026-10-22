@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -10,6 +11,9 @@ const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/sv
 // Uploads to Supabase Storage `media` bucket under {prefix}/{uuid}-{slugified-name}
 // Returns: { url: string, path: string }
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const formData = await req.formData();
   const file = formData.get("file");
   const prefixRaw = formData.get("prefix");
@@ -71,6 +75,9 @@ export async function POST(req: NextRequest) {
 // DELETE /api/admin/upload?path=collections/uuid-foo.jpg
 // Removes the object from storage. Used when admin clears an image.
 export async function DELETE(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const url = new URL(req.url);
   const path = url.searchParams.get("path");
   if (!path) {

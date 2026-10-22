@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -5,6 +6,9 @@ import { NextRequest, NextResponse } from "next/server";
 // Returns tag suggestions (with counts) from items.metadata.tags filtered
 // by category and search text. Powers the admin's tag autocomplete.
 export async function GET(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const url = new URL(req.url);
   const category = url.searchParams.get("category");
   const search = (url.searchParams.get("q") ?? "").toLowerCase().trim();

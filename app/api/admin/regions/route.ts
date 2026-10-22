@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { slugify } from "@/lib/slugify";
@@ -17,6 +18,9 @@ import { revalidateFrontend } from "@/lib/revalidate";
  */
 
 export async function GET() {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const sb = createAdminClient();
   const { data, error } = await sb
     .from("regions")
@@ -41,6 +45,9 @@ async function uniqueSlug(sb: ReturnType<typeof createAdminClient>, base: string
 }
 
 export async function POST(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json().catch(() => ({}));
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const parentId = typeof body.parent_id === "string" ? body.parent_id : null;

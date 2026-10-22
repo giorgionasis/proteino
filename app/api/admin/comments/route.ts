@@ -1,7 +1,11 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function PATCH(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const body = await req.json();
   const { id, is_hidden, hidden_reason } = body;
 
@@ -26,6 +30,9 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 

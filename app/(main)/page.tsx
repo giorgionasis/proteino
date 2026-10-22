@@ -340,10 +340,8 @@ export default async function HomePage() {
           u.user_metadata?.full_name ??
           u.email?.split("@")[0] ??
           "";
-        const { data: viewerRow } = await sb
-          .from("users")
+        const { data: viewerRow } = await (sb.rpc as any)("get_my_profile")
           .select("region_id")
-          .eq("id", u.id)
           .maybeSingle();
         viewerRegionId = (viewerRow as { region_id?: string | null } | null)?.region_id ?? null;
       }

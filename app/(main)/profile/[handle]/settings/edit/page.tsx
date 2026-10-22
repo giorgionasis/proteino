@@ -24,11 +24,9 @@ export default async function EditProfilePage({ params }: Props) {
   const fallbackName   = meta.display_name ?? meta.full_name ?? meta.name ?? "";
 
   const [userRes, regionsRes] = await Promise.all([
-    supabase
-      .from("users")
+    (supabase.rpc as any)("get_my_profile")
       .select("handle, display_name, bio, avatar_url, gender, birthday, region, region_id")
-      .eq("id", session.user.id)
-      .single(),
+      .maybeSingle(),
     supabase
       .from("regions")
       .select("id, name, parent_id, display_order")

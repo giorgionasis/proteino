@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
@@ -11,6 +12,9 @@ import { NextResponse } from "next/server";
  * 7d window keeps the scan small.
  */
 export async function GET() {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const sb    = createAdminClient();
   const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
 

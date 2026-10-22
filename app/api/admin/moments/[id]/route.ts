@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { executeWithAuditFallback, getAdminAuditUserId } from "@/lib/admin/audit";
 import { NextRequest, NextResponse } from "next/server";
@@ -15,6 +16,9 @@ interface RouteParams {
 }
 
 export async function GET(_req: NextRequest, props: RouteParams) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const sb = createAdminClient();
   const { data, error } = await sb
@@ -36,6 +40,9 @@ const EDITABLE_FIELDS = new Set([
 ]);
 
 export async function PATCH(req: NextRequest, props: RouteParams) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const body = await req.json().catch(() => ({}));
   const patch: Record<string, unknown> = {};
@@ -64,6 +71,9 @@ export async function PATCH(req: NextRequest, props: RouteParams) {
 }
 
 export async function DELETE(_req: NextRequest, props: RouteParams) {
+  const gate = await requireAdmin();
+  if (gate instanceof NextResponse) return gate;
+
   const params = await props.params;
   const sb = createAdminClient();
   const { error } = await sb.from("moments").delete().eq("id", params.id);

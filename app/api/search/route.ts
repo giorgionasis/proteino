@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAIService } from "@/lib/ai";
 import { parseEventDate } from "@/lib/category-filters/event-date";
 import type { CategorySlug, SearchAnalysis } from "@/types";
+import { rateLimit } from "@/lib/rate-limit";
 
 // Sharp pipeline downstream is on Node runtime; the AIService factory is
 // also Node-only since it loads the Gemini SDK lazily.
@@ -918,6 +919,9 @@ function tierFromScores(best: number, runnerUp: number): "high" | "medium" | "lo
 // ── Route ─────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
+  const limited = await rateLimit(req, "search", { max: 150, windowSec: 600 });
+  if (limited) return limited;
+
   const { searchParams } = new URL(req.url);
   const q = (searchParams.get("q") ?? "").trim();
   const categoriesParam = searchParams.get("categories")?.split(",").filter(Boolean) ?? [];
