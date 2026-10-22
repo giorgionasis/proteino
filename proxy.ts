@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { resolveLegacyRedirect, type LegacyMap } from "@/lib/redirects/legacy";
+import legacyMap from "@/lib/redirects/legacy-map.json";
 
 // Edge-runtime proxy (Next 16 — renamed from middleware.ts). Kept intentionally
 // minimal — anything that throws here surfaces as MIDDLEWARE_INVOCATION_FAILED
@@ -26,6 +28,14 @@ function hasAuthCookie(request: NextRequest): boolean {
 export async function proxy(request: NextRequest) {
   try {
     const pathname = request.nextUrl?.pathname ?? "/";
+
+    // Old Joomla/K2 URLs (pre-cutover www.proteino.gr) → 301 to the new
+    // route. Pure in-memory lookup; null for every non-legacy path.
+    const legacy = resolveLegacyRedirect(pathname, request.nextUrl.searchParams, legacyMap as LegacyMap);
+    if (legacy && legacy !== pathname) {
+      return NextResponse.redirect(new URL(legacy, request.url), 301);
+    }
+
     const loggedIn = hasAuthCookie(request);
 
     // Protect /admin: redirect guests to login. Page-level role check still
