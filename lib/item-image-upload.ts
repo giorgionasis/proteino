@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createHash } from "node:crypto";
 import {
   processItemImage,
+  processMainImage,
   variantStoragePath,
   fetchImageBuffer,
   type Slot,
@@ -20,9 +22,17 @@ import {
  * surface it or just fire-and-forget.
  */
 
+export interface MainImageShape {
+  /** width (px) → public URL, ascending. Uncropped, aspect preserved. */
+  widths: Record<string, string>;
+  aspect: number;
+  focal:  { x: number; y: number };
+}
+
 export interface ItemImagesShape {
   poster?:   { s?: string; m?: string; l?: string; xl?: string };
   backdrop?: { s?: string; m?: string; l?: string; xl?: string };
+  main?:     MainImageShape;
   og?:       string;
 }
 
@@ -108,4 +118,77 @@ export async function processAndStoreItemImageFromUrl(
 ): Promise<ItemImagesShape> {
   const { buffer } = await fetchImageBuffer(sourceUrl);
   return processAndStoreItemImage(sb, itemId, slot, buffer);
+}
+
+/**
+ * "Store whole, crop on display" (see processMainImage). Uploads the width
+ * ladder + OG to `items/{itemId}/main-{w}.webp` / `og.jpg`, merges
+ * `images.main` + `images.og` into the existing images jsonb (gallery and
+ * pipeline keys preserved — never narrows the dual shape), and points
+ * cover_url (≤640w, list surfaces) and the category's legacy column
+ * (largest width) at the new files so un-migrated surfaces render too.
+ *
+ * URLs carry `?v=<content hash>` because objects are cached for a year.
+ */
+export async function storeMainImage(
+  sb: SupabaseClient<any>,
+  itemId: string,
+  buffer: Buffer,
+  { portrait }: { portrait: boolean },
+): Promise<{ main: MainImageShape; og: string }> {
+  const processed = await processMainImage(buffer, { portrait });
+
+  // Sequential + retried: every Storage upload also writes object metadata
+  // to Postgres, and parallel bursts exhaust the free-tier connection pool
+  // ("Too many connections issued to the database").
+  const upload = async (path: string, body: Buffer, contentType: string) => {
+    for (let attempt = 1; ; attempt++) {
+      const { error } = await sb.storage.from("media").upload(path, body, {
+        contentType,
+        upsert: true,
+        cacheControl: "31536000",
+      });
+      if (!error) break;
+      if (attempt >= 5) throw new Error(`Upload failed for ${path}: ${error.message}`);
+      await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+    }
+    const v = createHash("sha1").update(body).digest("hex").slice(0, 8);
+    return `${sb.storage.from("media").getPublicUrl(path).data.publicUrl}?v=${v}`;
+  };
+
+  const widths: Record<string, string> = {};
+  for (const v of processed.variants) {
+    widths[v.width] = await upload(`items/${itemId}/main-${v.width}.webp`, v.buffer, "image/webp");
+  }
+  const og = await upload(`items/${itemId}/og.jpg`, processed.og, "image/jpeg");
+
+  const main: MainImageShape = { widths, aspect: processed.aspect, focal: processed.focal };
+
+  const { data: existing, error: readErr } = await sb
+    .from("items")
+    .select("images")
+    .eq("id", itemId)
+    .single<{ images: unknown }>();
+  if (readErr) throw new Error(`Read failed: ${readErr.message}`);
+
+  // Legacy array shape = gallery (see lib/images/gallery.ts) — keep it.
+  const prev = existing?.images;
+  const base: Record<string, unknown> = Array.isArray(prev)
+    ? (prev.length ? { gallery: prev } : {})
+    : (prev && typeof prev === "object" ? { ...(prev as Record<string, unknown>) } : {});
+
+  const sorted = Object.keys(widths).map(Number).sort((a, b) => a - b);
+  const cover = widths[sorted.filter((w) => w <= 640).pop() ?? sorted[0]];
+  const largest = widths[sorted[sorted.length - 1]];
+
+  const { error: updateErr } = await (sb.from("items") as any)
+    .update({
+      images: { ...base, main, og },
+      cover_url: cover,
+      [portrait ? "poster_url" : "backdrop_url"]: largest,
+    })
+    .eq("id", itemId);
+  if (updateErr) throw new Error(`Update failed: ${updateErr.message}`);
+
+  return { main, og };
 }

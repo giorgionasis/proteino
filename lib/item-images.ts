@@ -120,3 +120,52 @@ export function itemOgUrl(item: ItemLikeForImages | null | undefined): string | 
   if (item.cover_url) return safeImageUrl(item.cover_url);
   return null;
 }
+
+// ── "main" image (store whole, crop on display) ────────────────────────────
+
+export interface MainImageSource {
+  /** Default src — the ≤640w variant (or smallest available). */
+  src: string;
+  /** "url 320w, url 640w, …" for <img srcSet>. */
+  srcSet?: string;
+  /** CSS object-position for the focal point, e.g. "64% 58%". */
+  objectPosition: string;
+  /** width / height of the uncropped image, when known. */
+  aspect?: number;
+}
+
+/**
+ * Resolve the uncropped "main" image written by storeMainImage(). Falls
+ * back to a plain URL (cover_url / legacy column) so items that have not
+ * been migrated still render — centred, without srcset.
+ */
+export function mainImageSource(
+  images: unknown,
+  fallbackUrl?: string | null,
+): MainImageSource | null {
+  const main = images && typeof images === "object" && !Array.isArray(images)
+    ? (images as { main?: { widths?: Record<string, string>; aspect?: number; focal?: { x: number; y: number } } }).main
+    : undefined;
+
+  const widths = main?.widths
+    ? Object.entries(main.widths)
+        .map(([w, url]) => [Number(w), url] as const)
+        .filter(([w, url]) => w > 0 && typeof url === "string")
+        .sort((a, b) => a[0] - b[0])
+    : [];
+
+  if (widths.length) {
+    const src = (widths.filter(([w]) => w <= 640).pop() ?? widths[0])[1];
+    const fx = Math.round((main?.focal?.x ?? 0.5) * 100);
+    const fy = Math.round((main?.focal?.y ?? 0.5) * 100);
+    return {
+      src,
+      srcSet: widths.map(([w, url]) => `${url} ${w}w`).join(", "),
+      objectPosition: `${fx}% ${fy}%`,
+      aspect: main?.aspect,
+    };
+  }
+
+  const url = safeImageUrl(fallbackUrl);
+  return url ? { src: url, objectPosition: "50% 50%" } : null;
+}

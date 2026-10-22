@@ -201,6 +201,137 @@ export async function processItemImage(
   return variantBuffers;
 }
 
+// ── "Main" image: store whole, crop on display ───────────────────────────
+//
+// Successor to the fixed poster/backdrop crops (session 40). One uncropped
+// image per item, resized (never upscaled) to a width ladder, plus an
+// auto-detected focal point. Surfaces crop with CSS (object-fit: cover +
+// object-position at the focal point) to whatever shape they need, so a
+// new layout never requires reprocessing. Only the OG share image is
+// pre-composed, because 1200×630 is a fixed external contract.
+
+export const MAIN_WIDTHS = [320, 640, 960, 1280] as const;
+
+export interface MainImageVariant { width: number; buffer: Buffer }
+
+export interface ProcessedMainImage {
+  variants: MainImageVariant[];
+  /** width / height of the source after EXIF rotation. */
+  aspect: number;
+  /** Focal point as 0–1 fractions of width / height. */
+  focal: { x: number; y: number };
+  og: Buffer;
+}
+
+/**
+ * Ladder widths for a source: every MAIN_WIDTHS step that fits, plus the
+ * source width itself when it is meaningfully (>15%) above the last step —
+ * so a 900px source yields 320/640/900 instead of being capped at 640.
+ */
+function ladderFor(sourceWidth: number): number[] {
+  const fits = MAIN_WIDTHS.filter((w) => w <= sourceWidth) as number[];
+  if (fits.length === 0) return [sourceWidth];
+  const top = fits[fits.length - 1];
+  if (top < MAIN_WIDTHS[MAIN_WIDTHS.length - 1] && sourceWidth > top * 1.15) fits.push(sourceWidth);
+  return fits;
+}
+
+/**
+ * Focal point via libvips "entropy" (most detailed region), measured with
+ * the crop boxes surfaces actually use: a 2:3 card for the horizontal
+ * axis, a 16:9 hero for the vertical one. Compared on real K2 images,
+ * "attention" chased high-contrast edges (a title's first letters, a book
+ * cover's border) while entropy landed on faces / the cover itself.
+ */
+async function detectFocal(clean: Buffer, aspect: number): Promise<{ x: number; y: number }> {
+  const H = 300;
+  const round = (n: number) => Math.min(1, Math.max(0, Math.round(n * 100) / 100));
+
+  // x: 2:3 box out of an image scaled to height H.
+  const cardW = Math.round(H * (2 / 3));
+  const interW = H * aspect;
+  let x = 0.5;
+  if (interW > cardW * 1.05) {
+    const { info } = await sharp(clean)
+      .resize(cardW, H, { fit: "cover", position: sharp.strategy.entropy })
+      .toBuffer({ resolveWithObject: true });
+    x = round((Math.abs(info.cropOffsetLeft ?? 0) + cardW / 2) / interW);
+  }
+
+  // y: 16:9 box out of an image scaled to width W.
+  const W = 300;
+  const heroH = Math.round(W * (9 / 16));
+  const interH = W / aspect;
+  let y = 0.5;
+  if (interH > heroH * 1.05) {
+    const { info } = await sharp(clean)
+      .resize(W, heroH, { fit: "cover", position: sharp.strategy.entropy })
+      .toBuffer({ resolveWithObject: true });
+    y = round((Math.abs(info.cropOffsetTop ?? 0) + heroH / 2) / interH);
+  }
+
+  return { x, y };
+}
+
+export async function processMainImage(
+  inputBuffer: Buffer,
+  { portrait }: { portrait: boolean },
+): Promise<ProcessedMainImage> {
+  if (inputBuffer.length > MAX_INPUT_BYTES) {
+    throw new Error(`File too large (${(inputBuffer.length / 1024 / 1024).toFixed(1)} MB). Max 10 MB.`);
+  }
+  const clean = await sharp(inputBuffer, { failOn: "error" }).rotate().removeAlpha().toBuffer();
+  const meta = await sharp(clean).metadata();
+  if (!meta.width || !meta.height) throw new Error("Could not read image dimensions.");
+  if (meta.width > MAX_INPUT_DIM || meta.height > MAX_INPUT_DIM) {
+    throw new Error(`Image too large: ${meta.width}×${meta.height}. Max ${MAX_INPUT_DIM}×${MAX_INPUT_DIM}.`);
+  }
+  const aspect = meta.width / meta.height;
+
+  const variants = await Promise.all(
+    ladderFor(meta.width).map(async (width) => ({
+      width,
+      buffer: await sharp(clean)
+        .resize({ width, withoutEnlargement: true })
+        .webp({ quality: WEBP_QUALITY, effort: 4 })
+        .toBuffer(),
+    })),
+  );
+
+  const focal = await detectFocal(clean, aspect);
+
+  // OG 1200×630. Landscape sources: crop at the focal point. Portrait
+  // sources: whole poster centred on a blurred, dimmed copy of itself.
+  let og: Buffer;
+  if (!portrait && aspect >= 1) {
+    const scale = Math.max(OG_DIM.w / meta.width, OG_DIM.h / meta.height);
+    const sw = Math.round(meta.width * scale);
+    const sh = Math.round(meta.height * scale);
+    const left = Math.min(sw - OG_DIM.w, Math.max(0, Math.round(focal.x * sw - OG_DIM.w / 2)));
+    const top = Math.min(sh - OG_DIM.h, Math.max(0, Math.round(focal.y * sh - OG_DIM.h / 2)));
+    og = await sharp(clean)
+      .resize(sw, sh)
+      .extract({ left, top, width: OG_DIM.w, height: OG_DIM.h })
+      .jpeg({ quality: JPEG_QUALITY, progressive: true, mozjpeg: true })
+      .toBuffer();
+  } else {
+    const bg = await sharp(clean)
+      .resize(OG_DIM.w, OG_DIM.h, { fit: "cover" })
+      .blur(40)
+      .modulate({ brightness: 0.7 })
+      .toBuffer();
+    const fg = await sharp(clean)
+      .resize(OG_DIM.w - 80, OG_DIM.h - 60, { fit: "inside" })
+      .toBuffer();
+    og = await sharp(bg)
+      .composite([{ input: fg, gravity: "centre" }])
+      .jpeg({ quality: JPEG_QUALITY, progressive: true, mozjpeg: true })
+      .toBuffer();
+  }
+
+  return { variants, aspect: Math.round(aspect * 1000) / 1000, focal, og };
+}
+
 /**
  * Build the storage path for a variant.
  * Format: items/{itemId}/{slot}-{variant}.{ext}
