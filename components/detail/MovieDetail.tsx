@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ItemImage } from "@/components/ui/ItemImage";
 import { isBlankValue } from "@/lib/display";
 import { FIRST_REVIEW_INVITE, hasRatings, ratingCountLabel } from "@/lib/ratings";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
@@ -259,15 +259,34 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
 
       {/* ── Trailer image ─────────────────────────────────── */}
       <div className="px-6 pt-6">
-        <div data-orbit-source className="relative w-full h-[228px] rounded-[12px] overflow-hidden bg-zinc-200">
-          {coverUrl && <Image src={coverUrl} alt={title} fill className="object-cover" priority />}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-[60px] h-[60px] rounded-full bg-white/80 flex items-center justify-center shadow-lg">
-              <svg width="20" height="22" viewBox="0 0 20 22" fill="none" aria-hidden>
-                <path d="M2 1.5L18 11L2 20.5V1.5Z" fill="#27272A" />
-              </svg>
-            </div>
-          </div>
+        {/* Whole poster on a blurred copy of itself. The play button only
+            exists when there is a trailer, and it opens it (it used to be
+            a decoration on every movie — a dead CTA). */}
+        <div data-orbit-source className="relative w-full rounded-[12px] overflow-hidden">
+          <ItemImage
+            images={item.images}
+            fallbackUrl={coverUrl}
+            alt={title}
+            ratio="4 / 3"
+            mode="whole"
+            priority
+            sizes="(min-width: 512px) 480px, 100vw"
+          />
+          {typeof trailerUrl === "string" && trailerUrl && (
+            <a
+              href={trailerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Παρακολούθηση trailer"
+              className="absolute inset-0 flex items-center justify-center group"
+            >
+              <div className="w-[60px] h-[60px] rounded-full bg-white/85 flex items-center justify-center shadow-lg transition-transform group-active:scale-95">
+                <svg width="20" height="22" viewBox="0 0 20 22" fill="none" aria-hidden>
+                  <path d="M2 1.5L18 11L2 20.5V1.5Z" fill="#27272A" />
+                </svg>
+              </div>
+            </a>
+          )}
         </div>
       </div>
 

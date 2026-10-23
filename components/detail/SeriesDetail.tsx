@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ItemImage } from "@/components/ui/ItemImage";
 import { isBlankValue } from "@/lib/display";
 import { FIRST_REVIEW_INVITE, hasRatings, ratingCountLabel } from "@/lib/ratings";
 import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
@@ -154,8 +155,18 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
 
       {/* Cover */}
       <div className="px-6 pt-6">
-        <div data-orbit-source className="relative w-full h-[228px] rounded-[12px] overflow-hidden bg-zinc-800 flex items-center justify-center">
-          {coverUrl ? <img src={coverUrl} alt={title} className="w-full h-full object-cover" /> : <span className="text-zinc-500 text-4xl">📺</span>}
+        {/* Whole poster on a blurred copy of itself (no landscape crop). */}
+        <div data-orbit-source className="relative w-full rounded-[12px] overflow-hidden">
+          <ItemImage
+            images={item.images}
+            fallbackUrl={coverUrl}
+            alt={title}
+            ratio="4 / 3"
+            mode="whole"
+            priority
+            sizes="(min-width: 512px) 480px, 100vw"
+            placeholder={<span className="absolute inset-0 grid place-items-center text-zinc-500 text-4xl">📺</span>}
+          />
           {trailerUrl && (
             <a
               href={trailerUrl}

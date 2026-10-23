@@ -128,7 +128,8 @@ export async function processAndStoreItemImageFromUrl(
  * cover_url (≤640w, list surfaces) and the category's legacy column
  * (largest width) at the new files so un-migrated surfaces render too.
  *
- * URLs carry `?v=<content hash>` because objects are cached for a year.
+ * URLs carry `?v=<source hash>` (same for every width) because objects are
+ * cached for a year.
  */
 export async function storeMainImage(
   sb: SupabaseClient<any>,
@@ -137,6 +138,10 @@ export async function storeMainImage(
   { portrait }: { portrait: boolean },
 ): Promise<{ main: MainImageShape; og: string }> {
   const processed = await processMainImage(buffer, { portrait });
+
+  // One version tag for every file of this image (hash of the source), so
+  // compact list payloads can rebuild any width's URL from one value.
+  const version = createHash("sha1").update(buffer).digest("hex").slice(0, 8);
 
   // Sequential + retried: every Storage upload also writes object metadata
   // to Postgres, and parallel bursts exhaust the free-tier connection pool
@@ -152,8 +157,7 @@ export async function storeMainImage(
       if (attempt >= 5) throw new Error(`Upload failed for ${path}: ${error.message}`);
       await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
     }
-    const v = createHash("sha1").update(body).digest("hex").slice(0, 8);
-    return `${sb.storage.from("media").getPublicUrl(path).data.publicUrl}?v=${v}`;
+    return `${sb.storage.from("media").getPublicUrl(path).data.publicUrl}?v=${version}`;
   };
 
   const widths: Record<string, string> = {};

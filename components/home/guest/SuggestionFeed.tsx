@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { ItemImage } from "@/components/ui/ItemImage";
+import type { CompactMainImage } from "@/lib/item-images";
 import { hasRatings, ratingCountLabel } from "@/lib/ratings";
 import Image from "next/image";
 import Link from "next/link";
@@ -15,9 +17,16 @@ export interface SuggestionFeedItem {
   rating_count: number;
   is_top_rated?: boolean;
   cover_url?: string | null;
+  /** Compact images.main for <ItemImage>. */
+  image?: CompactMainImage | null;
+  /** First ~120 chars of the recommendation. */
+  quote?: string;
+  suggester_name?: string;
   href: string;
   category: string;
 }
+
+const PORTRAIT = new Set(["movies", "series", "books"]);
 
 const CATEGORIES = [
   { label: "Βιβλία",     key: "books" },
@@ -104,59 +113,65 @@ export function SuggestionFeed({ items }: Props) {
             Δεν υπάρχουν ακόμα προτάσεις σε αυτή την κατηγορία
           </p>
         )}
-        {filtered.map((card) => (
-          <Link
-            key={card.id}
-            href={card.href}
-            className="block active:opacity-80 transition-opacity"
-          >
-            {/* Image */}
-            <div
-              className="relative w-full overflow-hidden bg-zinc-200"
-              style={{ height: 228, borderRadius: 12 }}
-            >
-              {card.cover_url && (
-                <img
-                  src={card.cover_url}
-                  alt={card.title}
-                  className="absolute inset-0 w-full h-full object-cover"
-                />
-              )}
-              {card.is_top_rated && (
-                <span className="absolute top-4 left-4 bg-[#EDEDED] border border-white rounded-full px-2.5 py-[7px] text-sm font-medium text-zinc-800 shadow-[4px_4px_9px_-4px_rgba(0,0,0,0.25)] leading-none">
-                  Top rated
-                </span>
-              )}
-            </div>
-
-            {/* Description */}
-            <div className="pt-4 space-y-4">
-              <div className="space-y-1.5">
-                <p className="text-[18px] font-bold text-zinc-950 leading-none">{card.title}</p>
-                <div className="flex items-center gap-1 text-base font-medium text-zinc-600">
-                  <span>{card.subtitle}</span>
-                  {card.location && (
-                    <>
-                      <span className="w-1 h-1 rounded-full bg-zinc-600 shrink-0" />
-                      <span>{card.location}</span>
-                    </>
-                  )}
-                </div>
+        {filtered.map((card) =>
+          PORTRAIT.has(card.category) ? (
+            // Books / movies / series: whole cover + the recommendation.
+            // A 228px landscape box used to keep only the middle third of
+            // the cover (UX review, session 40).
+            <Link key={card.id} href={card.href} className="flex gap-4 active:opacity-80 transition-opacity">
+              <div className="shrink-0 w-[96px] h-[144px] rounded-[8px] overflow-hidden relative bg-zinc-200 shadow-[0_1px_4px_rgba(0,0,0,0.15)]">
+                <ItemImage images={card.image} fallbackUrl={card.cover_url} alt={card.title} sizes="96px" className="absolute inset-0 bg-transparent" />
               </div>
-              {hasRatings(card.rating_count) && (
-                <div className="flex items-center gap-1.5">
-                  <StarIcon />
-                  <span className="text-base font-semibold text-zinc-800">
-                    {card.avg_rating.toFixed(2)}
+              <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                <p className="text-[17px] font-bold text-zinc-950 leading-tight line-clamp-2">{card.title}</p>
+                {card.subtitle && <p className="text-[14px] font-medium text-zinc-600 line-clamp-1">{card.subtitle}</p>}
+                {card.quote && <p className="text-[14px] italic text-zinc-700 leading-snug line-clamp-3">«{card.quote}»</p>}
+                {card.suggester_name && <p className="text-[13px] font-medium text-zinc-500 line-clamp-1">{card.suggester_name}</p>}
+                {hasRatings(card.rating_count) && (
+                  <div className="flex items-center gap-1.5 mt-auto">
+                    <StarIcon />
+                    <span className="text-[14px] font-semibold text-zinc-800">{card.avg_rating.toFixed(2)}</span>
+                    <span className="text-[14px] font-medium text-zinc-600">({ratingCountLabel(card.rating_count)})</span>
+                  </div>
+                )}
+              </div>
+            </Link>
+          ) : (
+            <Link key={card.id} href={card.href} className="block active:opacity-80 transition-opacity">
+              {/* 3:2 at the stored focal point */}
+              <div className="relative w-full overflow-hidden bg-zinc-200" style={{ aspectRatio: "3 / 2", borderRadius: 12 }}>
+                <ItemImage images={card.image} fallbackUrl={card.cover_url} alt={card.title} sizes="(min-width: 512px) 480px, 100vw" className="absolute inset-0 bg-transparent" />
+                {card.is_top_rated && (
+                  <span className="absolute top-4 left-4 bg-[#EDEDED] border border-white rounded-full px-2.5 py-[7px] text-sm font-medium text-zinc-800 shadow-[4px_4px_9px_-4px_rgba(0,0,0,0.25)] leading-none">
+                    Top rated
                   </span>
-                  <span className="text-base font-medium text-zinc-800">
-                    ({ratingCountLabel(card.rating_count)})
-                  </span>
+                )}
+              </div>
+              <div className="pt-4 space-y-3">
+                <div className="space-y-1.5">
+                  <p className="text-[18px] font-bold text-zinc-950 leading-tight">{card.title}</p>
+                  <div className="flex items-center gap-1 text-base font-medium text-zinc-600">
+                    <span>{card.subtitle}</span>
+                    {card.location && (
+                      <>
+                        <span className="w-1 h-1 rounded-full bg-zinc-600 shrink-0" />
+                        <span>{card.location}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-          </Link>
-        ))}
+                {card.quote && <p className="text-[14px] italic text-zinc-700 leading-snug line-clamp-2">«{card.quote}»</p>}
+                {hasRatings(card.rating_count) && (
+                  <div className="flex items-center gap-1.5">
+                    <StarIcon />
+                    <span className="text-base font-semibold text-zinc-800">{card.avg_rating.toFixed(2)}</span>
+                    <span className="text-base font-medium text-zinc-800">({ratingCountLabel(card.rating_count)})</span>
+                  </div>
+                )}
+              </div>
+            </Link>
+          ),
+        )}
       </div>
 
       {/* Load more button */}

@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import type { CompactMainImage } from "@/lib/item-images";
+import { ItemImage } from "@/components/ui/ItemImage";
 import { hasRatings, ratingCountLabel } from "@/lib/ratings";
 import type { CategorySlug } from "@/types";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
@@ -20,6 +22,10 @@ export interface CategoryItem {
   avg_rating:        number;
   rating_count:      number;
   cover_url:         string | null;
+  /** Compact images.main (widths + focal) for <ItemImage>. */
+  image?:            CompactMainImage | null;
+  /** First ~140 chars of the featured recommendation. */
+  quote?:            string;
   delivery?:         string[];
   platform?:         string;
   suggestedBy:       { names: string[]; extra: number };
@@ -136,15 +142,17 @@ function LandscapeCard({ item, category }: { item: CategoryItem; category: Categ
       {/* Image */}
       <div
         className="relative w-full overflow-hidden"
-        style={{ height: 200, borderRadius: 12, backgroundColor: item.placeholder_color ?? BG[category] }}
+        style={{ aspectRatio: "3 / 2", borderRadius: 12, backgroundColor: item.placeholder_color ?? BG[category] }}
       >
-        {item.cover_url && (
-          <img
-            src={item.cover_url}
-            alt={item.title}
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-        )}
+        {/* 3:2 matches the venue photos (16:9-ish boxes cut their tops);
+            cropped at the stored focal point, sized by srcset. */}
+        <ItemImage
+          images={item.image}
+          fallbackUrl={item.cover_url}
+          alt={item.title}
+          sizes="(min-width: 512px) 480px, 100vw"
+          className="absolute inset-0 bg-transparent"
+        />
 
         {/* Top rated badge */}
         {item.isNew && (
@@ -317,18 +325,18 @@ function RowCard({ item, category }: { item: CategoryItem; category: CategorySlu
       href={`/${category}/${item.slug ?? item.id}`}
       className="flex gap-4 active:scale-[0.98] active:opacity-90 transition-[transform,opacity] duration-150 ease-out"
     >
-      {/* Poster — 2:3, fixed 88px wide */}
+      {/* Whole cover — 2:3, 88px wide, never cropped into landscape */}
       <div
-        className="shrink-0 w-[88px] h-[132px] rounded-[8px] overflow-hidden relative"
+        className="shrink-0 w-[88px] h-[132px] rounded-[8px] overflow-hidden relative shadow-[0_1px_4px_rgba(0,0,0,0.15)]"
         style={{ backgroundColor: item.placeholder_color ?? BG[category] }}
       >
-        {item.cover_url && (
-          <img
-            src={item.cover_url}
-            alt={item.title}
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-        )}
+        <ItemImage
+          images={item.image}
+          fallbackUrl={item.cover_url}
+          alt={item.title}
+          sizes="88px"
+          className="absolute inset-0 bg-transparent"
+        />
       </div>
 
       {/* Info column */}
@@ -346,6 +354,16 @@ function RowCard({ item, category }: { item: CategoryItem; category: CategorySlu
         {byline && (
           <p className="text-[13px] font-semibold text-[#3F3F46] line-clamp-1">
             {byline}
+          </p>
+        )}
+
+        {/* The human part: why someone recommends it, and who. */}
+        {item.quote && (
+          <p className="text-[13px] italic text-zinc-600 leading-snug line-clamp-2">«{item.quote}»</p>
+        )}
+        {item.suggester && (
+          <p className="text-[12px] font-medium text-zinc-500 line-clamp-1">
+            {item.suggester.display_name || item.suggester.handle}
           </p>
         )}
 
@@ -374,15 +392,14 @@ interface CategoryCardProps {
 }
 
 export function CategoryCard({ item, category, className }: CategoryCardProps) {
-  // The category-page LIST uses LandscapeCard for every category — even
-  // movies/series/books. Carousels (CategoryPageShell static_carousel
-  // bridge + home page) keep the portrait/landscape branch via
-  // isPortraitCategory; only the under-the-filter list standardises on
-  // landscape. RowCard kept around for callers that still want it.
-  void RowCard;
+  // Still a 1-column list for every category, but portrait categories
+  // (movies/series/books) use the row card: a landscape box kept only the
+  // middle third of a cover and cut titles off (UX review, session 40).
   return (
     <div className={className}>
-      <LandscapeCard item={item} category={category} />
+      {isPortraitCategory(category)
+        ? <RowCard item={item} category={category} />
+        : <LandscapeCard item={item} category={category} />}
     </div>
   );
 }

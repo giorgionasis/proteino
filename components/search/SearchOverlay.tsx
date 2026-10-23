@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { AvatarImage } from "@/components/ui/AvatarImage";
 import { Search, X, Star } from "lucide-react";
 import Link from "next/link";
 import { OverlayHeader } from "@/components/layout/Header";
@@ -91,6 +92,13 @@ function IntelligencePanel({ progress, message, tier }: {
   );
 }
 
+const PORTRAIT_SEARCH = new Set(["movies", "series", "books"]);
+
+/** Greek category name for result rows (they printed the slug, "movies"). */
+function categoryLabelEl(slug: string): string {
+  return CATEGORIES.find((c) => c.slug === slug)?.labelEl ?? slug;
+}
+
 // ── Featured hero (high-confidence single-item match) ─────────────────────────
 
 function FeaturedHero({ item }: { item: Item }) {
@@ -114,7 +122,7 @@ function FeaturedHero({ item }: { item: Item }) {
             ✓ Ακριβώς αυτό
           </p>
           <p className="text-base font-bold text-zinc-900 leading-tight">{item.title}</p>
-          <p className="text-[12px] text-zinc-500 mt-1 uppercase tracking-wider">{item.category}</p>
+          <p className="text-[12px] text-zinc-500 mt-1 uppercase tracking-wider">{categoryLabelEl(item.category)}</p>
           {item.avg_rating > 0 && (
             <div className="flex items-center gap-0.5 mt-2">
               {[1, 2, 3, 4, 5].map((s) => (
@@ -143,7 +151,8 @@ function ResultCard({ item, index = 0 }: { item: Item; index?: number }) {
       className="flex items-center gap-3 p-3 bg-white rounded-card border border-zinc-200 active:scale-[0.99] active:bg-zinc-50 transition-[transform,colors] duration-150 ease-out animate-in slide-in-from-bottom-2 fade-in fill-mode-both ease-soft"
       style={{ animationDuration: "300ms", animationDelay: `${Math.min(index, 10) * 40}ms` }}
     >
-      <div className="w-14 h-14 rounded-sm bg-zinc-100 shrink-0 overflow-hidden">
+      {/* Covers stay whole-ish at 2:3; venues/recipes get a square crop. */}
+      <div className={`${PORTRAIT_SEARCH.has(item.category) ? "w-12 h-[72px]" : "w-14 h-14"} rounded-sm bg-zinc-100 shrink-0 overflow-hidden`}>
         {cover && (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img src={cover} alt="" className="w-full h-full object-cover" />
@@ -153,7 +162,7 @@ function ResultCard({ item, index = 0 }: { item: Item; index?: number }) {
         <p className="text-base font-bold text-zinc-800 truncate">{item.title}</p>
         <div className="flex items-center gap-1.5 mt-0.5">
           <span className="text-[10px] font-bold text-zinc-400 tracking-wider uppercase">
-            {item.category}
+            {categoryLabelEl(item.category)}
           </span>
           {item.avg_rating > 0 && (
             <>
@@ -177,16 +186,7 @@ function ResultCard({ item, index = 0 }: { item: Item; index?: number }) {
 function UserHitRow({ user }: { user: SearchUserHit }) {
   return (
     <Link href={`/profile/${user.handle}`} className="flex items-center gap-3 p-3 bg-white rounded-card border border-zinc-200 active:bg-zinc-50 transition-colors">
-      <div className="w-10 h-10 rounded-full bg-zinc-100 overflow-hidden shrink-0">
-        {user.avatar_url ? (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-zinc-400 text-xs font-bold">
-            {user.display_name.split(" ").map((s) => s[0]).slice(0, 2).join("")}
-          </div>
-        )}
-      </div>
+      <AvatarImage url={user.avatar_url} name={user.display_name} size={40} className="rounded-full shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-zinc-800 truncate">{user.display_name}</p>
         <p className="text-[12px] text-zinc-500">@{user.handle}</p>

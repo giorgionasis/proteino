@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { FadeImage } from "@/components/ui/FadeImage";
-import { mainImageSource } from "@/lib/item-images";
+import { anyImageSource } from "@/lib/item-images";
 import { cn } from "@/lib/utils/cn";
 
 /**
@@ -50,7 +50,7 @@ export function ItemImage({
   className,
   placeholder,
 }: ItemImageProps) {
-  const source = mainImageSource(images, fallbackUrl);
+  const source = anyImageSource(images, fallbackUrl);
   const box: CSSProperties = ratio ? { aspectRatio: ratio } : {};
 
   if (!source) {

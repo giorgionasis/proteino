@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ItemImage } from "@/components/ui/ItemImage";
 import { isBlankValue } from "@/lib/display";
 import { FIRST_REVIEW_INVITE, hasRatings, ratingCountLabel } from "@/lib/ratings";
 import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
@@ -145,13 +146,19 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
 
       {/* ── Cover ──────────────────────────────────────────────── */}
       <div className="px-6 pt-6">
-        <div data-orbit-source className="relative w-full h-[280px] rounded-[12px] overflow-hidden bg-zinc-200 flex items-center justify-center">
-          {coverUrl ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={coverUrl} alt={title} className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-zinc-400 text-6xl">📚</span>
-          )}
+        {/* Whole cover on a blurred copy of itself — a landscape crop cut
+            titles and author names off the cover. */}
+        <div data-orbit-source className="relative w-full rounded-[12px] overflow-hidden">
+          <ItemImage
+            images={item.images}
+            fallbackUrl={coverUrl}
+            alt={title}
+            ratio="4 / 3"
+            mode="whole"
+            priority
+            sizes="(min-width: 512px) 480px, 100vw"
+            placeholder={<span className="absolute inset-0 grid place-items-center text-zinc-400 text-6xl">📚</span>}
+          />
         </div>
       </div>
 
@@ -179,14 +186,9 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
           <div className="mx-6 mt-6 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-[44px] h-[44px] rounded-full shrink-0 overflow-hidden bg-zinc-200 flex items-center justify-center">
-                  {s.user.avatar_url ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={s.user.avatar_url} alt={s.user.display_name} className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-zinc-500 text-base font-bold">{s.user.display_name.charAt(0).toUpperCase()}</span>
-                  )}
-                </div>
+                {/* Same avatar as every other detail page: coloured
+                    initials fallback + tap opens the suggester's profile. */}
+                <UserAvatarWithPopup user={s.user} size={44} />
                 <div className="space-y-1">
                   <p className="text-[14px] font-bold text-zinc-800">{s.user.display_name}</p>
                   <UserBadge suggestionCount={s.user.suggestion_count ?? 0} />

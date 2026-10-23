@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ItemImage } from "@/components/ui/ItemImage";
 import { isBlankValue } from "@/lib/display";
 import { FIRST_REVIEW_INVITE, hasRatings, ratingCountLabel } from "@/lib/ratings";
 import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
 import { useFlipReorder } from "@/hooks/useFlipReorder";
 import type { AchievementData } from "@/hooks/useSubmission";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 import { InnerHeader } from "@/components/layout/Header";
@@ -169,8 +169,16 @@ export function BarsDetail({ data }: { data: ItemDetailData }) {
 
       {/* Hero */}
       <div className="px-6 pt-6">
-        <div data-orbit-source className="relative w-full h-[228px] rounded-[12px] overflow-hidden bg-zinc-200">
-          {coverUrl && <Image src={coverUrl} alt={title} fill className="object-cover" priority />}
+        {/* 4:3 crop at the stored focal point (srcset-sized). */}
+        <div data-orbit-source className="relative w-full rounded-[12px] overflow-hidden">
+          <ItemImage
+            images={item.images}
+            fallbackUrl={coverUrl}
+            alt={title}
+            ratio="4 / 3"
+            priority
+            sizes="(min-width: 512px) 480px, 100vw"
+          />
         </div>
       </div>
 

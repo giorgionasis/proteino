@@ -6,6 +6,7 @@
  */
 
 import { safeImageUrl } from "@/lib/image-url";
+import { extractGalleryImages } from "@/lib/images/gallery";
 
 export type ImageSlot = "poster" | "backdrop";
 export type ImageVariant = "s" | "m" | "l" | "xl";
@@ -143,6 +144,14 @@ export function mainImageSource(
   images: unknown,
   fallbackUrl?: string | null,
 ): MainImageSource | null {
+  // An admin-picked gallery cover (gallery[].isDefault) wins over the
+  // automatic main image, same precedence as pickCoverUrl().
+  const adminCover = extractGalleryImages(images).find((g) => g.isDefault)?.url;
+  if (adminCover) {
+    const url = safeImageUrl(adminCover);
+    if (url) return { src: url, objectPosition: "50% 50%" };
+  }
+
   const main = images && typeof images === "object" && !Array.isArray(images)
     ? (images as { main?: { widths?: Record<string, string>; aspect?: number; focal?: { x: number; y: number } } }).main
     : undefined;
@@ -168,4 +177,53 @@ export function mainImageSource(
 
   const url = safeImageUrl(fallbackUrl);
   return url ? { src: url, objectPosition: "50% 50%" } : null;
+}
+
+// ── Compact main image (for list payloads) ─────────────────────────────
+//
+// Category pages ship every item to the client for instant filtering, so
+// the full images.main object (4 URLs) is too heavy per row. The compact
+// form carries widths + version + focal point (~60 bytes); URLs are
+// rebuilt from the deterministic storage path written by storeMainImage().
+
+export interface CompactMainImage {
+  id: string;
+  w: number[];
+  v: string;
+  fx: number;
+  fy: number;
+}
+
+export function compactMainImage(itemId: string, images: unknown): CompactMainImage | null {
+  // Admin-picked gallery cover wins → let the caller's cover_url render.
+  if (extractGalleryImages(images).some((g) => g.isDefault)) return null;
+  const main = images && typeof images === "object" && !Array.isArray(images)
+    ? (images as { main?: { widths?: Record<string, string>; focal?: { x: number; y: number } } }).main
+    : undefined;
+  if (!main?.widths) return null;
+  const w = Object.keys(main.widths).map(Number).filter((n) => n > 0).sort((a, b) => a - b);
+  if (!w.length) return null;
+  const ref = main.widths[String(w.filter((n) => n <= 640).pop() ?? w[0])] ?? "";
+  const v = /[?&]v=([^&]+)/.exec(ref)?.[1] ?? "";
+  return { id: itemId, w, v, fx: main.focal?.x ?? 0.5, fy: main.focal?.y ?? 0.5 };
+}
+
+function isCompact(x: unknown): x is CompactMainImage {
+  return !!x && typeof x === "object" && Array.isArray((x as CompactMainImage).w) && typeof (x as CompactMainImage).id === "string";
+}
+
+function expandCompact(c: CompactMainImage): MainImageSource {
+  const base = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/media/items/${c.id}/main-`;
+  const url = (w: number) => `${base}${w}.webp${c.v ? `?v=${c.v}` : ""}`;
+  const src = url(c.w.filter((n) => n <= 640).pop() ?? c.w[0]);
+  return {
+    src,
+    srcSet: c.w.map((w) => `${url(w)} ${w}w`).join(", "),
+    objectPosition: `${Math.round(c.fx * 100)}% ${Math.round(c.fy * 100)}%`,
+  };
+}
+
+/** mainImageSource() for either the full images jsonb or a CompactMainImage. */
+export function anyImageSource(images: unknown, fallbackUrl?: string | null): MainImageSource | null {
+  return isCompact(images) ? expandCompact(images) : mainImageSource(images, fallbackUrl);
 }

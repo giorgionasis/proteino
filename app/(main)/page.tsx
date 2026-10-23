@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { compactMainImage } from "@/lib/item-images";
 import { CATEGORIES } from "@/constants/categories";
 
 // ISR — refresh every 60s. Admin writes also call `revalidatePath('/')`
@@ -273,7 +274,7 @@ async function fetchSuggestionFeedItems(sb: SB): Promise<SuggestionFeedItem[]> {
     categories.map(async (cat) => {
       const { data } = await sb
         .from("items")
-        .select("id, title, slug, cover_url, avg_rating, rating_count, category, metadata")
+        .select("id, title, slug, cover_url, images, avg_rating, rating_count, category, metadata, suggestions(reflection, users!suggestions_user_id_fkey(display_name, handle))")
         .eq("category", cat)
         .eq("is_published", true)
         .order("suggestion_count", { ascending: false })
@@ -290,6 +291,9 @@ async function fetchSuggestionFeedItems(sb: SB): Promise<SuggestionFeedItem[]> {
           rating_count: r.rating_count,
           is_top_rated: r.avg_rating >= 4.5 && r.rating_count >= 5,
           cover_url: safeImageUrl(r.cover_url),
+          image: compactMainImage(r.id, r.images),
+          quote: feedQuote(r.suggestions),
+          suggester_name: (r.suggestions ?? []).find((x: any) => x?.users)?.users?.display_name ?? undefined,
           href: `/${r.category}/${stripPrefix(r.slug)}`,
           category: r.category,
         });
@@ -346,6 +350,15 @@ const fetchContributors = unstable_cache(
   ["home-contributors"],
   { revalidate: 3600 },
 );
+
+/** First ~120 chars of the first recommendation, on a word boundary. */
+function feedQuote(suggestions: any[] | null | undefined): string | undefined {
+  const text = (suggestions ?? []).find((x) => typeof x?.reflection === "string")?.reflection as string | undefined;
+  if (!text) return undefined;
+  const plain = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (plain.length < 20) return undefined;
+  return plain.length <= 120 ? plain : plain.slice(0, 120).replace(/\s+\S*$/, "") + "…";
+}
 
 // ── Page ──────────────────────────────────────────────────────────
 

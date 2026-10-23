@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { compactMainImage } from "@/lib/item-images";
 import { notFound } from "next/navigation";
 
 // ISR — refresh every 60s. Admin writes also call `revalidatePath` on
@@ -138,6 +139,15 @@ function hasAnyAward(awards: any): boolean {
   return false;
 }
 
+/** First ~140 chars of a recommendation, on a word boundary, for list cards. */
+function shortQuote(text: unknown): string | undefined {
+  if (typeof text !== "string") return undefined;
+  const plain = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (plain.length < 20) return undefined;
+  if (plain.length <= 140) return plain;
+  return plain.slice(0, 140).replace(/\s+\S*$/, "") + "…";
+}
+
 function mapItem(item: any, category: CategorySlug): CategoryItem {
   const meta = item.metadata ?? {};
   const allTags: string[] = meta.tags ?? [];
@@ -175,6 +185,8 @@ function mapItem(item: any, category: CategorySlug): CategoryItem {
     avg_rating: item.avg_rating ?? 0,
     rating_count: item.rating_count ?? 0,
     cover_url: safeImageUrl(item.cover_url),
+    image: compactMainImage(item.id, item.images),
+    quote: shortQuote((item.suggestions ?? []).find((s: any) => s?.reflection)?.reflection),
     suggestedBy: buildSuggestedBy(item.suggestions),
     tags,
     suggester,
@@ -338,7 +350,7 @@ export default async function CategoryPage(props: Props) {
   const category = cat.slug as CategorySlug;
   const sb = createAdminClient();
 
-  const select = `*, ${EXT_SELECT[category]}, suggestions(users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, level, suggestion_count, avg_quality_score))`;
+  const select = `*, ${EXT_SELECT[category]}, suggestions(reflection, users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, level, suggestion_count, avg_quality_score))`;
   const { data: rawItems, count: totalCount } = (await (sb.from("items") as any)
     .select(select, { count: "exact" })
     .eq("category", category)
