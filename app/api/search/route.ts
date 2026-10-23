@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fuzzyTitleSearch } from "@/lib/search/fuzzy";
 import { hasCategoryTrigger, titleTokens as sharedTitleTokens, tokenOrFilter } from "@/lib/search/title-match";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -1645,7 +1646,14 @@ export async function GET(req: NextRequest) {
       for (const t of titleTokens) tq = tq.or(tokenOrFilter(t));
       // A query that names a category keeps title hits inside it.
       if (categories.length > 0 && hasCategoryTrigger(q)) tq = tq.in("category", categories);
-      const { data: titleHits } = await tq;
+      let { data: titleHits } = await tq;
+      // Nothing exact → typo-tolerant fallback ("ανεμορδαμένα ύψη").
+      if (!titleHits?.length) {
+        titleHits = (await fuzzyTitleSearch(q, 10)).map((it: any) => ({ ...it, __fuzzy: true }));
+        if (titleHits.length && categories.length > 0 && hasCategoryTrigger(q)) {
+          titleHits = titleHits.filter((it: any) => categories.includes(it.category));
+        }
+      }
       if (titleHits?.length) {
         const ids = new Set(titleHits.map((it: any) => it.id));
         items = [...titleHits, ...items.filter((it: any) => !ids.has(it.id))];
@@ -1667,7 +1675,9 @@ export async function GET(req: NextRequest) {
     // it ranks alongside substring title matches but below exact titles.
     // Set in Step 2 above when peopleHits merged in.
     const peopleScore = (it as any).__matched_via ? 50 : 0;
-    const effectiveScore = Math.max(titleScore, peopleScore);
+    // Typo-tolerant title hits rank like a strong partial title match.
+    const fuzzyScore = (it as any).__fuzzy ? 60 : 0;
+    const effectiveScore = Math.max(titleScore, peopleScore, fuzzyScore);
     return {
       item: it,
       score: rankScore({

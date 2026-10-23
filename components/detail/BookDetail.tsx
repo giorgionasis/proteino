@@ -197,7 +197,7 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
               <span className="text-[13px] font-medium text-zinc-500">{formatDate(s.created_at)}</span>
             </div>
             {s.reflection && (
-              <p className="text-[15px] font-normal text-zinc-900 leading-[150%]">{s.reflection}</p>
+              <ExpandableText text={s.reflection} collapsedLines={6} className="text-[15px] font-normal text-zinc-900 leading-[150%]" />
             )}
             {s.rating != null && s.rating > 0 && (
               <div className="flex items-center gap-0.5">

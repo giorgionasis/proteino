@@ -370,7 +370,7 @@ function SuggestionBlock({ author, date, text, badge, user }: { author: string; 
         </div>
         <span className="text-[14px] font-medium text-zinc-500">{date}</span>
       </div>
-      {text && <p className="text-[15px] font-normal text-zinc-900 leading-[150%]">{text}</p>}
+      {text && <ExpandableText text={text} collapsedLines={6} className="text-[15px] font-normal text-zinc-900 leading-[150%]" />}
     </div>
   );
 }

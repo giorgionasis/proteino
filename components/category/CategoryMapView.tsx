@@ -29,37 +29,12 @@ interface Props {
   onClearRegionFilter?: () => void;
 }
 
-// Inline raster style — Carto Voyager raster tiles. Picked over vector
-// tiles because MapLibre vector pipeline failed silently in browser tests
-// (white canvas, no controls, no console error). Raster has no Web Worker
-// or vector decoding step — just PNGs over HTTP — so it's the safest first
-// draw. Visual quality is still very good. Swap to vector later once the
-// vector pipeline is debugged.
-const TILE_STYLE: maplibregl.StyleSpecification = {
-  version: 8,
-  sources: {
-    "carto-voyager": {
-      type: "raster",
-      tiles: [
-        "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-        "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-        "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-        "https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-      ],
-      tileSize: 256,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    },
-  },
-  layers: [
-    {
-      id: "carto-voyager-tiles",
-      type: "raster",
-      source: "carto-voyager",
-      minzoom: 0,
-      maxzoom: 20,
-    },
-  ],
-};
+// Basemap: OpenFreeMap "positron" (free, no API key, no account).
+// CARTO's rastertiles started answering "API KEY REQUIRED" on every tile
+// (session 40), leaving pins on a blank grid. Vector tiles had once
+// rendered white here; verified working in a headless browser before
+// switching. https://openfreemap.org
+const TILE_STYLE = "https://tiles.openfreemap.org/styles/positron";
 
 // Greece bounding box — used as the default view when we have no items
 // to fit to (e.g. category with zero geocoded venues).

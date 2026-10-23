@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { ItemImage } from "@/components/ui/ItemImage";
 import { isBlankValue } from "@/lib/display";
 import { FIRST_REVIEW_INVITE, hasRatings, ratingCountLabel } from "@/lib/ratings";
@@ -230,7 +231,7 @@ export function RecipeDetail({ data }: { data: ItemDetailData }) {
             </div>
             <span className="text-[14px] font-medium text-zinc-500">{formatDate(featured.created_at)}</span>
           </div>
-          {featured.reflection && <p className="text-[15px] font-normal text-zinc-900 leading-[150%]">{featured.reflection}</p>}
+          {featured.reflection && <ExpandableText text={featured.reflection} collapsedLines={6} className="text-[15px] font-normal text-zinc-900 leading-[150%]" />}
         </div>
       )}
 

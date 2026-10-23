@@ -144,12 +144,14 @@ function LandscapeCard({ item, category }: { item: CategoryItem; category: Categ
         className="relative w-full overflow-hidden"
         style={{ aspectRatio: "3 / 2", borderRadius: 12, backgroundColor: item.placeholder_color ?? BG[category] }}
       >
-        {/* 3:2 matches the venue photos (16:9-ish boxes cut their tops);
-            cropped at the stored focal point, sized by srcset. */}
+        {/* Same card for all 9 categories. Venue photos crop at their
+            focal point; portrait covers (books/movies/series) show WHOLE on
+            a blurred copy of themselves — a landscape crop cut titles off. */}
         <ItemImage
           images={item.image}
           fallbackUrl={item.cover_url}
           alt={item.title}
+          mode={isPortraitCategory(category) ? "whole" : "crop"}
           sizes="(min-width: 512px) 480px, 100vw"
           className="absolute inset-0 bg-transparent"
         />
@@ -392,14 +394,12 @@ interface CategoryCardProps {
 }
 
 export function CategoryCard({ item, category, className }: CategoryCardProps) {
-  // Still a 1-column list for every category, but portrait categories
-  // (movies/series/books) use the row card: a landscape box kept only the
-  // middle third of a cover and cut titles off (UX review, session 40).
+  // One layout for every category (product decision): the full-width
+  // card. Portrait covers render whole inside it (see LandscapeCard).
+  void RowCard;
   return (
     <div className={className}>
-      {isPortraitCategory(category)
-        ? <RowCard item={item} category={category} />
-        : <LandscapeCard item={item} category={category} />}
+      <LandscapeCard item={item} category={category} />
     </div>
   );
 }

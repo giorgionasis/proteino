@@ -213,7 +213,7 @@ export function SeriesDetail({ data }: { data: ItemDetailData }) {
             </div>
             <span className="text-[14px] font-medium text-zinc-500">{formatDate(featured.created_at)}</span>
           </div>
-          {featured.reflection && <p className="text-[15px] font-normal text-zinc-900 leading-[150%]">{featured.reflection}</p>}
+          {featured.reflection && <ExpandableText text={featured.reflection} collapsedLines={6} className="text-[15px] font-normal text-zinc-900 leading-[150%]" />}
         </div>
       )}
 

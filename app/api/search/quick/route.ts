@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
+import { fuzzyTitleSearch } from "@/lib/search/fuzzy";
 import { hasCategoryTrigger, quickTitleScore, titleTokens, tokenOrFilter } from "@/lib/search/title-match";
 
 /**
@@ -30,7 +31,10 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ items: [] });
 
-  const items = ((data ?? []) as any[])
+  // Nothing exact → typo-tolerant fallback ("ανεμορδαμένα" → "ανεμοδαρμένα").
+  const rows = (data ?? []).length ? (data as any[]) : await fuzzyTitleSearch(q, 12);
+
+  const items = rows
     .map((it) => ({ it, s: quickTitleScore(q, it.title ?? "") + Math.min(10, it.suggestion_count ?? 0) }))
     .sort((a, b) => b.s - a.s)
     .map(({ it }) => it);
