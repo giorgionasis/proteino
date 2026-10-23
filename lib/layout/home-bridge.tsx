@@ -22,7 +22,7 @@ import { HeroPersonalise } from "@/components/home/guest/HeroPersonalise";
 import { CategoryTiles } from "@/components/home/guest/CategoryTiles";
 import { SuggestionFeed, type SuggestionFeedItem } from "@/components/home/guest/SuggestionFeed";
 import { HowItWorks } from "@/components/home/guest/HowItWorks";
-import { RegisterPromo } from "@/components/home/guest/RegisterPromo";
+import { RegisterPromo, type ContributorsSummary } from "@/components/home/guest/RegisterPromo";
 import { SupportSection } from "@/components/home/SupportSection";
 import { CollectionRenderer } from "@/components/recommendation/CollectionRenderer";
 import { MoviesTonightSection } from "@/components/home/MoviesTonightSection";
@@ -43,6 +43,8 @@ export interface HomeRenderContext {
   feedItems: SuggestionFeedItem[];
   tonight: TonightAiring[];
   suggestionCount: number;
+  /** Real contributor count + top contributors for <RegisterPromo>. */
+  contributors?: ContributorsSummary;
   /** Admin-editable category metadata from `lib/categories-meta.ts`.
    *  Optional so older callers (e.g. preview tooling) still compile;
    *  when omitted, `<CategoryTiles>` falls back to its hardcoded ROWS. */
@@ -105,7 +107,9 @@ function renderHomeSectionInner(section: RenderedSection, ctx: HomeRenderContext
     case "hero_personalise":  return <HeroPersonalise key={section.row.id} />;
     case "category_tiles":    return <CategoryTiles key={section.row.id} categories={ctx.resolvedCategories} />;
     case "how_it_works":      return <HowItWorks key={section.row.id} />;
-    case "register_promo":    return <RegisterPromo key={section.row.id} />;
+    case "register_promo":
+      if (!ctx.contributors || ctx.contributors.total === 0) return null;
+      return <RegisterPromo key={section.row.id} {...ctx.contributors} />;
     case "support_section":   return <SupportSection key={section.row.id} />;
     case "footer_mobile":     return <FooterMobile key={section.row.id} />;
 

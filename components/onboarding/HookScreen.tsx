@@ -13,7 +13,7 @@ interface Props {
  *
  * Visceral promise + animated AI demo + social proof + single CTA.
  * The demo loops a fake submission: blank textarea → text types in →
- * AI panel goes "LISTENING" → "LOCKED ✓ Mr. Robot · Σειρά · Drama".
+ * AI panel goes "LISTENING" → "ΒΡΕΘΗΚΕ ✓ Mr. Robot · Σειρά · Drama".
  * Same visual grammar as the live submission flow so the user
  * recognises it the first time they hit the FAB.
  *
@@ -139,12 +139,12 @@ export function HookScreen({ displayName, onContinue, onSkip }: Props) {
             </span>
             {phase === "listening" && (
               <span className="text-[10px] font-medium tracking-widest text-coral-600 animate-pulse">
-                LISTENING LIVE
+                ΣΕ ΑΚΟΥΩ
               </span>
             )}
             {phase === "locked" && (
               <span className="text-[10px] font-medium tracking-widest text-success animate-fade-in">
-                LOCKED ✓
+                ΒΡΕΘΗΚΕ ✓
               </span>
             )}
           </div>

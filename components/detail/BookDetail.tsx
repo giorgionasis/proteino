@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { isBlankValue } from "@/lib/display";
+import { FIRST_REVIEW_INVITE, hasRatings, ratingCountLabel } from "@/lib/ratings";
 import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
 import { useFlipReorder } from "@/hooks/useFlipReorder";
 import type { AchievementData } from "@/hooks/useSubmission";
@@ -156,14 +158,18 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
       {/* ── Title + Rating line ────────────────────────────────── */}
       <div className="px-6 pt-5 space-y-3">
         <h1 className="font-bold text-zinc-800" style={{ fontSize: 26, lineHeight: "130%" }}>{title}</h1>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5">
-            <StarIcon size={14} filled />
-            <span className="text-[15px] font-semibold text-zinc-700">{avgRating.toFixed(2)}</span>
+        {hasRatings(ratingCount) ? (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <StarIcon size={14} filled />
+              <span className="text-[15px] font-semibold text-zinc-700">{avgRating.toFixed(2)}</span>
+            </div>
+            <span className="w-[5px] h-[5px] rounded-full bg-zinc-400" />
+            <span className="text-[15px] font-medium text-zinc-600">{ratingCountLabel(ratingCount)}</span>
           </div>
-          <span className="w-[5px] h-[5px] rounded-full bg-zinc-400" />
-          <span className="text-[15px] font-medium text-zinc-600">{ratingCount} αξιολογήσεις</span>
-        </div>
+        ) : (
+          <p className="text-[14px] text-zinc-500">{FIRST_REVIEW_INVITE}</p>
+        )}
       </div>
 
       {/* ── Suggester (who suggested this item) ────────────────── */}
@@ -203,21 +209,33 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
       {/* ── Metadata Grid ──────────────────────────────────────── */}
       <div className="mt-8">
         <InfoDivider />
-        <div className="flex pl-6 py-5">
-          <InfoCell label="ΚΑΤΗΓΟΡΙΑ" value={genre} />
-          <InfoCell label="ΣΥΓΓΡΑΦΕΑΣ" value={author} />
-        </div>
-        <InfoDivider />
-        <div className="flex pl-6 py-5">
-          <InfoCell label="ΕΚΔΟΣΕΙΣ" value={publisher} href={publisherUrl} />
-          <InfoCell label="ΓΛΩΣΣΑ ΠΡΩΤΟΤΥΠΟΥ" value={language} />
-        </div>
-        <InfoDivider />
-        <div className="flex pl-6 py-5">
-          <InfoCell label="ΣΕΛΙΔΕΣ" value={pages > 0 ? String(pages) : "-"} />
-          <InfoCell label="ΕΤΟΣ ΕΚΔΟΣΗΣ" value={String(year)} />
-        </div>
-        <InfoDivider />
+        {!(isBlankValue(genre) && isBlankValue(author)) && (
+          <>
+            <div className="flex pl-6 py-5">
+              <InfoCell label="ΚΑΤΗΓΟΡΙΑ" value={genre} />
+              <InfoCell label="ΣΥΓΓΡΑΦΕΑΣ" value={author} />
+            </div>
+            <InfoDivider />
+          </>
+        )}
+        {!(isBlankValue(publisher) && isBlankValue(language)) && (
+          <>
+            <div className="flex pl-6 py-5">
+              <InfoCell label="ΕΚΔΟΣΕΙΣ" value={publisher} href={publisherUrl} />
+              <InfoCell label="ΓΛΩΣΣΑ ΠΡΩΤΟΤΥΠΟΥ" value={language} />
+            </div>
+            <InfoDivider />
+          </>
+        )}
+        {!(pages <= 0 && isBlankValue(year)) && (
+          <>
+            <div className="flex pl-6 py-5">
+              <InfoCell label="ΣΕΛΙΔΕΣ" value={pages > 0 ? String(pages) : "-"} />
+              <InfoCell label="ΕΤΟΣ ΕΚΔΟΣΗΣ" value={String(year)} />
+            </div>
+            <InfoDivider />
+          </>
+        )}
       </div>
 
       {/* ── Plot ───────────────────────────────────────────────── */}
@@ -242,12 +260,14 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
         style={{ background: "linear-gradient(180deg,#fff 0%,#F2F2F7 10%,#F7F7FA 91%,#fff 100%)" }}>
         <div className="w-[342px] flex flex-col gap-12">
           <div className="flex flex-col items-center gap-6">
-            <div className="flex items-center gap-2">
-              <StarIcon size={24} filled />
-              <span className="font-bold text-zinc-800" style={{ fontSize: 72, lineHeight: 1 }}>
-                {avgRating.toFixed(2)}
-              </span>
-            </div>
+            {hasRatings(ratingCount) && (
+              <div className="flex items-center gap-2">
+                <StarIcon size={24} filled />
+                <span className="font-bold text-zinc-800" style={{ fontSize: 72, lineHeight: 1 }}>
+                  {avgRating.toFixed(2)}
+                </span>
+              </div>
+            )}
             {isTopRated && (
               <div className="flex flex-col items-center gap-3">
                 <p className="text-[22px] font-semibold text-zinc-800 text-center">Top Rated</p>
@@ -362,6 +382,7 @@ export function BookDetail({ data }: { data: ItemDetailData }) {
 
 function InfoDivider() { return <div className="h-px bg-zinc-200 ml-5" />; }
 function InfoCell({ label, value, href }: { label: string; value: string; href?: string | null }) {
+  if (isBlankValue(value)) return null;
   return (
     <div className="flex-1 flex flex-col gap-5 pr-2">
       <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">{label}</p>

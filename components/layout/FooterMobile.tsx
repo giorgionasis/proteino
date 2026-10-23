@@ -83,7 +83,7 @@ export function FooterMobile() {
 
       {/* Copyright */}
       <div className="flex items-center gap-2">
-        <span className="text-base text-zinc-600">© 2024</span>
+        <span className="text-base text-zinc-600">© {new Date().getFullYear()}</span>
         <span className="text-base font-bold text-zinc-800">Proteino.</span>
       </div>
     </footer>

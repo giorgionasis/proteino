@@ -1,12 +1,16 @@
 import Link from "next/link";
+import { Avatar } from "@/components/ui/Avatar";
 
-const AVATAR_COLORS = [
-  "#b5a0c4", "#a0c4b5", "#c4a0b0", "#b0b5c4",
-  "#c4b0a0", "#a0b5c4", "#b5c4a0", "#c4a0a0",
-  "#a0c4a0", "#b0a0c4", "#c4b5a0", "#a0a0c4",
-];
+export interface ContributorsSummary {
+  /** Members with at least one published recommendation. */
+  total: number;
+  /** Top contributors by count — real avatars, initials when missing. */
+  people: { id: string; name: string; avatarUrl: string | null }[];
+}
 
-export function RegisterPromo() {
+export function RegisterPromo({ total, people }: ContributorsSummary) {
+  const rows = [people.slice(0, 4), people.slice(4, 8), people.slice(8, 12)].filter((r) => r.length > 0);
+
   return (
     <section className="px-6 space-y-8">
       {/* Title */}
@@ -15,36 +19,33 @@ export function RegisterPromo() {
           Γίνε ένας από εμάς
         </h2>
         <p className="text-[18px] font-medium text-zinc-800 leading-[130%]">
-          <span className="font-extrabold">1.750 χρήστες</span> έχουν μοιραστεί τις προτάσεις τους
+          <span className="font-extrabold">{total.toLocaleString("el-GR")} μέλη</span> έχουν μοιραστεί τις προτάσεις τους
         </p>
       </div>
 
-      {/* Avatar grid with fade */}
-      <div className="relative" style={{ height: 280 }}>
-        {/* Grid rows */}
-        <div className="space-y-4">
-          {[0, 1, 2].map((row) => (
-            <div key={row} className="flex gap-4 justify-center">
-              {AVATAR_COLORS.slice(row * 4, row * 4 + 4).map((color, i) => (
-                <div
-                  key={i}
-                  className="w-[75px] h-[75px] rounded-full shrink-0"
-                  style={{ backgroundColor: color }}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
+      {/* Real contributors with fade */}
+      {rows.length > 0 && (
+        <div className="relative">
+          <div className="space-y-4">
+            {rows.map((row, r) => (
+              <div key={r} className="flex gap-4 justify-center">
+                {row.map((p) => (
+                  <Avatar key={p.id} src={p.avatarUrl} name={p.name} size="xl" alt={p.name} />
+                ))}
+              </div>
+            ))}
+          </div>
 
-        {/* Bottom fade overlay */}
-        <div
-          className="absolute bottom-0 left-0 right-0 pointer-events-none"
-          style={{
-            height: 120,
-            background: "linear-gradient(180deg, rgba(255,255,255,0.0) 0%, rgba(255,255,255,0.84) 50%, rgba(255,255,255,1) 100%)",
-          }}
-        />
-      </div>
+          {/* Bottom fade overlay */}
+          <div
+            className="absolute bottom-0 left-0 right-0 pointer-events-none"
+            style={{
+              height: 120,
+              background: "linear-gradient(180deg, rgba(255,255,255,0.0) 0%, rgba(255,255,255,0.84) 50%, rgba(255,255,255,1) 100%)",
+            }}
+          />
+        </div>
+      )}
 
       {/* CTA button */}
       <Link

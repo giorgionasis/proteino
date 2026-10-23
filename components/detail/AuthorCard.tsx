@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AvatarImage } from "@/components/ui/AvatarImage";
 
 interface AuthorCardProps {
   name: string;
@@ -35,16 +36,8 @@ export function AuthorCard({ name, photoUrl, age, bookCount, bio }: AuthorCardPr
   return (
     <div className="rounded-[12px] p-5" style={{ backgroundColor: "#EFF1FA" }}>
       <div className="flex items-center gap-4">
-        <div className="w-[76px] h-[76px] rounded-[12px] shrink-0 overflow-hidden bg-zinc-300 flex items-center justify-center">
-          {photoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={photoUrl} alt={name} className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-zinc-500 text-xl font-bold">
-              {name.charAt(0).toUpperCase()}
-            </span>
-          )}
-        </div>
+        {/* Photo or deterministic coloured initials — never a grey block. */}
+        <AvatarImage url={photoUrl} name={name} size={76} className="rounded-[12px] shrink-0" />
         <div className="flex-1 min-w-0 space-y-1">
           <p className="text-[20px] font-bold text-zinc-900 leading-tight line-clamp-2">{name}</p>
           {(age != null || bookCount != null) && (

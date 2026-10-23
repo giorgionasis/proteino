@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { hasRatings, ratingCountLabel } from "@/lib/ratings";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 
 /** Slim user shape consumed by the avatar overlay → ProfilePopup. */
@@ -118,16 +119,14 @@ function LandscapeCard({ item }: { item: LandscapeItem }) {
           >
             <UserAvatarWithPopup user={item.suggester} size={50} />
           </div>
-        ) : (
+        ) : item.avatar_url ? (
           <div
             className="absolute bottom-3 left-3 w-[50px] h-[50px] rounded-full"
-            style={{ border: "3px solid #fff", backgroundColor: item.avatar_url ? "transparent" : "#d4d4d8" }}
+            style={{ border: "3px solid #fff" }}
           >
-            {item.avatar_url && (
-              <img src={item.avatar_url} alt="" className="w-full h-full object-cover rounded-full" />
-            )}
+            <img src={item.avatar_url} alt="" className="w-full h-full object-cover rounded-full" />
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Description */}
@@ -144,17 +143,15 @@ function LandscapeCard({ item }: { item: LandscapeItem }) {
             {item.location && <span>{item.location}</span>}
           </div>
         )}
-        {item.avg_rating !== undefined && (
+        {item.avg_rating !== undefined && hasRatings(item.rating_count) && (
           <div className="flex items-center gap-1.5 pb-0.5">
             <Star />
             <span className="text-[16px] font-semibold text-[#27272A]">
               {item.avg_rating.toFixed(2)}
             </span>
-            {item.rating_count !== undefined && (
-              <span className="text-[16px] font-medium text-[#27272A]">
-                ({item.rating_count} αξιολογήσεις)
-              </span>
-            )}
+            <span className="text-[16px] font-medium text-[#27272A]">
+              ({ratingCountLabel(item.rating_count)})
+            </span>
           </div>
         )}
       </div>
@@ -204,7 +201,7 @@ function PortraitCard({ item }: { item: LandscapeItem }) {
         {item.subtitle && (
           <p className="text-[12px] font-medium text-[#52525B] line-clamp-1">{item.subtitle}</p>
         )}
-        {item.avg_rating !== undefined && (
+        {item.avg_rating !== undefined && hasRatings(item.rating_count) && (
           <div className="flex items-center gap-1 pb-0.5">
             <Star size={10} />
             <span className="text-[12px] font-semibold text-[#27272A]">

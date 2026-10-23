@@ -41,9 +41,9 @@ function WaveformIcon() {
 // ── Input mode bar ────────────────────────────────────────────────────────────
 
 const MODES = [
-  { key: "scan",  label: "Scan",  Icon: Camera },
-  { key: "link",  label: "Link",  Icon: Link2  },
-  { key: "list",  label: "List",  Icon: List   },
+  { key: "scan",  label: "Φωτογραφία", Icon: Camera },
+  { key: "link",  label: "Σύνδεσμος",  Icon: Link2  },
+  { key: "list",  label: "Λίστα",      Icon: List   },
   { key: "voice", label: "",      Icon: Mic    },
 ] as const;
 
@@ -1596,7 +1596,7 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
           </button>
         </div>
       ) : (
-        <OverlayHeader label="Listening Live" icon={<WaveformIcon />} onClose={onClose} />
+        <OverlayHeader label="Σε ακούω" icon={<WaveformIcon />} onClose={onClose} />
       )}
 
       {/* Scrollable body */}
@@ -1605,7 +1605,7 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
           ref={textareaRef}
           value={text}
           onChange={handleChange}
-          placeholder={isLocked ? "Πρόσθεσε γιατί το προτείνεις..." : "Describe, scan, or paste..."}
+          placeholder={isLocked ? "Πρόσθεσε γιατί το προτείνεις..." : "Πες μου τι σου άρεσε ή επικόλλησε ένα link…"}
           rows={4}
           className={cn(
             "w-full resize-none overflow-hidden",
@@ -1682,7 +1682,7 @@ export function SuggestionOverlay({ onClose }: SuggestionOverlayProps) {
           )}
           style={canVerify ? { background: "linear-gradient(to right, #FE6F5E, #FF9980)" } : {}}
         >
-          Verify with AI ›
+          Έλεγχος με AI ›
         </button>
       </div>
 

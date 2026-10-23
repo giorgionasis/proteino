@@ -504,7 +504,7 @@ export function UserProfile({
                 </div>
                 {topSuggestion.ratingCount > 0 && (
                   <p className="text-[18px] font-semibold text-zinc-700 leading-[130%]">
-                    {topSuggestion.ratingCount} κριτικές από <br />αληθινούς χρήστες
+                    {topSuggestion.ratingCount === 1 ? "1 κριτική" : `${topSuggestion.ratingCount} κριτικές`} από <br />αληθινούς χρήστες
                   </p>
                 )}
               </div>

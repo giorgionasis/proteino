@@ -536,7 +536,7 @@ export function SearchOverlay({ onClose, categories }: SearchOverlayProps) {
   return (
     <div className="flex flex-col h-full min-h-screen bg-white">
       <OverlayHeader
-        label="Smart Search"
+        label="Έξυπνη αναζήτηση"
         icon={<Search size={16} strokeWidth={2.5} />}
         onClose={onClose}
       />

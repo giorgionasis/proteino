@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LegalPage, type LegalSection } from "@/components/legal/LegalPage";
 
 export const metadata: Metadata = {
-  title: "Όροι Χρήσης — Proteino",
+  title: "Όροι Χρήσης",
   description:
     "Οι όροι χρήσης της πλατφόρμας Proteino — λογαριασμοί, περιεχόμενο χρηστών, κανόνες κοινότητας και ευθύνες.",
   alternates: { canonical: "/terms" },

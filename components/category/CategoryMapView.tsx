@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { hasRatings } from "@/lib/ratings";
 import maplibregl, { Map, LngLatBoundsLike } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import Supercluster from "supercluster";
@@ -657,11 +658,13 @@ function BottomCard({ item, category, onClose }: { item: CategoryItem; category:
             </div>
           </div>
           <div className="flex items-center justify-between mt-2">
-            <div className="flex items-center gap-1">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="#FE6F5E"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-              <span className="text-[14px] font-bold text-zinc-900">{item.avg_rating.toFixed(2)}</span>
-              <span className="text-[13px] text-zinc-500">({item.rating_count})</span>
-            </div>
+            {hasRatings(item.rating_count) ? (
+              <div className="flex items-center gap-1">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="#FE6F5E"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                <span className="text-[14px] font-bold text-zinc-900">{item.avg_rating.toFixed(2)}</span>
+                <span className="text-[13px] text-zinc-500">({item.rating_count})</span>
+              </div>
+            ) : <span />}
             <span
               className="inline-flex items-center text-[13px] font-semibold"
               style={{ color: "#FE6F5E" }}

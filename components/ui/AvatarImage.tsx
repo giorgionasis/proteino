@@ -16,9 +16,9 @@ const PALETTE = [
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
-  return parts.length >= 2
-    ? (parts[0][0] + parts[1][0]).toUpperCase()
-    : name.slice(0, 2).toUpperCase();
+  const raw = parts.length >= 2 ? parts[0][0] + parts[1][0] : name.slice(0, 2);
+  // Greek capitals drop the tonos ("ΆΠ" → "ΑΠ"); strip combining marks.
+  return raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 }
 
 function pickColor(seed: string): string {

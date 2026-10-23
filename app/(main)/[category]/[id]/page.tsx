@@ -339,7 +339,7 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
 
   return {
     item: normalizedItem,
-    extension: ext,
+    extension: withoutDuplicateSynopsis(ext, suggestions),
     suggestions,
     related: (relData ?? []).map((r: any) => {
       const rExt = Array.isArray(r[extTable]) ? r[extTable]?.[0] : r[extTable];
@@ -364,23 +364,43 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
 export async function generateMetadata(props: Props): Promise<Metadata> {
   const params = await props.params;
   const data = await fetchItemData(params.id, params.category);
-  if (!data) return { title: "Proteino" };
+  if (!data) return { title: "Δεν βρέθηκε" };
 
   const siteOrigin = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://proteino.gr").replace(/\/$/, "");
   const pageUrl    = `${siteOrigin}/${data.item.slug}`;
-  const title      = `${data.item.title} — Proteino`;
+  // The root layout's template appends " — Proteino"; share cards don't
+  // use the template, so they get the suffix explicitly.
+  const title      = data.item.title as string;
+  const shareTitle = `${data.item.title} — Proteino`;
+
+  // Lead with the human part: the featured recommendation and who wrote
+  // it. Falls back to the synopsis / SEO description, never to a
+  // "0 αξιολογήσεις" line.
+  const featured = data.suggestions.find((s) => s.reflection && s.reflection.trim().length > 30);
+  const plain = (t: string) => t.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   const description =
+    (featured ? `«${plain(featured.reflection!)}» — πρόταση από ${featured.user.display_name ?? featured.user.handle}` : null) ??
     (data.extension?.plot as string | undefined) ??
     (data.extension?.description as string | undefined) ??
     (data.item.description_seo as string | undefined) ??
-    `${data.item.title} · ${data.item.rating_count ?? 0} αξιολογήσεις στο Proteino`;
+    `${data.item.title}: πρόταση στο Proteino`;
   const truncated = description.length > 200 ? description.slice(0, 197) + "…" : description;
 
-  const heroImage = safeImageUrl(data.item.backdrop_url) ??
+  // Prefer the pre-composed 1200×630 share image (images.og, written by
+  // the image pipeline). The hero fallback is whatever shape it is, so
+  // don't claim 1200×630 for it.
+  const imagesObj = data.item.images && typeof data.item.images === "object" && !Array.isArray(data.item.images)
+    ? (data.item.images as { og?: string })
+    : null;
+  const ogPrebuilt = imagesObj?.og ? safeImageUrl(imagesObj.og) : null;
+  const heroImage = ogPrebuilt ??
+                    safeImageUrl(data.item.backdrop_url) ??
                     safeImageUrl(data.item.poster_url) ??
                     safeImageUrl(data.item.cover_url) ??
                     null;
-  const ogImages  = heroImage ? [{ url: heroImage, width: 1200, height: 630, alt: data.item.title }] : undefined;
+  const ogImages  = heroImage
+    ? [ogPrebuilt ? { url: heroImage, width: 1200, height: 630, alt: data.item.title } : { url: heroImage, alt: data.item.title }]
+    : undefined;
 
   // og:type per category — most map to "article" since Schema.org @type
   // doesn't have a direct OG counterpart. Books + recipes are the two
@@ -397,7 +417,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     openGraph: {
       type:        ogType,
       url:         pageUrl,
-      title,
+      title:       shareTitle,
       description: truncated,
       siteName:    "Proteino",
       images:      ogImages,
@@ -405,11 +425,44 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     },
     twitter: {
       card:        heroImage ? "summary_large_image" : "summary",
-      title,
+      title:       shareTitle,
       description: truncated,
       images:      heroImage ? [heroImage] : undefined,
     },
   };
+}
+
+
+/**
+ * The K2 migration copied each recommendation's text into the extension
+ * row's plot/description as well (≈100% of books, movies, series and
+ * plays), so detail pages printed the same paragraph twice — once as the
+ * suggester's reflection, once under ΠΛΟΚΗ. Drop the synopsis when it is
+ * the same text as any shown reflection. Data stays intact (embeddings
+ * and search still use it); only the rendered copy changes.
+ */
+function withoutDuplicateSynopsis(
+  ext: Record<string, any>,
+  suggestions: Array<{ reflection: string | null }>,
+): Record<string, any> {
+  const fold = (t: string) =>
+    t.replace(/<[^>]+>/g, " ")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().slice(0, 80);
+  const reflections = suggestions
+    .map((s) => (s.reflection ? fold(s.reflection) : ""))
+    .filter((r) => r.length >= 20);
+  if (!reflections.length) return ext;
+  const isDuplicate = (v: unknown) => {
+    if (typeof v !== "string" || !v.trim()) return false;
+    const f = fold(v);
+    return reflections.some((r) => f.startsWith(r.slice(0, 60)) || r.startsWith(f.slice(0, 60)));
+  };
+  const out = { ...ext };
+  for (const key of ["plot", "description"]) {
+    if (isDuplicate(out[key])) out[key] = null;
+  }
+  return out;
 }
 
 export default async function ItemDetailPage(props: Props) {

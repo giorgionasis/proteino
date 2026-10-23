@@ -90,14 +90,15 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
 
   // Best-effort denorm bumps. Failures here are non-fatal — the row is
   // already gone, counts can be reconciled later.
-  const { data: userRow } = await admin
-    .from("users")
-    .select("suggestion_count")
-    .eq("id", user.id)
-    .single();
-  if (userRow) {
-    const next = Math.max(0, ((userRow as any).suggestion_count ?? 0) - 1);
-    await (admin.from("users") as any).update({ suggestion_count: next }).eq("id", user.id);
+  // User count is recounted from published rows (same as the publish
+  // path) so it can't drift from the truth.
+  const { count: publishedCount } = await admin
+    .from("suggestions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("is_published", true);
+  if (publishedCount !== null) {
+    await (admin.from("users") as any).update({ suggestion_count: publishedCount }).eq("id", user.id);
   }
 
   const { data: itemRow } = await admin

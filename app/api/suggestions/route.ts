@@ -595,17 +595,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 4. Bump the user's suggestion_count + last_suggestion_at so the
-  //    achievement block animates immediately. We compute the new count
-  //    by reading current then writing — race-safe enough for individual
-  //    user actions (the user can't double-publish).
-  const { data: userRow } = await admin
-    .from("users")
-    .select("suggestion_count")
-    .eq("id", user.id)
-    .single();
+  // 4. Settle the user's suggestion_count from the real published rows.
+  //    The insert above already fired on_suggestion_published (+1), and
+  //    this route used to add its own +1 on top — every new-flow
+  //    suggestion counted twice, inflating badge tiers. Writing the true
+  //    count is idempotent whatever the trigger did, and heals drift.
+  const { count: publishedCount } = await admin
+    .from("suggestions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("is_published", true);
 
-  const newCount = ((userRow as any)?.suggestion_count ?? 0) + 1;
+  const newCount = publishedCount ?? 1;
 
   await (admin.from("users") as any)
     .update({ suggestion_count: newCount, last_suggestion_at: now })

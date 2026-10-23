@@ -84,7 +84,8 @@ The 9 detail pages are visual variations of one archetype. Violating these break
 - **Featured suggester block is mandatory on all 9 categories.**
 - **1-column list across all 9 categories.** Carousels stay portrait for movies/series/books.
 - **Histogram + Top Rated** combine ratings from BOTH sources (`ratings` table + `suggestions.rating`), deduped by user. Server-side, overrides `item.rating_count + avg_rating`.
-- **Empty-state = hide, never "—".** If a metadata pair has both cells empty, hide the row including its divider. Conditional renders everywhere.
+- **Empty-state = hide, never "—".** If a metadata pair has both cells empty, hide the row including its divider. Conditional renders everywhere. `InfoCell` returns null for blank values (`isBlankValue` in `lib/display.ts`).
+- **Ratings show from 1 review up.** At 0: cards render no rating row; detail pages show the quiet muted `FIRST_REVIEW_INVITE` line, never "0.00" or a loud CTA. Use `hasRatings` / `ratingCountLabel` from `lib/ratings.ts`.
 - **No gray-circle placeholders for people.** Every actor/performer/director/writer bubble is `<PersonBubble>` — real image when available, deterministic colored-initial circle otherwise.
 - **No dead CTAs.** Every button/link goes somewhere real. Map → Google Maps, Phone → `tel:`, Website → `https://` URL.
 - **Own-suggestion behavior** — viewing your own suggestion replaces the rate card with `<OwnSuggestionActions>` (Edit + Delete).

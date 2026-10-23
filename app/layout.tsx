@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://proteino.gr").replace(/\/$/, "");
@@ -24,10 +25,9 @@ export const metadata: Metadata = {
     title:       "Proteino",
     description: "Κοινοτικές προτάσεις για βιβλία, ταινίες, σειρές, συνταγές, φαγητό, μπαρ, ξενοδοχεία, θέατρο και εκδηλώσεις.",
   },
-  robots: {
-    index: true,
-    follow: true,
-  },
+  // No explicit robots: index/follow is the default, and an explicit
+  // "index, follow" here sat next to the "noindex" Next injects on
+  // not-found pages, sending crawlers contradictory signals.
 };
 
 export const viewport: Viewport = {
@@ -45,7 +45,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="el">
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* Cookieless page-view analytics (no consent banner needed).
+            Collects once Web Analytics is enabled in the Vercel project. */}
+        <Analytics />
+      </body>
     </html>
   );
 }

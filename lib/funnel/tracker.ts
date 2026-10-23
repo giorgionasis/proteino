@@ -29,6 +29,11 @@ import type {
 const FLUSH_MS = 2000;
 const RETRY_KEY = "funnel:retry-v1";
 
+/** Set when the server answers 401 (guest — the funnel is members-only).
+ *  Without this, every rejected batch went into the retry queue and was
+ *  replayed — and rejected again — on every later page view. */
+let unauthorized = false;
+
 interface Session {
   init:      FunnelSessionInit;
   events:    FunnelEvent[];
@@ -141,6 +146,8 @@ export async function close(finalState: FunnelState): Promise<void> {
   // Send any pending buffered events first (regular fetch).
   await flushNow();
 
+  if (unauthorized) return;
+
   // Final close beacon — separate endpoint, separate payload.
   const url = "/api/submission-funnel/close";
   const body = JSON.stringify({
@@ -196,7 +203,7 @@ function scheduleFlush(): void {
 }
 
 async function flushNow(): Promise<void> {
-  if (!active) return;
+  if (!active || unauthorized) return;
   if (active.flushTimer) {
     clearTimeout(active.flushTimer);
     active.flushTimer = null;
@@ -223,10 +230,16 @@ async function flushNow(): Promise<void> {
       body,
       keepalive: true,
     });
+    if (res.status === 401) { stopForGuest(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
   } catch {
     pushToRetryQueue(body);
   }
+}
+
+function stopForGuest(): void {
+  unauthorized = true;
+  try { localStorage.removeItem(RETRY_KEY); } catch { /* storage blocked */ }
 }
 
 function pushToRetryQueue(body: string): void {
@@ -243,7 +256,7 @@ function pushToRetryQueue(body: string): void {
 }
 
 async function replayRetryQueue(): Promise<void> {
-  if (typeof localStorage === "undefined") return;
+  if (typeof localStorage === "undefined" || unauthorized) return;
   let arr: string[] = [];
   try {
     const raw = localStorage.getItem(RETRY_KEY);
@@ -253,12 +266,13 @@ async function replayRetryQueue(): Promise<void> {
   localStorage.removeItem(RETRY_KEY);
   for (const body of arr) {
     try {
-      await fetch("/api/submission-funnel", {
+      const res = await fetch("/api/submission-funnel", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body,
         keepalive: true,
       });
+      if (res.status === 401) { stopForGuest(); return; }
     } catch { pushToRetryQueue(body); }
   }
 }

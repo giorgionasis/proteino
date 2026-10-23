@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { FIRST_REVIEW_INVITE, hasRatings, ratingCountLabel } from "@/lib/ratings";
 import { AchievementUnlockedModal } from "@/components/submission/AchievementUnlockedModal";
 import { useFlipReorder } from "@/hooks/useFlipReorder";
 import type { AchievementData } from "@/hooks/useSubmission";
@@ -335,12 +336,15 @@ export function EventDetail({ data }: { data: ItemDetailData }) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function RatingLine({ rating, count }: { rating: number; count: number }) {
+  if (!hasRatings(count)) {
+    return <p className="text-[14px] text-zinc-500">{FIRST_REVIEW_INVITE}</p>;
+  }
   return (
     <div className="flex items-center gap-2">
       <StarIcon size={14} filled />
       <span className="text-[18px] font-bold text-[#3F3F46]">{rating.toFixed(2)}</span>
       <span className="w-1 h-1 rounded-full bg-zinc-400 shrink-0" />
-      <span className="text-[14px] font-semibold text-[#3F3F46] underline">{count} αξιολογήσεις</span>
+      <span className="text-[14px] font-semibold text-[#3F3F46] underline">{ratingCountLabel(count)}</span>
     </div>
   );
 }
@@ -386,10 +390,12 @@ function CommunitySection({ ratings, ratingCount, isTopRated, topRatedNoun, comm
     <div className="mt-8 py-8 flex flex-col items-center gap-[42px]" style={{ background: "linear-gradient(180deg,#fff 0%,#F2F2F7 10%,#F7F7FA 91%,#fff 100%)" }}>
       <div className="w-[342px] flex flex-col gap-12">
         <div className="flex flex-col items-center gap-6">
-          <div className="flex items-center gap-2">
-            <StarIcon size={24} filled />
-            <span className="font-bold text-zinc-800" style={{ fontSize: 72, lineHeight: 1 }}>{communityRating.toFixed(2)}</span>
-          </div>
+          {hasRatings(ratingCount) && (
+            <div className="flex items-center gap-2">
+              <StarIcon size={24} filled />
+              <span className="font-bold text-zinc-800" style={{ fontSize: 72, lineHeight: 1 }}>{communityRating.toFixed(2)}</span>
+            </div>
+          )}
           {isTopRated && (
             <div className="flex flex-col items-center gap-3">
               <p className="text-[22px] font-semibold text-zinc-800 text-center">Top Rated</p>

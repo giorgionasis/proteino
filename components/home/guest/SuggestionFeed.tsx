@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { hasRatings, ratingCountLabel } from "@/lib/ratings";
 import Image from "next/image";
 import Link from "next/link";
 import { categoryImage } from "@/lib/category-images";
@@ -126,7 +127,6 @@ export function SuggestionFeed({ items }: Props) {
                   Top rated
                 </span>
               )}
-              <div className="absolute bottom-4 left-4 w-[50px] h-[50px] rounded-full border-[3px] border-white bg-zinc-300" />
             </div>
 
             {/* Description */}
@@ -143,15 +143,17 @@ export function SuggestionFeed({ items }: Props) {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <StarIcon />
-                <span className="text-base font-semibold text-zinc-800">
-                  {card.avg_rating.toFixed(2)}
-                </span>
-                <span className="text-base font-medium text-zinc-800">
-                  ({card.rating_count} αξιολογήσεις)
-                </span>
-              </div>
+              {hasRatings(card.rating_count) && (
+                <div className="flex items-center gap-1.5">
+                  <StarIcon />
+                  <span className="text-base font-semibold text-zinc-800">
+                    {card.avg_rating.toFixed(2)}
+                  </span>
+                  <span className="text-base font-medium text-zinc-800">
+                    ({ratingCountLabel(card.rating_count)})
+                  </span>
+                </div>
+              )}
             </div>
           </Link>
         ))}

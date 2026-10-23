@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LegalPage, type LegalSection } from "@/components/legal/LegalPage";
 
 export const metadata: Metadata = {
-  title: "Πολιτική Απορρήτου — Proteino",
+  title: "Πολιτική Απορρήτου",
   description:
     "Πώς το Proteino συλλέγει, χρησιμοποιεί και προστατεύει τα προσωπικά σου δεδομένα σύμφωνα με τον GDPR.",
   alternates: { canonical: "/privacy" },

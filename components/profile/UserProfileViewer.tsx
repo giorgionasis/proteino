@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { badgeLabelForSuggestions } from "@/lib/icons";
 import { FollowersPopupCentered } from "@/components/profile/FollowersPopupCentered";
 import { AvatarImage } from "@/components/ui/AvatarImage";
 import { useFollow } from "@/hooks/useFollow";
@@ -44,14 +45,6 @@ function FlameIcon() {
   );
 }
 
-function ThumbUpSmall() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14Z" fill="#FFBA9F" />
-      <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" fill="#E0A58D" />
-    </svg>
-  );
-}
 
 function ThumbUpBigIcon() {
   return (
@@ -262,7 +255,12 @@ export function UserProfileViewer({
             className="text-[18px] font-semibold text-center leading-[130%] whitespace-pre-line"
             style={{ color: "#371600" }}
           >
-            {suggestionCount >= 10 ? "EXPERT\nMEMBER" : suggestionCount >= 3 ? "GOLD\nMEMBER" : "MEMBER"}
+            {/* Same tiers as everywhere else (lib/icons.ts) — this used to
+                have its own thresholds and said EXPERT where item pages said Platinum. */}
+            {(() => {
+              const tier = badgeLabelForSuggestions(suggestionCount);
+              return tier ? `${tier.toUpperCase()}\nMEMBER` : "MEMBER";
+            })()}
           </p>
         </div>
 
@@ -312,12 +310,14 @@ export function UserProfileViewer({
         </div>
       </div>
 
-      {/* ── 4. Statistics (horizontal scroll) ──────────────── */}
-      <div className="mt-12 overflow-x-auto">
-        <div className="flex gap-5 px-6 pb-1 w-max">
-          {/* Rating card */}
+      {/* ── 4. Statistics ─────────────────────────────────────
+          Only real numbers: the rating card shows once the user has an
+          average. (A "Θετικές ψήφοι" card that always read "—" and a
+          dead "Δες και τις 5 τις βαθμολογίες" link were removed.) */}
+      {avgRating > 0 && (
+        <div className="mt-12 px-6">
           <div
-            className="shrink-0 flex flex-col gap-5 rounded-lg border border-zinc-300 bg-white"
+            className="flex flex-col gap-5 rounded-lg border border-zinc-300 bg-white"
             style={{ padding: "24px 20px", minWidth: 220 }}
           >
             <div className="flex items-end gap-1">
@@ -325,33 +325,12 @@ export function UserProfileViewer({
               <StarIcon size={12} />
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-[36px] font-extrabold text-zinc-800 leading-none">{avgRating > 0 ? avgRating.toFixed(2) : "-"}</span>
+              <span className="text-[36px] font-extrabold text-zinc-800 leading-none">{avgRating.toFixed(2)}</span>
               <FlameIcon />
             </div>
-            <p className="text-sm font-semibold text-zinc-600 underline">
-              Δες και τις 5 τις βαθμολογίες
-            </p>
           </div>
-
-          {/* Votes card */}
-          <div
-            className="shrink-0 flex flex-col gap-5 rounded-lg border border-zinc-300 bg-white"
-            style={{ padding: "24px 20px", minWidth: 220 }}
-          >
-            <div className="flex items-center gap-1">
-              <span className="text-base font-semibold text-zinc-800">Θετικές ψήφοι</span>
-              <ThumbUpSmall />
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-[36px] font-extrabold text-zinc-800 leading-none">—</span>
-              <ThumbUpSmall />
-            </div>
-            <p className="text-sm font-semibold text-zinc-600 underline">Δες όλες τις αξιολογήσεις</p>
-          </div>
-
-          <div className="w-1 shrink-0" />
         </div>
-      </div>
+      )}
 
       {/* ── 5. Highest Rating ───────────────────────────────── */}
       {topSuggestion && (
@@ -378,17 +357,19 @@ export function UserProfileViewer({
                 </div>
 
                 <div className="flex flex-col gap-8 w-full px-6">
-                  <div className="flex items-center gap-2">
-                    <svg width="29" height="28" viewBox="0 0 29 28" fill="none" aria-hidden>
-                      <path d="M14.5 2L17.7 9.6L26 10.5L20 16.3L21.7 24.6L14.5 20.6L7.3 24.6L9 16.3L3 10.5L11.3 9.6L14.5 2Z" fill="#27272A" />
-                    </svg>
-                    <span className="text-[40px] font-extrabold text-zinc-800 leading-none">
-                      {topSuggestion.avgRating > 0 ? topSuggestion.avgRating.toFixed(2) : "—"}
-                    </span>
-                  </div>
+                  {topSuggestion.avgRating > 0 && (
+                    <div className="flex items-center gap-2">
+                      <svg width="29" height="28" viewBox="0 0 29 28" fill="none" aria-hidden>
+                        <path d="M14.5 2L17.7 9.6L26 10.5L20 16.3L21.7 24.6L14.5 20.6L7.3 24.6L9 16.3L3 10.5L11.3 9.6L14.5 2Z" fill="#27272A" />
+                      </svg>
+                      <span className="text-[40px] font-extrabold text-zinc-800 leading-none">
+                        {topSuggestion.avgRating.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                   {topSuggestion.ratingCount > 0 && (
                     <p className="text-[18px] font-semibold text-zinc-700 leading-[130%]">
-                      {topSuggestion.ratingCount} κριτικές από <br />αληθινούς χρήστες
+                      {topSuggestion.ratingCount === 1 ? "1 κριτική" : `${topSuggestion.ratingCount} κριτικές`} από <br />αληθινούς χρήστες
                     </p>
                   )}
                 </div>

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Αναζήτηση — Proteino" };
+export const metadata: Metadata = { title: "Αναζήτηση" };
 
 export default function SearchPage() {
   return (

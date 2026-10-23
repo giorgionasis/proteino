@@ -394,12 +394,16 @@ function RegisterPromoShowcase() {
     <ShowcaseSection
       name="guest/RegisterPromo"
       filePath="components/home/guest/RegisterPromo.tsx"
-      description="Bottom-of-guest-home call-to-action — 'Γίνε ένας από εμάς' headline + 12-avatar grid with bottom fade + black 'Εγγραφή' CTA → /register."
+      description="Bottom-of-guest-home call-to-action — 'Γίνε ένας από εμάς' headline + real top-contributor avatars (initials fallback) with bottom fade + black 'Εγγραφή' CTA → /register."
       contextLinks={[{ label: "Live (guest home, bottom)", href: "/" }]}
     >
       <Variant label="Default">
         <div className="w-[400px] bg-white">
-          <RegisterPromo />
+          <RegisterPromo
+            total={289}
+            people={["Γιώργος Νάσης", "LucyDiMaggio", "Leo de Bizzare", "Popi Fra", "Stavroula K.", "nikibl", "Vasilis P.", "Giorgis S."]
+              .map((name, i) => ({ id: String(i), name, avatarUrl: null }))}
+          />
         </div>
       </Variant>
     </ShowcaseSection>

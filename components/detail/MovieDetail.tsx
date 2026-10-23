@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { isBlankValue } from "@/lib/display";
+import { FIRST_REVIEW_INVITE, hasRatings, ratingCountLabel } from "@/lib/ratings";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -282,12 +284,16 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
       {/* ── Title + rating ──────────────────────────────────── */}
       <div className="px-6 pt-5 space-y-3">
         <h1 className="font-bold text-zinc-800" style={{ fontSize: 26, lineHeight: "130%" }}>{title}</h1>
-        <div className="flex items-center gap-2">
-          <StarIcon size={14} filled />
-          <span className="text-[15px] font-semibold text-zinc-700">{avgRating.toFixed(2)}</span>
-          <span className="w-[5px] h-[5px] rounded-full bg-zinc-400" />
-          <span className="text-[15px] font-medium text-zinc-600">{ratingCount} αξιολογήσεις</span>
-        </div>
+        {hasRatings(ratingCount) ? (
+          <div className="flex items-center gap-2">
+            <StarIcon size={14} filled />
+            <span className="text-[15px] font-semibold text-zinc-700">{avgRating.toFixed(2)}</span>
+            <span className="w-[5px] h-[5px] rounded-full bg-zinc-400" />
+            <span className="text-[15px] font-medium text-zinc-600">{ratingCountLabel(ratingCount)}</span>
+          </div>
+        ) : (
+          <p className="text-[14px] text-zinc-500">{FIRST_REVIEW_INVITE}</p>
+        )}
       </div>
 
 
@@ -523,12 +529,14 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
 
           {/* Big rating number + Top Rated badge + histogram */}
           <div className="flex flex-col items-center gap-6">
-            <div className="flex items-center gap-2">
-              <StarIcon size={24} filled />
-              <span className="font-bold text-zinc-800" style={{ fontSize: 72, lineHeight: 1 }}>
-                {avgRating.toFixed(2)}
-              </span>
-            </div>
+            {hasRatings(ratingCount) && (
+              <div className="flex items-center gap-2">
+                <StarIcon size={24} filled />
+                <span className="font-bold text-zinc-800" style={{ fontSize: 72, lineHeight: 1 }}>
+                  {avgRating.toFixed(2)}
+                </span>
+              </div>
+            )}
 
             {isTopRated && (
               <div className="flex flex-col items-center gap-3">
@@ -644,6 +652,7 @@ function InfoDivider() {
 }
 
 function InfoCell({ label, value }: { label: string; value: string }) {
+  if (isBlankValue(value)) return null;
   return (
     <div className="flex-1 flex flex-col gap-5 pr-2">
       <p className="text-[16px] font-semibold text-zinc-500 uppercase tracking-[0.1px]">{label}</p>

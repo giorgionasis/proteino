@@ -88,11 +88,13 @@ export function CategoryTopUsers({ categoryLabel, topUser, contributors }: Props
             value={topUser.suggestion_count.toString()}
             label={`ΠΡΟΤΑΣΕΙΣ ΣΕ ${categoryLabel.toUpperCase()}`}
           />
-          <Stat
-            value={topUser.avg_rating.toFixed(2)}
-            label="ΒΑΘΜΟΛΟΓΙΑ"
-            icon={<StarIcon />}
-          />
+          {topUser.avg_rating > 0 && (
+            <Stat
+              value={topUser.avg_rating.toFixed(2)}
+              label="ΒΑΘΜΟΛΟΓΙΑ"
+              icon={<StarIcon />}
+            />
+          )}
         </div>
 
         {/* Follow button — or self-link when viewer is this top user */}

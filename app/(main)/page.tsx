@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CATEGORIES } from "@/constants/categories";
 
 // ISR — refresh every 60s. Admin writes also call `revalidatePath('/')`
 // for instant updates; this is the upper-bound staleness fallback.
@@ -16,7 +17,7 @@ import { HeroPersonalise } from "@/components/home/guest/HeroPersonalise";
 import { CategoryTiles } from "@/components/home/guest/CategoryTiles";
 import { SuggestionFeed, type SuggestionFeedItem } from "@/components/home/guest/SuggestionFeed";
 import { HowItWorks } from "@/components/home/guest/HowItWorks";
-import { RegisterPromo } from "@/components/home/guest/RegisterPromo";
+import { RegisterPromo, type ContributorsSummary } from "@/components/home/guest/RegisterPromo";
 import { SupportSection } from "@/components/home/SupportSection";
 import { CollectionRenderer } from "@/components/recommendation/CollectionRenderer";
 import { MoviesTonightSection } from "@/components/home/MoviesTonightSection";
@@ -32,7 +33,7 @@ import { resolvePageLayout } from "@/lib/layout/resolver";
 import { getCategoriesResolved } from "@/lib/categories-meta";
 import { renderHomeSection } from "@/lib/layout/home-bridge";
 
-export const metadata: Metadata = { title: "Proteino" };
+export const metadata: Metadata = { title: { absolute: "Proteino — Προτάσεις από αληθινούς ανθρώπους" } };
 
 // ── Data fetching helpers ─────────────────────────────────────────
 
@@ -283,7 +284,8 @@ async function fetchSuggestionFeedItems(sb: SB): Promise<SuggestionFeedItem[]> {
         all.push({
           id: r.id,
           title: r.title,
-          subtitle: tags[0] ?? r.category,
+          // Greek category label, never the raw slug ("books").
+          subtitle: tags[0] ?? CATEGORIES.find((c) => c.slug === r.category)?.labelEl ?? "",
           avg_rating: r.avg_rating,
           rating_count: r.rating_count,
           is_top_rated: r.avg_rating >= 4.5 && r.rating_count >= 5,
@@ -315,6 +317,33 @@ const fetchPublishedSuggestionCount = unstable_cache(
     return count ?? 0;
   },
   ["published-suggestion-count"],
+  { revalidate: 3600 },
+);
+
+/**
+ * Real contributor numbers for <RegisterPromo>: how many members have
+ * published at least one recommendation, plus the top 12 by count (real
+ * avatars, initials fallback). Replaces a hard-coded "1.750 χρήστες" and
+ * a grid of blank coloured circles. Cached 1 hour, global.
+ */
+const fetchContributors = unstable_cache(
+  async (): Promise<ContributorsSummary> => {
+    const sb = createAdminClient();
+    const [{ count }, { data }] = await Promise.all([
+      sb.from("users").select("id", { count: "exact", head: true }).gt("suggestion_count", 0),
+      sb.from("users")
+        .select("id, display_name, handle, avatar_url")
+        .gt("suggestion_count", 0)
+        .order("suggestion_count", { ascending: false })
+        .limit(12),
+    ]);
+    return {
+      total: count ?? 0,
+      people: ((data ?? []) as Array<{ id: string; display_name: string | null; handle: string; avatar_url: string | null }>)
+        .map((u) => ({ id: u.id, name: u.display_name || u.handle, avatarUrl: u.avatar_url })),
+    };
+  },
+  ["home-contributors"],
   { revalidate: 3600 },
 );
 
@@ -350,7 +379,7 @@ export default async function HomePage() {
 
   const regionMatchSet = await getRegionMatchSet(sb, viewerRegionId);
 
-  const [food, movies, series, books, recipes, topUsers, chips, feedItems, collections, tonight, layoutSections, suggestionCount, resolvedCategories] =
+  const [food, movies, series, books, recipes, topUsers, chips, feedItems, collections, tonight, layoutSections, suggestionCount, resolvedCategories, contributors] =
     await Promise.all([
       // Bigger fetch limits so static_carousel widgets with custom limits
       // still have material to slice. Each fetcher returns at most the
@@ -372,6 +401,7 @@ export default async function HomePage() {
       }),
       fetchPublishedSuggestionCount(),
       getCategoriesResolved(),
+      fetchContributors(),
     ]);
 
   // Layout-driven path. Legacy hardcoded path falls back when the
@@ -386,6 +416,7 @@ export default async function HomePage() {
             food, movies, series, books, recipes,
             topUsers, chips, feedItems, tonight,
             suggestionCount,
+            contributors,
             resolvedCategories: resolvedCategories.map((c) => ({
               slug: c.slug,
               labelEl: c.labelEl,
@@ -425,6 +456,7 @@ export default async function HomePage() {
       collections={collections}
       tonight={tonight}
       suggestionCount={suggestionCount}
+      contributors={contributors}
     />
   );
 }
@@ -441,9 +473,10 @@ interface GuestProps {
   collections: HydratedCollection[];
   tonight: TonightAiring[];
   suggestionCount: number;
+  contributors: ContributorsSummary;
 }
 
-function GuestHome({ movies, series, books, recipes, food, feedItems, collections, tonight, suggestionCount }: GuestProps) {
+function GuestHome({ movies, series, books, recipes, food, feedItems, collections, tonight, suggestionCount, contributors }: GuestProps) {
   const hasCurated = collections.length > 0;
 
   return (
@@ -498,7 +531,7 @@ function GuestHome({ movies, series, books, recipes, food, feedItems, collection
         </>
       )}
 
-      <RegisterPromo />
+      <RegisterPromo {...contributors} />
       <SupportSection />
       <FooterMobile />
     </div>

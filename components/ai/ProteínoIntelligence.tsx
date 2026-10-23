@@ -28,12 +28,12 @@ export function ProteínoIntelligence({ analysis, state, className }: ProteínoI
         </span>
         {state === "listening" && (
           <span className="text-[10px] font-medium tracking-widest text-coral-600 animate-pulse">
-            LISTENING LIVE
+            ΣΕ ΑΚΟΥΩ
           </span>
         )}
         {state === "matched" && (
           <span className="text-[10px] font-medium tracking-widest text-success">
-            LOCKED ✓
+            ΒΡΕΘΗΚΕ ✓
           </span>
         )}
       </div>

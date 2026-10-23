@@ -8,7 +8,7 @@ interface Props { params: Promise<{ handle: string }> }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
   const params = await props.params;
-  return { title: `Αγαπημένα @${params.handle} — Proteino` };
+  return { title: `Αγαπημένα @${params.handle}` };
 }
 
 export const dynamic = "force-dynamic";

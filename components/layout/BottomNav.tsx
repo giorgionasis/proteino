@@ -48,7 +48,7 @@ export function BottomNav({ avatarUrl, displayName }: BottomNavProps) {
         {/* HOME */}
         <NavItem
           href="/"
-          label="HOME"
+          label="Αρχική"
           icon={<Home size={22} strokeWidth={isHome ? 2.5 : 1.5} />}
           active={isHome}
         />
@@ -64,17 +64,17 @@ export function BottomNav({ avatarUrl, displayName }: BottomNavProps) {
         >
           <Search size={22} strokeWidth={isSearch ? 2.5 : 1.5} />
           <span className={cn(
-            "text-[9px] font-semibold tracking-widest uppercase",
+            "text-[10px] font-semibold tracking-wider uppercase",
             isSearch ? "text-coral-600" : "text-zinc-400",
           )}>
-            SEARCH
+            Αναζήτηση
           </span>
         </button>
 
         {/* YOU */}
         <NavItem
           href="/you"
-          label="YOU"
+          label="Προφίλ"
           icon={(avatarUrl || displayName) ? (
             <div
               className="rounded-full overflow-hidden shrink-0 transition-all duration-200 ease-soft"
@@ -120,7 +120,7 @@ function NavItem({ href, label, icon, active }: NavItemProps) {
     >
       {icon}
       <span className={cn(
-        "text-[9px] font-semibold tracking-widest uppercase",
+        "text-[10px] font-semibold tracking-wider uppercase",
         active ? "text-coral-600" : "text-zinc-400",
       )}>
         {label}

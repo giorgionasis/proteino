@@ -23,6 +23,7 @@
     "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.1",
+    "@vercel/analytics": "^2.0.1",
     "ai": "^6.0.184",
     "clsx": "^2.1.1",
     "leaflet": "^1.9.4",

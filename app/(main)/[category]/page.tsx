@@ -38,7 +38,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   // the browser tab without redeploy.
   const resolved = await getCategoryResolved(cat.slug);
   const label = resolved?.labelEl ?? cat.labelEl;
-  return { title: `${label} — Proteino` };
+  return { title: label };
 }
 
 export interface FilterData {

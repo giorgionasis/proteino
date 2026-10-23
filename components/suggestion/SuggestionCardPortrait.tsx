@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { hasRatings, ratingCountLabel } from "@/lib/ratings";
 import type { ReactNode } from "react";
 
 interface RatingInfo {
@@ -62,7 +63,7 @@ export function SuggestionCardPortrait({
         {header && <div className="leading-none">{header}</div>}
         <p className="text-[16px] font-bold text-zinc-900 leading-tight line-clamp-2">{title}</p>
         {subtitle && <p className="text-[14px] font-medium text-zinc-500 leading-snug">{subtitle}</p>}
-        {rating && <RatingLine {...rating} />}
+        {rating && hasRatings(rating.count) && <RatingLine {...rating} />}
       </div>
     </Link>
   );
@@ -81,7 +82,7 @@ function RatingLine({ score, count }: RatingInfo) {
     <div className="flex items-baseline gap-1.5 text-[14px] text-zinc-700">
       <span className="text-zinc-900 leading-none">★</span>
       <span className="font-semibold text-zinc-900 leading-none">{score.toFixed(2)}</span>
-      <span className="text-zinc-500 leading-none">({count} αξιολογήσεις)</span>
+      <span className="text-zinc-500 leading-none">({ratingCountLabel(count)})</span>
     </div>
   );
 }

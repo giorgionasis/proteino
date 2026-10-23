@@ -77,6 +77,8 @@ scripts/sql/046-vector-768-dimension.sql
 scripts/sql/047-users-column-privileges.sql
 scripts/sql/048-rate-limits.sql
 scripts/sql/049-rate-limit-service-role-grant.sql
+scripts/sql/050-series-awards-column.sql
+scripts/sql/051-launch-data-fixes.sql   (run AFTER the session-40 code deploy)
 ```
 
 **Note:** Migration 016 wipes the legacy `ratings` table and resets `items.rating_count` / `avg_rating` to 0 across all items. The legacy `comments` and `ratings` tables stay in the DB as archive but are NOT read by the new UI — all reviews from now on flow through the new `reviews` table (rating mandatory + reflection optional, one row per (user, item)).

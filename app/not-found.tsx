@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Δεν βρέθηκε — Proteino",
+  title: "Δεν βρέθηκε",
   robots: { index: false, follow: false },
 };
 

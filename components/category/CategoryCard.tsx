@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { hasRatings, ratingCountLabel } from "@/lib/ratings";
 import type { CategorySlug } from "@/types";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 
@@ -162,20 +163,15 @@ function LandscapeCard({ item, category }: { item: CategoryItem; category: Categ
         {/* Suggester avatar — interactive when we have user data
          *  (UserAvatarWithPopup renders avatar / initials and opens
          *  the profile popup on tap, with click propagation stopped
-         *  so the surrounding card Link doesn't fire). Falls back to
-         *  a colored ring when no suggester is attached to the item. */}
-        {item.suggester ? (
+         *  so the surrounding card Link doesn't fire). No suggester →
+         *  no circle: blank grey placeholders for people are banned. */}
+        {item.suggester && (
           <div
             className="absolute bottom-3 left-3 rounded-full"
             style={{ boxShadow: "0 0 0 3px #fff" }}
           >
             <UserAvatarWithPopup user={item.suggester} size={50} />
           </div>
-        ) : (
-          <div
-            className="absolute bottom-3 left-3 w-[50px] h-[50px] rounded-full"
-            style={{ border: "3px solid #fff", backgroundColor: item.avatar_color ?? "#d4d4d8" }}
-          />
         )}
       </div>
 
@@ -196,15 +192,17 @@ function LandscapeCard({ item, category }: { item: CategoryItem; category: Categ
           </div>
         )}
 
-        <div className="flex items-center gap-1.5 pb-0.5">
-          <Star />
-          <span className="text-[16px] font-semibold text-[#27272A]">
-            {item.avg_rating.toFixed(2)}
-          </span>
-          <span className="text-[16px] font-medium text-[#27272A]">
-            ({item.rating_count} αξιολογήσεις)
-          </span>
-        </div>
+        {hasRatings(item.rating_count) && (
+          <div className="flex items-center gap-1.5 pb-0.5">
+            <Star />
+            <span className="text-[16px] font-semibold text-[#27272A]">
+              {item.avg_rating.toFixed(2)}
+            </span>
+            <span className="text-[16px] font-medium text-[#27272A]">
+              ({ratingCountLabel(item.rating_count)})
+            </span>
+          </div>
+        )}
 
         {/* Delivery chips — food only */}
         {item.delivery && item.delivery.length > 0 && (
@@ -273,17 +271,17 @@ function PortraitCard({ item, category }: { item: CategoryItem; category: Catego
         {meta && (
           <p className="text-[12px] font-medium text-[#52525B] line-clamp-1">{meta}</p>
         )}
-        <div className="flex items-center gap-1 pb-0.5">
-          <Star size={10} />
-          <span className="text-[12px] font-semibold text-[#27272A]">
-            {item.avg_rating.toFixed(1)}
-          </span>
-          {item.rating_count > 0 && (
+        {hasRatings(item.rating_count) && (
+          <div className="flex items-center gap-1 pb-0.5">
+            <Star size={10} />
+            <span className="text-[12px] font-semibold text-[#27272A]">
+              {item.avg_rating.toFixed(1)}
+            </span>
             <span className="text-[11px] font-medium text-zinc-500">
               ({item.rating_count})
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </Link>
   );
@@ -351,17 +349,17 @@ function RowCard({ item, category }: { item: CategoryItem; category: CategorySlu
           </p>
         )}
 
-        <div className="mt-auto flex items-center gap-1.5 pt-1">
-          <Star size={12} />
-          <span className="text-[13px] font-semibold text-[#27272A]">
-            {item.avg_rating.toFixed(1)}
-          </span>
-          {item.rating_count > 0 && (
+        {hasRatings(item.rating_count) && (
+          <div className="mt-auto flex items-center gap-1.5 pt-1">
+            <Star size={12} />
+            <span className="text-[13px] font-semibold text-[#27272A]">
+              {item.avg_rating.toFixed(1)}
+            </span>
             <span className="text-[12px] font-medium text-zinc-500">
               ({item.rating_count})
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </Link>
   );

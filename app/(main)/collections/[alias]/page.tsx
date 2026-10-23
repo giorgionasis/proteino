@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CATEGORIES } from "@/constants/categories";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CollectionDetail, type CollectionDetailItem } from "@/components/collections/CollectionDetail";
@@ -75,7 +76,7 @@ export default async function CollectionPage(props: Props) {
       title: it.title,
       cover_url: it.cover_url,
       category: it.category,
-      subtitle: itemTags[0] ?? it.category,
+      subtitle: itemTags[0] ?? CATEGORIES.find((c) => c.slug === it.category)?.labelEl ?? "",
       avg_rating: it.avg_rating ?? 0,
       rating_count: it.rating_count ?? 0,
       href: `/${it.category}/${stripPrefix(it.slug)}`,

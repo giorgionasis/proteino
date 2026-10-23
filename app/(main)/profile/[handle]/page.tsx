@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CATEGORIES } from "@/constants/categories";
 import { notFound } from "next/navigation";
 import { createClient }      from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -11,7 +12,7 @@ interface Props {
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
   const params = await props.params;
-  return { title: `@${params.handle} — Proteino` };
+  return { title: `@${params.handle}` };
 }
 
 export default async function ProfilePage(props: Props) {
@@ -103,7 +104,7 @@ export default async function ProfilePage(props: Props) {
       const cleanSlug = item.slug?.includes("/") ? item.slug.split("/").pop() : item.slug;
       topSuggestion = {
         title: item.title,
-        subtitle: tags[0] ?? item.category ?? "",
+        subtitle: tags[0] ?? CATEGORIES.find((c) => c.slug === item.category)?.labelEl ?? "",
         coverUrl: item.cover_url,
         avgRating: item.avg_rating ?? 0,
         ratingCount: item.rating_count ?? 0,
