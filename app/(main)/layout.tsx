@@ -1,4 +1,5 @@
 import { createClient }        from "@/lib/supabase/server";
+import { DesktopTopBar, DesktopLeftRail, DesktopRightRail } from "@/components/layout/DesktopChrome";
 import { createAdminClient }    from "@/lib/supabase/admin";
 import { redirect }             from "next/navigation";
 import { AuthProvider }         from "@/components/layout/AuthProvider";
@@ -15,6 +16,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   let avatarUrl: string | null = null;
   let displayName: string | null = null;
   let notificationCount = 0;
+  let viewerHandle: string | null = null;
   let maintenance = { mode: false, message: "" };
   let needsOnboarding = false;
   if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -68,6 +70,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         }
         avatarUrl = avatarUrl ?? row?.avatar_url ?? null;
         displayName = displayName ?? row?.display_name ?? row?.handle ?? null;
+        viewerHandle = row?.handle ?? null;
         // Onboarding gate. Only fires when we successfully read the
         // preferences column AND there's no onboarded_at timestamp.
         // If the column read failed (migration 022 missing), `row` is
@@ -98,23 +101,35 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   // code constant.
   const resolvedCategories = await getNavPublishedCategories();
 
+  const chromeUser = { isRegistered, displayName, avatarUrl, handle: viewerHandle, notificationCount };
+
   return (
     <AuthProvider>
-      <div className="bg-[#F2F2F7]">
-      <div className="min-h-screen bg-white flex flex-col max-w-[390px] mx-auto relative">
+      <div className="bg-[#F2F2F7] min-h-screen">
+      {/* Desktop (≥1024px): site top bar + side rails around the mobile
+          column. Phones see none of it. */}
+      <DesktopTopBar user={chromeUser} />
+      <div className="lg:flex lg:justify-center lg:items-start lg:gap-8 lg:px-6 lg:pt-6">
+      <DesktopLeftRail categories={resolvedCategories.map((c) => ({ slug: c.slug, labelEl: c.labelEl }))} />
+      <div className="min-h-screen bg-white flex flex-col max-w-[390px] lg:max-w-[460px] w-full mx-auto lg:mx-0 relative lg:rounded-2xl lg:border lg:border-zinc-200 lg:overflow-hidden lg:mb-10">
         {maintenance.mode && <MaintenanceBanner message={maintenance.message} />}
 
-        {/* Shows Proteino logo only on the home page "/" */}
-        <ClientAwareHeader isRegistered={isRegistered} notificationCount={notificationCount} />
+        {/* Shows Proteino logo only on the home page "/" — the desktop
+            top bar replaces it from lg up. */}
+        <div className="lg:hidden">
+          <ClientAwareHeader isRegistered={isRegistered} notificationCount={notificationCount} />
+        </div>
 
-        {/* Scrollable page content — clears fixed bottom nav */}
-        <main className="flex-1 pb-[calc(64px+env(safe-area-inset-bottom,0px))]">
+        {/* Scrollable page content — clears fixed bottom nav on phones */}
+        <main className="flex-1 pb-[calc(64px+env(safe-area-inset-bottom,0px))] lg:pb-8">
           {children}
         </main>
 
-        {/* Fixed bottom chrome */}
-        <BottomNav avatarUrl={avatarUrl} displayName={displayName} />
-        <FAB />
+        {/* Fixed bottom chrome — phones only */}
+        <div className="lg:hidden">
+          <BottomNav avatarUrl={avatarUrl} displayName={displayName} />
+          <FAB />
+        </div>
 
         {/* Full-screen slide-up overlays — renders on top of everything */}
         <OverlayManager
@@ -122,6 +137,8 @@ export default async function MainLayout({ children }: { children: React.ReactNo
             slug: c.slug, labelEl: c.labelEl, icon: c.icon,
           }))}
         />
+      </div>
+      <DesktopRightRail user={chromeUser} />
       </div>
       </div>
     </AuthProvider>
