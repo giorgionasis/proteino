@@ -11,6 +11,11 @@
  */
 
 import { CarouselLandscape, type LandscapeItem } from "@/components/recommendation/CarouselLandscape";
+import { SearchHero } from "@/components/home/SearchHero";
+import { PickOfTheDayCard } from "@/components/home/PickOfTheDayCard";
+import { FollowingFeed } from "@/components/home/FollowingFeed";
+import { MyWishlist } from "@/components/home/MyWishlist";
+import type { PickOfTheDay, FollowingFeedEntry, HomeItemRef } from "@/lib/home/personal";
 import { CarouselPortrait, type PortraitItem } from "@/components/recommendation/CarouselPortrait";
 import { AIChips, type CategoryChip } from "@/components/home/AIChips";
 import { SuggestedUsers, type SuggestedUser } from "@/components/home/SuggestedUsers";
@@ -45,6 +50,11 @@ export interface HomeRenderContext {
   suggestionCount: number;
   /** Real contributor count + top contributors for <RegisterPromo>. */
   contributors?: ContributorsSummary;
+  /** Session-40 home widgets. */
+  pickOfTheDay?: PickOfTheDay | null;
+  followingFeed?: FollowingFeedEntry[];
+  wishlist?: HomeItemRef[];
+  viewerHandle?: string | null;
   /** Admin-editable category metadata from `lib/categories-meta.ts`.
    *  Optional so older callers (e.g. preview tooling) still compile;
    *  when omitted, `<CategoryTiles>` falls back to its hardcoded ROWS. */
@@ -107,6 +117,23 @@ function renderHomeSectionInner(section: RenderedSection, ctx: HomeRenderContext
     case "hero_personalise":  return <HeroPersonalise key={section.row.id} />;
     case "category_tiles":    return <CategoryTiles key={section.row.id} categories={ctx.resolvedCategories} />;
     case "how_it_works":      return <HowItWorks key={section.row.id} />;
+    case "search_hero":
+      return (
+        <SearchHero
+          key={section.row.id}
+          suggestionCount={ctx.suggestionCount}
+          contributors={ctx.contributors?.total ?? 0}
+          compact={ctx.isRegistered}
+        />
+      );
+    case "pick_of_the_day":
+      if (!ctx.pickOfTheDay) return null;
+      return <PickOfTheDayCard key={section.row.id} pick={ctx.pickOfTheDay} />;
+    case "following_feed":
+      return <FollowingFeed key={section.row.id} entries={ctx.followingFeed ?? []} />;
+    case "my_wishlist":
+      return <MyWishlist key={section.row.id} items={ctx.wishlist ?? []} handle={ctx.viewerHandle ?? null} />;
+
     case "register_promo":
       if (!ctx.contributors || ctx.contributors.total === 0) return null;
       return <RegisterPromo key={section.row.id} {...ctx.contributors} />;

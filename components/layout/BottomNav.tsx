@@ -55,7 +55,7 @@ export function BottomNav({ avatarUrl, displayName }: BottomNavProps) {
 
         {/* SEARCH — opens overlay, not a route */}
         <button
-          onClick={openSearch}
+          onClick={() => openSearch()}
           className={cn(
             "flex-1 flex flex-col items-center justify-center gap-1",
             "transition-colors select-none",

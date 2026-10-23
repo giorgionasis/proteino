@@ -196,6 +196,44 @@ export const WIDGET_REGISTRY: Record<string, WidgetSpec> = {
     singleton: true,
   },
 
+  search_hero: {
+    key: "search_hero",
+    label: "Hero — Αναζήτηση",
+    description: "«Τι ψάχνεις σήμερα;» με παραδείγματα αναζήτησης που τρέχουν με ένα tap. Στα μέλη εμφανίζεται συμπτυγμένο.",
+    icon: "🔎",
+    contexts: ["home"],
+    singleton: true,
+  },
+
+  pick_of_the_day: {
+    key: "pick_of_the_day",
+    label: "Η πρόταση της ημέρας",
+    description: "Μία πραγματική πρόταση με το κείμενο και τον χρήστη της. Αλλάζει κάθε μέρα.",
+    icon: "⭐",
+    contexts: ["home"],
+    singleton: true,
+  },
+
+  following_feed: {
+    key: "following_feed",
+    label: "Από όσους ακολουθείς",
+    description: "Οι τελευταίες προτάσεις των χρηστών που ακολουθεί το μέλος. Κρύβεται αν δεν ακολουθεί κανέναν.",
+    icon: "👣",
+    contexts: ["home"],
+    audiences: ["registered"],
+    singleton: true,
+  },
+
+  my_wishlist: {
+    key: "my_wishlist",
+    label: "Η λίστα σου",
+    description: "Ό,τι έχει αποθηκεύσει το μέλος για αργότερα. Κρύβεται αν είναι άδεια.",
+    icon: "🔖",
+    contexts: ["home"],
+    audiences: ["registered"],
+    singleton: true,
+  },
+
   register_promo: {
     key: "register_promo",
     label: "Promo εγγραφής",

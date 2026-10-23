@@ -8,7 +8,10 @@ interface OverlayStore {
    *  Used when opening the suggestion flow from the search "no match" chip
    *  ("Πρότεινέ το πρώτος") — carries the user's search query in. */
   suggestionPrefill: string | null;
-  openSearch:     () => void;
+  /** Optional query the SearchOverlay runs on mount (home example chips). */
+  searchPrefill: string | null;
+  openSearch:     (prefill?: string) => void;
+  consumeSearchPrefill: () => string | null;
   openSuggestion: (prefill?: string) => void;
   consumeSuggestionPrefill: () => string | null;
   close:          () => void;
@@ -17,10 +20,17 @@ interface OverlayStore {
 export const useOverlay = create<OverlayStore>((set, get) => ({
   overlay: null,
   suggestionPrefill: null,
+  searchPrefill: null,
 
-  openSearch: () => {
+  openSearch: (prefill) => {
     document.body.style.overflow = "hidden";
-    set({ overlay: "search" });
+    set({ overlay: "search", searchPrefill: prefill ?? null });
+  },
+
+  consumeSearchPrefill: () => {
+    const v = get().searchPrefill;
+    if (v !== null) set({ searchPrefill: null });
+    return v;
   },
 
   openSuggestion: (prefill) => {

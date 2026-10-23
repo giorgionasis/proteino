@@ -124,6 +124,11 @@ export function useSearch(): UseSearchReturn {
   useEffect(() => () => cancelInflight(), [cancelInflight]);
 
   const lastQueryRef = useRef<string | null>(null);
+  // Quick (AI-free) results while typing: applied only for the current
+  // query and only until the full answer for that query has landed.
+  const currentQueryRef = useRef<string>("");
+  const fullAppliedForRef = useRef<string | null>(null);
+  const quickAbortRef = useRef<AbortController | null>(null);
 
   const runSearch = async (value: string, signal: AbortSignal) => {
     setState("analyzing");
@@ -162,6 +167,7 @@ export function useSearch(): UseSearchReturn {
       setAnalysis(a);
       setConfidenceTier(data.confidence_tier);
       setFeatured(data.featured ?? null);
+      fullAppliedForRef.current = value;
       setResults(data.items ?? []);
       setUserHits(data.users ?? []);
       setFallbackSuggestions(data.suggestions ?? []);
@@ -244,6 +250,8 @@ export function useSearch(): UseSearchReturn {
       // Cancel any pending fetch + debounce so a stale fire doesn't flip
       // us back to "analyzing" after the user clears the textarea.
       cancelInflight();
+      quickAbortRef.current?.abort();
+      currentQueryRef.current = "";
       noCategoryFilterRef.current = false;
       clearState();
       return;
@@ -254,6 +262,23 @@ export function useSearch(): UseSearchReturn {
     cancelInflight();
     const controller = new AbortController();
     abortRef.current = controller;
+
+    // Instant title matches (~150ms, no AI) so results appear as you
+    // type; the full AI answer replaces them when it lands.
+    currentQueryRef.current = value;
+    quickAbortRef.current?.abort();
+    const quick = new AbortController();
+    quickAbortRef.current = quick;
+    setTimeout(async () => {
+      if (quick.signal.aborted) return;
+      try {
+        const res = await fetch(`/api/search/quick?${new URLSearchParams({ q: value })}`, { signal: quick.signal });
+        if (!res.ok) return;
+        const data = (await res.json()) as { items?: Item[] };
+        if (currentQueryRef.current !== value || fullAppliedForRef.current === value) return;
+        if (data.items && data.items.length > 0) setResults(data.items);
+      } catch { /* aborted or offline — the full search still runs */ }
+    }, 120);
 
     debounceRef.current = setTimeout(() => {
       if (controller.signal.aborted) return;

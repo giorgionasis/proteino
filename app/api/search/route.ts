@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { hasCategoryTrigger, titleTokens as sharedTitleTokens, tokenOrFilter } from "@/lib/search/title-match";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAIService } from "@/lib/ai";
@@ -1081,6 +1082,9 @@ export async function GET(req: NextRequest) {
     "brunch", "musical", "pub", "resort", "villa",
     // Common Greek stopwords (4+ chars)
     "για", "στο", "στη", "στις", "στους", "και", "αυτο", "αυτη", "αυτος",
+    // Short function words — never meaningful as title matches.
+    "σαν", "με", "την", "τον", "του", "της", "των", "τα", "το", "οι", "ενα",
+    "μια", "απο", "που", "στην", "στον", "πιο", "the", "and",
     "αυτη", "αυτα", "αυτες", "αυτους", "ειναι", "εχει", "εχω",
   ]);
   const allTokens = tokenize(q)
@@ -1628,11 +1632,7 @@ export async function GET(req: NextRequest) {
   //     triggers + stopwords removed) must appear in the folded title or
   //     original title; hits merge in front and scoreTitleMatch ranks them.
   {
-    const titleTokens = tokenize(q)
-      .map(foldGreek)
-      .filter((t) => t.length >= 3 && !STOPWORDS_FOLDED.has(t))
-      .map((t) => t.replace(/[%_\\,()]/g, ""))
-      .filter(Boolean);
+    const titleTokens = sharedTitleTokens(q);
     if (titleTokens.length > 0) {
       let tq = (admin.from("items") as any)
         .select(
@@ -1640,9 +1640,11 @@ export async function GET(req: NextRequest) {
         )
         .eq("is_published", true)
         .limit(20);
-      for (const t of titleTokens) {
-        tq = tq.or(`title_normalized.ilike.%${t}%,original_title_normalized.ilike.%${t}%`);
-      }
+      // Word-start match, not substring: "θεα" (θέα) must not match
+      // "θεατρο" (lib/search/title-match.ts, shared with /api/search/quick).
+      for (const t of titleTokens) tq = tq.or(tokenOrFilter(t));
+      // A query that names a category keeps title hits inside it.
+      if (categories.length > 0 && hasCategoryTrigger(q)) tq = tq.in("category", categories);
       const { data: titleHits } = await tq;
       if (titleHits?.length) {
         const ids = new Set(titleHits.map((it: any) => it.id));

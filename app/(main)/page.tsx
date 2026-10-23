@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { fetchPickOfTheDay, fetchFollowingFeed, fetchMyWishlist } from "@/lib/home/personal";
 import { compactMainImage } from "@/lib/item-images";
 import { CATEGORIES } from "@/constants/categories";
 
@@ -63,7 +64,10 @@ async function fetchFoodLandscape(
     .select("id, title, slug, cover_url, avg_rating, rating_count, item_food(cuisine, type, address, region_id), suggestions(users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, level, suggestion_count, avg_quality_score))")
     .eq("category", "food")
     .eq("is_published", true)
-    .order("avg_rating", { ascending: false })
+    // Popularity, not avg_rating: almost nothing has ratings yet, so
+    // "top rated" meant "has one 5-star review". Old-site views first.
+    .order("metadata->legacy_hits", { ascending: false, nullsFirst: false })
+    .order("suggestion_count", { ascending: false })
     .limit(fetchLimit);
 
   const rows = (data ?? []).map((r: any) => {
@@ -111,7 +115,10 @@ async function fetchMovies(sb: SB, limit = 7): Promise<PortraitItem[]> {
     .select("id, title, slug, cover_url, avg_rating, metadata, item_movies(release_date, channel)")
     .eq("category", "movies")
     .eq("is_published", true)
-    .order("avg_rating", { ascending: false })
+    // Popularity, not avg_rating: almost nothing has ratings yet, so
+    // "top rated" meant "has one 5-star review". Old-site views first.
+    .order("metadata->legacy_hits", { ascending: false, nullsFirst: false })
+    .order("suggestion_count", { ascending: false })
     .limit(limit);
 
   return (data ?? []).map((r: any) => {
@@ -136,7 +143,10 @@ async function fetchSeries(sb: SB, limit = 5): Promise<PortraitItem[]> {
     .select("id, title, slug, cover_url, avg_rating, metadata, item_series(seasons, channel)")
     .eq("category", "series")
     .eq("is_published", true)
-    .order("avg_rating", { ascending: false })
+    // Popularity, not avg_rating: almost nothing has ratings yet, so
+    // "top rated" meant "has one 5-star review". Old-site views first.
+    .order("metadata->legacy_hits", { ascending: false, nullsFirst: false })
+    .order("suggestion_count", { ascending: false })
     .limit(limit);
 
   return (data ?? []).map((r: any) => {
@@ -161,7 +171,10 @@ async function fetchBooks(sb: SB, limit = 5): Promise<PortraitItem[]> {
     .select("id, title, slug, cover_url, avg_rating, metadata, item_books(publication_year, writer)")
     .eq("category", "books")
     .eq("is_published", true)
-    .order("avg_rating", { ascending: false })
+    // Popularity, not avg_rating: almost nothing has ratings yet, so
+    // "top rated" meant "has one 5-star review". Old-site views first.
+    .order("metadata->legacy_hits", { ascending: false, nullsFirst: false })
+    .order("suggestion_count", { ascending: false })
     .limit(limit);
 
   return (data ?? []).map((r: any) => {
@@ -185,7 +198,10 @@ async function fetchRecipes(sb: SB, limit = 5): Promise<LandscapeItem[]> {
     .select("id, title, slug, cover_url, avg_rating, rating_count, item_recipes(channel), suggestions(users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, level, suggestion_count, avg_quality_score))")
     .eq("category", "recipes")
     .eq("is_published", true)
-    .order("avg_rating", { ascending: false })
+    // Popularity, not avg_rating: almost nothing has ratings yet, so
+    // "top rated" meant "has one 5-star review". Old-site views first.
+    .order("metadata->legacy_hits", { ascending: false, nullsFirst: false })
+    .order("suggestion_count", { ascending: false })
     .limit(limit);
 
   return (data ?? []).map((r: any) => {
@@ -369,6 +385,7 @@ export default async function HomePage() {
   let displayName = "";
   let viewerRegionId: string | null = null;
   let viewerId: string | null = null;
+  let viewerHandle: string | null = null;
 
   if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
@@ -383,16 +400,17 @@ export default async function HomePage() {
           u.email?.split("@")[0] ??
           "";
         const { data: viewerRow } = await (sb.rpc as any)("get_my_profile")
-          .select("region_id")
+          .select("region_id, handle")
           .maybeSingle();
         viewerRegionId = (viewerRow as { region_id?: string | null } | null)?.region_id ?? null;
+        viewerHandle = (viewerRow as { handle?: string | null } | null)?.handle ?? null;
       }
     } catch { /* network error — render guest view */ }
   }
 
   const regionMatchSet = await getRegionMatchSet(sb, viewerRegionId);
 
-  const [food, movies, series, books, recipes, topUsers, chips, feedItems, collections, tonight, layoutSections, suggestionCount, resolvedCategories, contributors] =
+  const [food, movies, series, books, recipes, topUsers, chips, feedItems, collections, tonight, layoutSections, suggestionCount, resolvedCategories, contributors, pickOfTheDay, followingFeed, wishlist] =
     await Promise.all([
       // Bigger fetch limits so static_carousel widgets with custom limits
       // still have material to slice. Each fetcher returns at most the
@@ -415,6 +433,9 @@ export default async function HomePage() {
       fetchPublishedSuggestionCount(),
       getCategoriesResolved(),
       fetchContributors(),
+      fetchPickOfTheDay(new Date().toISOString().slice(0, 10)),
+      fetchFollowingFeed(sb as any, viewerId),
+      fetchMyWishlist(sb as any, viewerId),
     ]);
 
   // Layout-driven path. Legacy hardcoded path falls back when the
@@ -430,6 +451,10 @@ export default async function HomePage() {
             topUsers, chips, feedItems, tonight,
             suggestionCount,
             contributors,
+            pickOfTheDay,
+            followingFeed,
+            wishlist,
+            viewerHandle,
             resolvedCategories: resolvedCategories.map((c) => ({
               slug: c.slug,
               labelEl: c.labelEl,

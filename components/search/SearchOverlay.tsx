@@ -414,6 +414,16 @@ export function SearchOverlay({ onClose, categories }: SearchOverlayProps) {
     return () => clearTimeout(t);
   }, []);
 
+  // Home example chips open search with a query already filled in.
+  useEffect(() => {
+    const prefill = useOverlay.getState().consumeSearchPrefill();
+    if (prefill) {
+      hookSetQuery(prefill);
+      setTimeout(resizeTextarea, 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const stopTicker = () => {
     if (tickerRef.current) { clearInterval(tickerRef.current); tickerRef.current = null; }
   };
@@ -522,7 +532,8 @@ export function SearchOverlay({ onClose, categories }: SearchOverlayProps) {
   };
 
   const showPanel = state !== "empty";
-  const isResults = state === "results";
+  // Quick (AI-free) matches render while the full answer is in flight.
+  const isResults = state === "results" || ((state === "typing" || state === "analyzing") && results.length > 0);
   const isNoMatch = state === "no_match";
   const isError = state === "error";
   const showChips = isNoMatch && !showChat;
