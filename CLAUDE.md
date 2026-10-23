@@ -225,7 +225,7 @@ Full token reference + image pipeline + icon registry + motion system in `docs/d
 - **Biblionet subcategory taxonomy** — expand to ~18 vs two-tier UI. Plan in docs/architecture.md.
 
 **Long tail:**
-- §39 SEO closing — admin fields for contentRating / ISBN / numberOfEpisodes / starRating / openingHours / organizer / recipe video; sitemap split at 5K; image sitemap; `noindex` on thin pages; K2 → new URL 301 map.
+- §39 SEO closing — admin fields for contentRating / ISBN / numberOfEpisodes / starRating / openingHours / organizer / recipe video; sitemap split at 5K; image sitemap; `noindex` on thin pages.
 - Real legal copy on `/terms` + `/privacy`.
 - Drop legacy `ratings` + `comments` tables once archive is confirmed unwanted.
 - Per-category visual identity polish.
