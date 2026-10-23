@@ -1,12 +1,44 @@
 # Proteino — Build Progress
 
-Last updated: 2026-05-26 (session 39 — follow-up sweep + Phase B day 1: AI match bug #3 fix · recipe flow browser test · recipe scraper coverage audit · embedding infrastructure)
+Last updated: 2026-10-24 (session 40 — launch prep after 5-month pause: security lockdown · K2 image transfer · old-URL redirects · search title fixes · UX review + Wave 1 trust pass)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 39 finished:**
+**Current state — session 40 finished (2026-10-22 → 10-24):**
+
+Resumed after ~5 months (Supabase project had been paused; restored by the user). Goal set by the user: finish and replace the old Joomla/K2 site at www.proteino.gr with this app (www chosen as canonical). Full review artifact: https://claude.ai/artifact/FsDpeQ1Rj9jfF682reRFZ6
+
+### Shipped — Phase 0 security (commit `0e06f76`, migrations 047–049)
+- `/api/admin/*` was publicly callable (43/57 route files had no check, service-role writes). `lib/admin/require-admin.ts` now opens all 92 handlers; `scripts/check-admin-gates.mjs` enforces it (`--fix` inserts).
+- `public.users` was fully readable by the anon key (email, birthday, preferences, role) and users could UPDATE their own `role`. Migration 047: column-level grants + `get_my_profile()` RPC for own private fields; admin users list moved behind `GET /api/admin/users` (`lib/admin/users-list.ts`).
+- Postgres-backed per-IP rate limiter (`lib/rate-limit.ts`, migration 048 + 049 service_role grant) on ai/match, coaching-tip, parse-interests, search. Fails open.
+- Removed `/api/debug/me` and the unused `/api/ai/analyze-submission`.
+
+### Shipped — K2 images + old-URL redirects (commits `122185e`, `d522661`)
+- "Store whole, crop on display": `processMainImage` / `storeMainImage` write `images.main` (uncropped 320/640/960/1280 WebP, never upscaled, entropy focal point) + `images.og` (1200×630). `<ItemImage>` component built (ratio / sizes / crop|whole) — NOT yet adopted by surfaces (Wave 2).
+- `scripts/migrate-legacy-images.ts` copied 1,902 images off the old server (K2 `media/k2/items/src/md5("Image"+id).jpg`). 35 had no source — all unpublished. Old server no longer needed for images. Uploads must be sequential: parallel bursts exhausted the free-tier DB pool.
+- `proxy.ts` 301s old K2 URLs via `lib/redirects/legacy.ts` + generated `legacy-map.json` (`scripts/build-legacy-redirects.ts`). All 1,884 item URLs in the old sitemap resolve exactly; retired sections → closest category.
+
+### Shipped — search (commit `5e2d848`)
+- A global title pass runs for every query in every branch (Gemini's genre/category guess used to hide exact titles, e.g. "ανεμοδαρμένα ύψη", "κουρδιστό πορτοκάλι"). Accent-folded scoring, last-token prefix match, 4s budget on the AI call (gateway rate limits made requests hang 40s+).
+
+### Shipped — Wave 1 trust pass (commit `0a667ea`, migrations 050–051, data script)
+- Ratings shown from 1 review; 0 → quiet "Γίνε ο πρώτος που θα το αξιολογήσει" (user rule, `lib/ratings.ts`). Duplicate plot hidden (K2 copied reflections into plot for ~1,440 items). Blank metadata cells render nothing (`lib/display.ts`).
+- suggestion_count set from real published rows (was double-counted); 051 recounted everyone. Real contributor count/avatars on home; Greek UI strings; one badge tier source; no grey people placeholders; single title suffix; og:image = images.og; Vercel Analytics (enabled by user).
+- 050: `item_series.awards` (the /series page was empty). 051: review stamp on migrated items (376 venues showed "σε επιθεώρηση"), doctor-strange slug, 4 test movies unpublished, recount.
+- `scripts/fix-text-case.ts`: 1,925 titles + 1,387 writer/director names capitalised; originals in local `backups/text-case-2026-10-24.json` (gitignored).
+
+### Open (next session)
+**User actions:** AI Gateway credits (team limit 5 req/min) · Supabase custom SMTP (626 migrated users have random passwords; reset emails need it) · real /terms + /privacy text.
+**Wave 2 (needs user OK on shapes table + home order in the review artifact):** adopt `<ItemImage>` (row cards for portrait lists, whole-cover-on-blur heroes, 3:2 venue cards) · new guest home (search-first, recommendation of the day, taste quiz, trending, first 8 collections) · embedding backfill (`scripts/embed-items.ts`, 0/1,955 embedded).
+**Cutover:** add www.proteino.gr to Vercel, `NEXT_PUBLIC_SITE_URL=https://www.proteino.gr`, change only web DNS records at grserver.gr (keep MX), Search Console sitemap.
+**Wave 3:** hooks (taste quiz, agree taps, share cards, digest), desktop layout, Phase B days 2–5, account deletion (GDPR).
+
+---
+
+**Previous state — session 39 finished:**
 
 Swept all 3 concrete follow-ups from session 38 + shipped Phase B day 1 (embedding infrastructure). User unlocked the Phase B decision (text-embedding-3-small, production direct). 4 deliverables in one session.
 

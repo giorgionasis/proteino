@@ -212,9 +212,14 @@ Full token reference + image pipeline + icon registry + motion system in `docs/d
 
 ## Open follow-ups (rolling — update this section, not narrative)
 
+**Launch (session 40 plan — see PROGRESS.md §0):**
+- **Wave 2** — adopt `<ItemImage>` across surfaces (shapes table in the review artifact), new guest home. Needs user OK on shapes + home order.
+- **Cutover to www.proteino.gr** — Vercel domain, `NEXT_PUBLIC_SITE_URL`, web DNS only (keep MX), Search Console. Blocked on SMTP (password resets for 626 migrated users).
+- **User-side:** AI Gateway credits (5 req/min cap), Supabase SMTP, legal copy.
+
 **Concrete + sized:**
 - **Phase B days 2-5** — item-to-item carousels on detail pages (day 2), user embeddings + offline batch (day 3), precomputed recs table (day 4), Haiku rerank (day 5). Day 1 infrastructure shipped in session 39. Plan in docs/architecture.md.
-- **Run `scripts/embed-items.ts`** on production after applying migration 046. Dry-run with `--dry-run` first. Free (Google text-embedding-004 via AI Gateway).
+- **Run `scripts/embed-items.ts`** on production (migration 046 is applied; 0/1,955 embedded). Dry-run with `--dry-run` first. Free (Google gemini-embedding-001 via direct API).
 
 **Blocked on user decisions:**
 - **Biblionet subcategory taxonomy** — expand to ~18 vs two-tier UI. Plan in docs/architecture.md.
