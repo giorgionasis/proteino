@@ -98,17 +98,19 @@ export function LeaderboardPage({ categories }: LeaderboardPageProps = {}) {
   return (
     <div className="pb-24">
 
-      <InnerHeader title="Leaderboard" onBack={() => router.back()} />
+      <InnerHeader title="Κατάταξη" onBack={() => router.back()} />
 
       {/* Hero */}
       <div className="px-6 pt-8 flex items-center gap-3 justify-between">
-        <div className="space-y-4 flex-1">
-          <p className="text-[36px] font-extrabold text-zinc-800 leading-[48px]">Leaderboard</p>
+        <div className="space-y-4 flex-1 min-w-0">
+          <p className="text-[36px] font-extrabold text-zinc-800 leading-[48px]">Κατάταξη</p>
           <p className="text-[16px] font-medium text-zinc-800 leading-[130%]">
-            Ανακάλυψε τους χρήστες με τη<br />μεγαλύτερη συμμετοχή
+            Ανακάλυψε τους χρήστες με τη μεγαλύτερη συμμετοχή
           </p>
         </div>
-        <Icon name="leaderboard-trophy" width={120} height={120} alt="" />
+        <div className="shrink-0">
+          <Icon name="leaderboard-trophy" width={104} height={104} alt="" />
+        </div>
       </div>
 
       {/* Filters */}

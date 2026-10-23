@@ -18,7 +18,7 @@ const SUPPORT = [
   { label: "Πως μπορώ να προτείνω",        href: "/help" },
   { label: "Εξατομικευμένη Εμπειρία",      href: "/help" },
   { label: "Πως υπολογίζονται οι πόντοι μου", href: "/help" },
-  { label: "Leaderboard",                   href: "/leaderboard" },
+  { label: "Κατάταξη",                      href: "/leaderboard" },
   { label: "FAQ",                           href: "/help" },
 ];
 

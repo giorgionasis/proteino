@@ -527,7 +527,7 @@ export function UserProfile({
           <div className="flex items-center gap-3">
             <TrophyIcon />
             <div className="space-y-1">
-              <p className="text-[16px] font-bold text-zinc-800">Leaderboard</p>
+              <p className="text-[16px] font-bold text-zinc-800">Κατάταξη</p>
               <p className="text-[13px] font-medium text-zinc-500">Παγκόσμια κατάταξη <span className="text-[#FE6F5E] font-bold">#84</span></p>
             </div>
           </div>

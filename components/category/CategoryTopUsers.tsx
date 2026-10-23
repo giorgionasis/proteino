@@ -131,7 +131,7 @@ export function CategoryTopUsers({ categoryLabel, topUser, contributors }: Props
         href="/leaderboard"
         className="flex items-center justify-center w-full py-[18px] border-[1.5px] border-zinc-600 rounded-full text-base font-semibold text-zinc-700 active:bg-zinc-50 transition-colors"
       >
-        Δες όλο το Leaderboard
+        Δες όλη την κατάταξη
       </Link>
     </section>
   );

@@ -22,7 +22,7 @@ function relativeDate(iso: string): string {
   if (days < 30) return `${days} μέρες πριν`;
   const months = Math.floor(days / 30);
   if (months < 12) return `${months} μήνες πριν`;
-  return d.toLocaleDateString("el-GR", { month: "short", year: "2-digit" });
+  return d.toLocaleDateString("el-GR", { month: "long", year: "numeric" });
 }
 
 interface Props {

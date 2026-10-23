@@ -77,7 +77,7 @@ function formatDate(iso: string): string {
   if (days < 30) return `${days} μέρες πριν`;
   const months = Math.floor(days / 30);
   if (months < 12) return `${months} μήνες πριν`;
-  return d.toLocaleDateString("el-GR", { month: "short", year: "2-digit" });
+  return d.toLocaleDateString("el-GR", { month: "long", year: "numeric" }); // "Μάιος 2020" — "Μαΐ 20" read like a day
 }
 
 function formatDates(dates: unknown): string {

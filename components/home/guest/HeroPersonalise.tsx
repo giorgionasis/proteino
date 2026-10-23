@@ -21,7 +21,9 @@ export function HeroPersonalise() {
       </div>
 
       {/* Center composition */}
-      <div className="relative mt-10 mx-auto w-full" style={{ height: 720, maxWidth: 440 }}>
+      {/* overflow-x-clip: the 480px glow below is wider than a phone and
+          made the whole page scroll sideways. */}
+      <div className="relative mt-10 mx-auto w-full overflow-x-clip" style={{ height: 720, maxWidth: 440 }}>
         {/* Large soft coral radial glow */}
         <div
           className="absolute pointer-events-none rounded-full"

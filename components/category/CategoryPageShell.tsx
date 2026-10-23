@@ -495,7 +495,7 @@ export function CategoryPageShell({
       case "suggest_box":
         return (
           <div key={section.row.id} className="mt-12">
-            <CategorySuggestBox />
+            <CategorySuggestBox category={category} />
           </div>
         );
 
@@ -773,7 +773,7 @@ function LegacyCategoryStack(props: {
         )}
 
         <div className="mt-12">
-          <CategorySuggestBox />
+          <CategorySuggestBox category={category} />
         </div>
 
         {secondaryCarousel.length > 0 && (
