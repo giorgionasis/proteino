@@ -12,6 +12,9 @@ interface Props {
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
   const params = await props.params;
+  // Deleted members (migration 053) keep a placeholder handle; keep those
+  // pages out of search results.
+  if (params.handle.startsWith("deleted-")) return { title: "Πρώην μέλος", robots: { index: false } };
   return { title: `@${params.handle}` };
 }
 
@@ -50,7 +53,7 @@ export default async function ProfilePage(props: Props) {
 
   // Fetch user profile from DB
   const { data: profileData } = (await (db.from("users") as any)
-    .select("id, display_name, handle, avatar_url, bio, suggestion_count, rating_count, level, points, avg_quality_score")
+    .select("id, display_name, handle, avatar_url, bio, suggestion_count, rating_count, level, points, avg_quality_score, deleted_at")
     .eq("handle", params.handle)
     .single()) as { data: any };
 
@@ -159,6 +162,7 @@ export default async function ProfilePage(props: Props) {
       topSuggestion={topSuggestion}
       targetUserId={profileData.id}
       initialFollowing={initialFollowing}
+      deleted={!!profileData.deleted_at}
     />
   );
 }

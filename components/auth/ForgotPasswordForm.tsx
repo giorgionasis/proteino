@@ -9,10 +9,10 @@ import { Button } from "@/components/ui/Button";
 import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
-export function ForgotPasswordForm() {
+export function ForgotPasswordForm({ initialEmail = "" }: { initialEmail?: string }) {
   const router = useRouter();
 
-  const [email,   setEmail]   = useState("");
+  const [email,   setEmail]   = useState(initialEmail);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
   const [shake,   setShake]   = useState(false);

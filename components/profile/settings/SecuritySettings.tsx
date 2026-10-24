@@ -4,10 +4,11 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { InnerHeader } from "@/components/layout/Header";
 import { Modal } from "@/components/ui/Modal";
+import { DELETE_CONFIRM_WORD } from "@/lib/auth/account";
 
 /**
  * Security settings page — password change · social account unlink ·
- * device history · global sign-out · account deactivation hook.
+ * device history · global sign-out · account deletion.
  *
  * Server (page.tsx) hydrates the static fields (identities, devices,
  * email). Mutations go through the dedicated API routes:
@@ -15,6 +16,7 @@ import { Modal } from "@/components/ui/Modal";
  *   PATCH  /api/auth/password
  *   DELETE /api/auth/identities/[provider]
  *   POST   /api/auth/signout-all
+ *   DELETE /api/auth/account
  *
  * Each section is independent — failure in one doesn't affect the
  * others.
@@ -54,6 +56,7 @@ export function SecuritySettings({ email, lastUpdatedAt, identities, devices }: 
   const router = useRouter();
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [signoutOpen,  setSignoutOpen]  = useState(false);
+  const [deleteOpen,   setDeleteOpen]   = useState(false);
   const [identList,    setIdentList]    = useState<SecurityIdentity[]>(identities);
   const [busy,         setBusy]         = useState<string | null>(null);
   const [toast,        setToast]        = useState<string | null>(null);
@@ -229,18 +232,19 @@ export function SecuritySettings({ email, lastUpdatedAt, identities, devices }: 
 
         <div className="h-px bg-[#DEDEDE]" />
 
-        {/* ── Account deactivation (UI only — backend pending) ───── */}
+        {/* ── Account deletion ──────────────────────────────────── */}
         <section className="space-y-4">
           <p className="text-[20px] font-bold text-zinc-800 leading-[140%]">Λογαριασμός</p>
           <p className="text-[14px] font-normal text-zinc-500 leading-[140%]">
-            Απενεργοποίηση του λογαριασμού σου. Οι προτάσεις και οι αξιολογήσεις παραμένουν στην κοινότητα.
+            Διαγραφή του λογαριασμού σου και των προσωπικών σου στοιχείων. Οι προτάσεις και οι
+            αξιολογήσεις σου παραμένουν στην κοινότητα ανώνυμα.
           </p>
           <button
-            onClick={() => setToast("Η απενεργοποίηση δεν είναι ακόμα διαθέσιμη — γράψε μας στο support.")}
+            onClick={() => setDeleteOpen(true)}
             className="text-[16px] font-bold underline active:opacity-70 transition-opacity"
-            style={{ color: "#EC2525" }}
+            style={{ color: "#E24B4A" }}
           >
-            Απενεργοποίηση
+            Διαγραφή λογαριασμού
           </button>
         </section>
 
@@ -281,12 +285,96 @@ export function SecuritySettings({ email, lastUpdatedAt, identities, devices }: 
         </Modal>
       )}
 
+      {deleteOpen && (
+        <DeleteAccountModal
+          onClose={() => setDeleteOpen(false)}
+          onDeleted={() => { window.location.href = "/"; }}
+        />
+      )}
+
       {toast && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[60] px-4 py-3 rounded-lg bg-zinc-900 text-white text-[13px] font-medium shadow-lg max-w-[90vw] animate-in slide-in-from-bottom-2 duration-200">
           {toast}
         </div>
       )}
     </div>
+  );
+}
+
+// ── Delete account modal ──────────────────────────────────────────────
+
+function DeleteAccountModal({ onClose, onDeleted }: { onClose: () => void; onDeleted: () => void }) {
+  const [word,  setWord]  = useState("");
+  const [busy,  setBusy]  = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const typed = word.trim().normalize("NFD").replace(/\p{M}/gu, "").toLocaleUpperCase("el-GR");
+  const canSubmit = typed === DELETE_CONFIRM_WORD && !busy;
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSubmit) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/account", {
+        method:  "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ confirm: word }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? "Η διαγραφή απέτυχε");
+      onDeleted();
+    } catch (e: any) {
+      setError(e?.message ?? "Η διαγραφή απέτυχε");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={busy ? () => {} : onClose} title="Διαγραφή λογαριασμού">
+      <form onSubmit={submit} className="space-y-4">
+        <div className="text-[14px] text-zinc-600 leading-[150%] space-y-2">
+          <p>Θα διαγραφούν οριστικά:</p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>η σύνδεση, το email και τα στοιχεία του προφίλ σου</li>
+            <li>η λίστα σου, οι ακολουθήσεις και οι ειδοποιήσεις</li>
+            <li>το ιστορικό αναζητήσεων και οι προτιμήσεις σου</li>
+          </ul>
+          <p>
+            Οι προτάσεις και οι αξιολογήσεις σου μένουν στην κοινότητα με το όνομα «Πρώην μέλος».
+            Αν θέλεις να σβηστούν κι αυτές, <a href="/support" className="underline font-semibold text-zinc-800">γράψε μας</a>.
+          </p>
+          <p className="font-semibold text-zinc-800">Η ενέργεια δεν αναιρείται.</p>
+        </div>
+        <Input
+          label={`Γράψε ${DELETE_CONFIRM_WORD} για επιβεβαίωση`}
+          type="text"
+          value={word}
+          onChange={setWord}
+          autoFocus
+        />
+        {error && <p className="text-[13px] text-red-600">{error}</p>}
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="flex-1 h-11 rounded-lg border border-zinc-200 text-[14px] font-semibold text-zinc-700 disabled:opacity-40"
+          >
+            Ακύρωση
+          </button>
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="flex-1 h-11 rounded-lg text-white text-[14px] font-semibold disabled:opacity-40"
+            style={{ backgroundColor: "#E24B4A" }}
+          >
+            {busy ? "Διαγραφή…" : "Διαγραφή"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

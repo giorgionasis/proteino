@@ -35,7 +35,10 @@ import { resolvePageLayout } from "@/lib/layout/resolver";
 import { getCategoriesResolved } from "@/lib/categories-meta";
 import { renderHomeSection } from "@/lib/layout/home-bridge";
 
-export const metadata: Metadata = { title: { absolute: "Proteino — Προτάσεις από αληθινούς ανθρώπους" } };
+export const metadata: Metadata = {
+  title: { absolute: "Proteino — Προτάσεις από αληθινούς ανθρώπους" },
+  alternates: { canonical: "/" },
+};
 
 // ── Data fetching helpers ─────────────────────────────────────────
 
@@ -239,6 +242,7 @@ async function fetchTopUsers(sb: SB, limit = 6, viewerId: string | null = null):
     .select("id, display_name, handle, avatar_url, suggestion_count")
     .order("suggestion_count", { ascending: false })
     .gt("suggestion_count", 0)
+    .is("deleted_at", null)
     .limit(viewerId ? limit + 1 : limit);
   if (viewerId) q = q.neq("id", viewerId);
 
@@ -350,10 +354,11 @@ const fetchContributors = unstable_cache(
   async (): Promise<ContributorsSummary> => {
     const sb = createAdminClient();
     const [{ count }, { data }] = await Promise.all([
-      sb.from("users").select("id", { count: "exact", head: true }).gt("suggestion_count", 0),
+      sb.from("users").select("id", { count: "exact", head: true }).gt("suggestion_count", 0).is("deleted_at", null),
       sb.from("users")
         .select("id, display_name, handle, avatar_url")
         .gt("suggestion_count", 0)
+        .is("deleted_at", null)
         .order("suggestion_count", { ascending: false })
         .limit(12),
     ]);

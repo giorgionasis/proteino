@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { checkEmailExists } from "@/lib/auth/checkEmail";
+import { checkEmailExists, checkLegacyAccount } from "@/lib/auth/checkEmail";
 import { Input } from "@/components/ui/Input";
 
 import { Button } from "@/components/ui/Button";
@@ -30,6 +30,9 @@ export function LoginForm() {
   const [passwordError, setPasswordError] = useState("");
   const [loading,       setLoading]      = useState(false);
   const [shake,         setShake]        = useState(false);
+  /** Migrated from the old proteino.gr and never signed in here — the
+   *  old password was never transferred (migration 055). */
+  const [legacy,        setLegacy]       = useState(false);
 
   useEffect(() => {
     if (searchParams.get("error") === "oauth") {
@@ -52,6 +55,7 @@ export function LoginForm() {
     } else {
       setEmailState(exists ? "found" : "not-found");
     }
+    if (exists !== false) setLegacy(await checkLegacyAccount(val));
   }
 
   /* ── submit ───────────────────────────────────────────── */
@@ -86,9 +90,14 @@ export function LoginForm() {
       authError.message.includes("Invalid login credentials") ||
       authError.message.includes("invalid_credentials")
     ) {
-      emailState === "found"
-        ? setPasswordError("Ο κωδικός δεν αντιστοιχεί στο email που έχεις συμπληρώσει")
-        : setEmailState("not-found");
+      const isLegacy = legacy || (await checkLegacyAccount(email.trim()));
+      if (isLegacy) {
+        setLegacy(true);
+      } else if (emailState === "found") {
+        setPasswordError("Ο κωδικός δεν αντιστοιχεί στο email που έχεις συμπληρώσει");
+      } else {
+        setEmailState("not-found");
+      }
     } else if (authError.message.includes("Email not confirmed")) {
       setPasswordError("Επιβεβαίωσε πρώτα το email σου.");
     } else {
@@ -129,6 +138,7 @@ export function LoginForm() {
           setEmail(e.target.value);
           setEmailState("idle");
           setPasswordError("");
+          setLegacy(false);
         }}
         onBlur={handleEmailBlur}
         error={emailError}
@@ -139,6 +149,25 @@ export function LoginForm() {
         autoFocus
         disabled={loading}
       />
+
+      {legacy && (
+        <div className="rounded-xl bg-coral-50 px-4 py-4 space-y-3" role="status">
+          <p className="text-[16px] font-bold text-zinc-900">Καλώς ήρθες πίσω!</p>
+          <p className="text-[14px] text-zinc-700 leading-[150%]">
+            Το proteino.gr ανανεώθηκε και οι προτάσεις σου είναι όλες εδώ. Για λόγους ασφαλείας
+            ο παλιός κωδικός δεν μεταφέρθηκε, οπότε όρισε έναν νέο για να συνεχίσεις.
+          </p>
+          <Link
+            href={`/forgot-password?email=${encodeURIComponent(email.trim())}&welcome=1`}
+            className="flex items-center justify-center h-12 rounded-lg bg-zinc-900 text-white text-[15px] font-bold active:opacity-80 transition-opacity"
+          >
+            Όρισε νέο κωδικό
+          </Link>
+          <p className="text-[13px] text-zinc-500 leading-[140%]">
+            Αν το email σου είναι Gmail, μπορείς και να συνδεθείς με Google από πάνω.
+          </p>
+        </div>
+      )}
 
       {/* Password + forgot link */}
       <div className="space-y-2">

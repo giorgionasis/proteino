@@ -25,3 +25,20 @@ export async function checkEmailExists(email: string): Promise<boolean | null> {
     return null;
   }
 }
+
+/**
+ * True when the email belongs to an account migrated from the old
+ * proteino.gr that has never signed in here (migration 055) — its
+ * password was never transferred, so the user must set a new one.
+ * False on any error (the hint is a nicety, never a blocker).
+ */
+export async function checkLegacyAccount(email: string): Promise<boolean> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return false;
+  try {
+    const supabase = createClient();
+    const { data, error } = await (supabase.rpc as any)("legacy_account_needs_password", { email_param: email });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}

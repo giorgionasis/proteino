@@ -149,6 +149,8 @@ interface UserProfileViewerProps {
   targetUserId: string;
   /** Whether the current viewer already follows this user (server-fetched). */
   initialFollowing: boolean;
+  /** Account was deleted (migration 053) — contributions stay, no follow. */
+  deleted?: boolean;
 }
 
 export function UserProfileViewer({
@@ -162,6 +164,7 @@ export function UserProfileViewer({
   topSuggestion,
   targetUserId,
   initialFollowing,
+  deleted = false,
 }: UserProfileViewerProps) {
   const { following, toggle: toggleFollow, busy: followBusy } = useFollow(targetUserId, initialFollowing);
   const [popupTab, setPopupTab] = useState<"followers" | "following" | null>(null);
@@ -176,6 +179,11 @@ export function UserProfileViewer({
       >
         {/* Follow button row (centered, 56px tall container) */}
         <div className="flex justify-center items-center" style={{ height: 56 }}>
+          {deleted ? (
+            <p className="text-[14px] text-zinc-500 text-center">
+              Ο λογαριασμός διαγράφηκε. Οι προτάσεις του μένουν στην κοινότητα.
+            </p>
+          ) : (
           <button
             onClick={toggleFollow}
             disabled={followBusy}
@@ -196,6 +204,7 @@ export function UserProfileViewer({
               </>
             )}
           </button>
+          )}
         </div>
 
         {/* Avatar + name + followers */}

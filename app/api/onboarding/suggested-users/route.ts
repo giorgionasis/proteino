@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
       .from("suggestions")
       .select(`
         user_id,
-        users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, suggestion_count, level, avg_quality_score),
+        users!suggestions_user_id_fkey(id, handle, display_name, avatar_url, suggestion_count, level, avg_quality_score, deleted_at),
         items!inner(category)
       `)
       .eq("is_published", true)
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
     for (const r of rows ?? []) {
       const u: any = (r as any).users;
       const itemCat: string | undefined = (r as any).items?.category;
-      if (!u || u.id === viewerId || alreadyFollowing.has(u.id)) continue;
+      if (!u || u.deleted_at || u.id === viewerId || alreadyFollowing.has(u.id)) continue;
       const cur = pool.get(u.id);
       if (cur) {
         cur.matched += 1;
@@ -151,6 +151,7 @@ export async function GET(req: NextRequest) {
       .from("users")
       .select("id, handle, display_name, avatar_url, suggestion_count, level, avg_quality_score")
       .gt("suggestion_count", 0)
+      .is("deleted_at", null)
       .order("suggestion_count", { ascending: false })
       .limit(TIGHT_LIMIT + BROAD_LIMIT + 5);
 
