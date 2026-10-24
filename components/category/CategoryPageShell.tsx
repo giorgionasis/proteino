@@ -1,5 +1,7 @@
 "use client";
 
+import { useOverlay } from "@/hooks/useOverlay";
+
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -431,6 +433,7 @@ export function CategoryPageShell({
             category={category}
             visibleCount={visibleCount}
             onLoadMore={() => setVisibleCount((c) => c + 10)}
+            onClearFilters={activeFilterCount > 0 ? () => setFilterValues({}) : undefined}
           />
         );
 
@@ -629,11 +632,14 @@ function ItemsList({
   category,
   visibleCount,
   onLoadMore,
+  onClearFilters,
 }: {
   items: CategoryItem[];
   category: CategorySlug;
   visibleCount: number;
   onLoadMore: () => void;
+  /** Present only when filters are active — empty state offers a reset. */
+  onClearFilters?: () => void;
 }) {
   return (
     <>
@@ -643,7 +649,7 @@ function ItemsList({
             <CategoryCard key={item.id} item={item} category={category} />
           ))
         ) : (
-          <EmptyState />
+          <EmptyState onClearFilters={onClearFilters} />
         )}
       </div>
       {items.length > visibleCount && (
@@ -660,12 +666,33 @@ function ItemsList({
   );
 }
 
-function EmptyState() {
+/** No dead ends: always offer the next step — drop the filters, or add
+ *  the missing thing yourself (guests get the sign-in prompt). */
+function EmptyState({ onClearFilters }: { onClearFilters?: () => void }) {
+  const openSuggestion = useOverlay((s) => s.openSuggestion);
   return (
     <div className="flex flex-col items-center justify-center py-16 px-8 text-center gap-3">
-      <span className="text-4xl">🔍</span>
+      <span className="text-4xl" aria-hidden>🔍</span>
       <p className="text-sm font-semibold text-zinc-800">Δεν βρέθηκαν αποτελέσματα</p>
-      <p className="text-xs text-zinc-500">Δοκίμασε να αλλάξεις τα φίλτρα σου ή πρόσθεσε κάτι νέο.</p>
+      <p className="text-xs text-zinc-500">
+        {onClearFilters ? "Κανένα δεν ταιριάζει σε όλα τα φίλτρα μαζί." : "Δεν υπάρχει ακόμα κάτι εδώ."}
+      </p>
+      <div className="flex flex-col gap-2 pt-2 w-full max-w-[260px]">
+        {onClearFilters && (
+          <button
+            onClick={onClearFilters}
+            className="h-11 rounded-full bg-zinc-900 text-white text-[14px] font-semibold active:opacity-80"
+          >
+            Καθαρισμός φίλτρων
+          </button>
+        )}
+        <button
+          onClick={() => openSuggestion()}
+          className="h-11 rounded-full border border-zinc-300 text-[14px] font-semibold text-zinc-800 active:opacity-80"
+        >
+          Πρότεινε κάτι εσύ
+        </button>
+      </div>
     </div>
   );
 }

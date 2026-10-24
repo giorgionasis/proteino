@@ -484,7 +484,7 @@ export function CategoryMapView({
       {/* Empty state badge */}
       {geoItems.length === 0 && items.length > 0 && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 bg-white/95 backdrop-blur px-4 py-2 rounded-full text-sm font-medium text-zinc-700 shadow-sm">
-          Δεν υπάρχουν γεωκωδικοποιημένα στοιχεία για τα φίλτρα αυτά
+          Κανένα από αυτά δεν έχει ακόμα σημείο στον χάρτη
         </div>
       )}
 
