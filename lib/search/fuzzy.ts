@@ -13,7 +13,9 @@ import { foldGreek, titleTokens } from "@/lib/search/title-match";
 const ITEM_COLS =
   "id, title, original_title, slug, category, subcategory_id, cover_url, poster_url, backdrop_url, avg_rating, rating_count, suggestion_count, created_at";
 
-const getTitleIndex = unstable_cache(
+/** Cached (10 min) index of every published item's title words. Also
+ *  used by lib/items/find-existing.ts for duplicate detection. */
+export const getTitleIndex = unstable_cache(
   async () => {
     const sb = createAdminClient();
     const rows: any[] = [];

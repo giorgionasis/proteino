@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { findExistingItem } from "@/lib/items/find-existing";
 import { NextRequest, NextResponse } from "next/server";
 import type { CategorySlug } from "@/types";
 import { processAndStoreItemImageFromUrl } from "@/lib/item-image-upload";
@@ -323,17 +324,21 @@ export async function POST(req: NextRequest) {
   const baseSlug = slugify(title);
   const fullSlug = `${category}/${baseSlug}`;
 
-  const { data: existingItem } = await admin
-    .from("items")
-    .select("id, slug, title, subcategory_id")
-    .eq("slug", fullSlug)
-    .maybeSingle();
-
   let itemId: string;
   let itemSlug: string;
 
   // Pull rich metadata out of ai_match_data (TMDB / Books / Places shape).
   const md = (body.ai_match_data ?? {}) as Record<string, any>;
+
+  // Slug, then accent-folded title / original title — exact slug alone
+  // missed 40% of the migrated catalogue (lib/items/find-existing.ts).
+  const found = await findExistingItem(admin, category, fullSlug, [title, md.original_title, md.title]);
+  const { data: existingItem } = found
+    ? await (admin.from("items") as any)
+        .select("id, slug, title, subcategory_id, is_published, metadata")
+        .eq("id", found.id)
+        .maybeSingle()
+    : { data: null };
   const tmdbGenreIds: number[] = Array.isArray(md.genre_ids)
     ? md.genre_ids.filter((n: any): n is number => typeof n === "number")
     : [];
@@ -341,6 +346,16 @@ export async function POST(req: NextRequest) {
   if (existingItem) {
     itemId = (existingItem as any).id;
     itemSlug = (existingItem as any).slug;
+
+    // Unpublished only because its last suggestion was deleted (see
+    // DELETE /api/suggestions/[id]) → this suggestion brings it back.
+    // Anything an admin unpublished stays unpublished.
+    if (!(existingItem as any).is_published && (existingItem as any).metadata?.unpublished_reason === "no_suggestions") {
+      const { unpublished_reason: _drop, ...restMeta } = (existingItem as any).metadata ?? {};
+      await (admin.from("items") as any)
+        .update({ is_published: true, metadata: restMeta })
+        .eq("id", itemId);
+    }
 
     // 2. Duplicate check — has anyone already suggested this item?
     // Only PUBLISHED suggestions block resubmission — admin can

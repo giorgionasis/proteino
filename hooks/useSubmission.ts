@@ -596,6 +596,8 @@ export function useSubmission(): UseSubmissionReturn {
     (async () => {
       try {
         const params = new URLSearchParams({ title, category });
+        const orig = (analysis?.matchData as Record<string, unknown> | null)?.original_title;
+        if (typeof orig === "string" && orig.trim()) params.set("original_title", orig.trim());
         const res = await fetch(`/api/suggestions/check?${params}`);
         if (!res.ok || cancelled) return;
         const body = await res.json();
@@ -636,6 +638,8 @@ export function useSubmission(): UseSubmissionReturn {
         title: analysis.title,
         category: analysis.category,
       });
+      const orig = (analysis.matchData as Record<string, unknown> | null)?.original_title;
+      if (typeof orig === "string" && orig.trim()) params.set("original_title", orig.trim());
       const res = await fetch(`/api/suggestions/check?${params}`);
       if (res.ok) {
         const body = await res.json();

@@ -122,8 +122,11 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
   ]);
   let itemUnpublished = false;
   if (remainingSuggestions === 0 && visibleReviews === 0) {
+    const { data: cur } = await (admin.from("items") as any).select("metadata").eq("id", itemId).maybeSingle();
     const { error: unpubErr } = await (admin.from("items") as any)
-      .update({ is_published: false })
+      // The reason lets a later suggestion of the same item republish it
+      // (POST /api/suggestions) without touching admin-unpublished items.
+      .update({ is_published: false, metadata: { ...(cur?.metadata ?? {}), unpublished_reason: "no_suggestions" } })
       .eq("id", itemId);
     itemUnpublished = !unpubErr;
   }

@@ -18,8 +18,16 @@ Design paused: v1 (Airbnb copy) and v2 (calm editorial, Commissioner + Literata)
 - **Legal drafts.** /privacy rewritten to match the code (removed Sentry/Anthropic/affiliate claims; added legal bases, AI processing, K2 account transfer, retention, deletion path, processors + transfers). /terms: operator, AI, reporting, deletion. Operator identity in `lib/legal.ts` is EMPTY — owner must fill legal name/address. AI query texts now purged after 30 days (opportunistic, in `writeCache`).
 - **Welcome-back login.** `legacy_account_needs_password()` (055): migrated K2 accounts that never signed in see «Καλώς ήρθες πίσω!» + «Όρισε νέο κωδικό» instead of «wrong password»; forgot-password page prefills the email with a welcome headline. Needs custom SMTP to actually deliver the reset email.
 
+### Shipped — flow audit (same session, migrations 056–057)
+- Sign-up: profiles created wherever missing (`lib/auth/ensure-profile.ts`) + live username check; return-to-page after login/Google/sign-up; `next` param sanitised (open redirect); expired/cross-browser email links explained; Greek auth email templates with the 6-digit code (`supabase/templates/`); reset → straight in.
+- Guests tapping + get the sign-in prompt first. Category empty states have actions. Onboarding pre-selects migrated members' categories.
+- Ratings: ONE rule (reviews + suggester stars, one per person) in SQL triggers + `combineRatings()`; hides now recompute; wishlist → done on rating (was documented, never built); live review counts; follow-notification dedupe; deleted users unfollowable.
+- Duplicates: publish + check matched existing items by exact slug only — missed 758/1,894 migrated items (K2 transliterates ου→ou, χ→x). `lib/items/find-existing.ts` adds accent-folded title matching (0 collisions in the catalogue); recipes exempt (created data). Deleting the last suggestion on an unreviewed item unpublishes it (`metadata.unpublished_reason`), a new suggestion republishes it.
+- Badge tiers named the same everywhere; help centre corrected.
+- Embeddings: free tier is 1,000 requests/DAY — backfill stopped with 257 left (series 57, bars 122, theater 41, events 37). Script now batches 100 per request. **Re-run `npx tsx scripts/embed-items.ts` after the quota resets.**
+
 ### Open
-**User:** run 053 → 054 → 055, then deploy · fill `lib/legal.ts` operator + lawyer review · SMTP · AI Gateway credits.
+**User:** run 056 + 057 · re-run embed-items once the daily quota resets · confirm support@proteino.gr mailbox exists · run 053 → 054 → 055 (done), then deploy · fill `lib/legal.ts` operator + lawyer review · SMTP · AI Gateway credits.
 **Next:** redesign (when the user is ready) · cutover to www · Phase B days 3–5.
 
 ---

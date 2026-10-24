@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { findExistingItem } from "@/lib/items/find-existing";
 import { NextRequest, NextResponse } from "next/server";
 
 const GREEK_TO_LATIN: Record<string, string> = {
@@ -48,11 +49,10 @@ export async function GET(req: NextRequest) {
 
   const admin = createAdminClient();
 
-  const { data: item } = await admin
-    .from("items")
-    .select("id, slug")
-    .eq("slug", fullSlug)
-    .maybeSingle();
+  // Same lookup as publish (slug, then folded title) — they must agree,
+  // or this screen says "new" and publish then 409s.
+  const originalTitle = url.searchParams.get("original_title")?.trim() || null;
+  const item = await findExistingItem(admin, category, fullSlug, [title, originalTitle]);
 
   if (!item) return NextResponse.json({ exists: false });
 
