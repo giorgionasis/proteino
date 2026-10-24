@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/ui/Toast";
+import { slugify } from "@/lib/slugify";
 
 interface SubcategoryRow {
   id: string;
@@ -519,24 +520,6 @@ function ReassignDialog({
 
 /* ── Full subcategory editor ──────────────────────────────────── */
 
-const GREEK_TO_LATIN: Record<string, string> = {
-  α: "a", β: "v", γ: "g", δ: "d", ε: "e", ζ: "z", η: "i", θ: "th",
-  ι: "i", κ: "k", λ: "l", μ: "m", ν: "n", ξ: "x", ο: "o", π: "p",
-  ρ: "r", σ: "s", ς: "s", τ: "t", υ: "y", φ: "f", χ: "ch", ψ: "ps", ω: "o",
-  ά: "a", έ: "e", ή: "i", ί: "i", ό: "o", ύ: "y", ώ: "o", ϊ: "i", ϋ: "y",
-  ΐ: "i", ΰ: "y",
-};
-
-function slugifyClient(text: string): string {
-  return text
-    .toLowerCase()
-    .split("")
-    .map((c) => GREEK_TO_LATIN[c] || c)
-    .join("")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
 function SubcategoryEditor({
   row,
   busy,
@@ -576,7 +559,7 @@ function SubcategoryEditor({
   }
 
   function regenerateSlug() {
-    const next = slugifyClient(trimmedName || row.name);
+    const next = slugify(trimmedName || row.name);
     setSlug(next);
   }
 

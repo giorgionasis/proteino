@@ -2,23 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { findExistingItem } from "@/lib/items/find-existing";
 import { NextRequest, NextResponse } from "next/server";
-
-const GREEK_TO_LATIN: Record<string, string> = {
-  "α":"a","β":"v","γ":"g","δ":"d","ε":"e","ζ":"z","η":"i","θ":"th",
-  "ι":"i","κ":"k","λ":"l","μ":"m","ν":"n","ξ":"x","ο":"o","π":"p",
-  "ρ":"r","σ":"s","ς":"s","τ":"t","υ":"y","φ":"f","χ":"ch","ψ":"ps","ω":"o",
-  "ά":"a","έ":"e","ή":"i","ί":"i","ό":"o","ύ":"y","ώ":"o","ϊ":"i","ϋ":"y",
-  "ΐ":"i","ΰ":"y",
-};
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .split("")
-    .map((c) => GREEK_TO_LATIN[c] || c)
-    .join("")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
+import { slugify } from "@/lib/slugify";
 
 /**
  * GET /api/suggestions/check?title=...&category=...

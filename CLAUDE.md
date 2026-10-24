@@ -208,6 +208,7 @@ Full token reference + image pipeline + icon registry + motion system in `docs/d
 | Recipe submission | Dedicated wizard with link-paste + manual paths, NOT free-text-match | Recipes are CREATED data, not REFERENCED. Other 8 categories identify existing entities; recipes need ingredients + steps to produce usable items. See PROGRESS.md session 38. |
 | Recipe units | Predefined dropdown sourced from `extra_field_options.recipes.unit` (seed: migration 045) | Uniformity across recipes — admin extends via `/admin/extra-fields`. Canonical fallback list in `lib/recipes/units.ts`. Stored value = label string |
 | Category override | Free-text default + chip + manual picker | AI brand promise stays primary; chip is a quiet escape hatch for the 5% case (also unblocks recipe-wizard trigger). `useSubmission.effectiveCategory = manualCategory ?? analysis.category` |
+| Slug transliteration | Old proteino.gr convention: χ→x, ξ→ks, ου→ou, ψ→ps, θ→th, αυ/ευ by sound; one function `lib/slugify.ts` | Continuity with the 1,884 migrated addresses (reproduces 79%; the rest are the old site's own hand edits). Not ELOT 743 (χ→ch) — no standard governs URLs. Stored slugs never change; match items by title, never by recomputed slug |
 | Embedding provider | Google gemini-embedding-001 (3072 native → truncated to 768 via Matryoshka) | Free via direct API, AI Gateway for runtime. pgvector caps at 2000-dim indexes so truncation required. Migration 046 resizes 1536→768 + upgrades IVFFlat→HNSW. |
 
 ---
@@ -276,6 +277,7 @@ supabase/migrations/           # initial schema only
 - **Skill /admin/showcase before designing** — saves redoing work.
 - **PROMPT_VERSION bump** on any Gemini prompt edit, in `lib/ai/cache-and-log.ts`.
 - **No `Array.isArray` narrowing on `items.images`** — see invariants above.
+- **One slug function** — `lib/slugify.ts`. Don't add local Greek→Latin maps (there were 11 diverging copies).
 - **Migrations are append-only + idempotent** (`ON CONFLICT DO NOTHING`, `IF NOT EXISTS`). Never edit a numbered migration in place after applying.
 
 ---
