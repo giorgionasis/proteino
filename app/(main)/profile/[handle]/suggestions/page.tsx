@@ -9,7 +9,7 @@ interface Props { params: Promise<{ handle: string }> }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
   const params = await props.params;
-  return { title: `Προτάσεις @${params.handle} — Proteino` };
+  return { title: `Προτάσεις @${params.handle}` };
 }
 
 export default async function SuggestionsPage(props: Props) {

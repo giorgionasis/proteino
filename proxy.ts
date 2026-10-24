@@ -51,7 +51,14 @@ export async function proxy(request: NextRequest) {
     // validity, so a stale cookie would trap users who can never re-auth.
     // Those pages do their own server-side getSession() check.
 
-    return NextResponse.next();
+    const res = NextResponse.next();
+    // *.vercel.app (production + previews) serves the same pages as
+    // www.proteino.gr — keep it out of search indexes. Canonical tags
+    // already point at www.
+    if ((request.headers.get("host") ?? "").endsWith(".vercel.app")) {
+      res.headers.set("X-Robots-Tag", "noindex");
+    }
+    return res;
   } catch (err) {
     // Last-resort: never 500 the site from the proxy layer.
     console.error("[proxy] passthrough:", err);

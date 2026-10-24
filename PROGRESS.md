@@ -1,12 +1,30 @@
 # Proteino — Build Progress
 
-Last updated: 2026-10-24 (session 40 — launch prep after 5-month pause: security lockdown · K2 image transfer · old-URL redirects · search title fixes · UX review + Wave 1 trust pass)
+Last updated: 2026-10-24 (session 41 — account deletion · embeddings backfill · similar items · www SEO prep · legal drafts · welcome-back login for migrated users)
 
 ---
 
 ## 0. WHERE WE LEFT OFF (read first when resuming)
 
-**Current state — session 40 finished (2026-10-22 → 10-24):**
+**Current state — session 41 finished (2026-10-24):**
+
+Design paused: v1 (Airbnb copy) and v2 (calm editorial, Commissioner + Literata) mockups were both rejected — the user wants something 2026 that isn't boring, guides you and makes you come back. Canvas kept at https://claude.ai/artifact/Dk8D3irzpnRnPiEUuVjLn4 for reference; redesign resumes when the user calls it. Meanwhile, six non-design launch items:
+
+### Shipped (migrations 053–055 — run BEFORE deploying this code)
+- **Account deletion (GDPR).** Σύνδεση & Ασφάλεια → «Διαγραφή λογαριασμού» (type ΔΙΑΓΡΑΦΗ). `DELETE /api/auth/account` → `anonymize_user()` (053): profile scrubbed to «Πρώην μέλος», bookmarks/follows/notifications/devices/search history/embeddings deleted, suggestions + reviews kept, auth user deleted. Deleted users drop out of leaderboard, home people rails, onboarding suggestions; their profile shows a quiet note, noindex. Admins refused.
+- **Embeddings backfill.** `scripts/embed-items.ts` fixed: it read only 1,000 rows (PostgREST cap) and sent every id in one URL. Now paged + chunked, adds tags + first member reflection (the only description most K2 venues have), RETRIEVAL_DOCUMENT task type, unit-normalised 768-d, retries network/5xx, `--limit N`. Free tier runs ~25 items/min.
+- **Similar items (Phase B day 2).** `_vector_similar_` related-section rule (054): `similar_items()` exact cosine scan, same category, ≥0.66 similarity, min 3. Seeded for all 9 categories, editable at /admin/related-sections. Removed the unused "related" query every detail page ran.
+- **www SEO prep.** `lib/site-url.ts` (default https://www.proteino.gr). Sitemap paged (was capped at 1,000 → now 1,909 URLs) + image entries + collections, revalidates hourly. `X-Robots-Tag: noindex` on *.vercel.app. Canonical on home/categories/leaderboard/collections; thin item pages (no text ≥60 chars) noindex. Fixed doubled «— Proteino» in 10 page titles. All 1,884 legacy redirect targets + 626 profile handles re-verified live.
+- **Legal drafts.** /privacy rewritten to match the code (removed Sentry/Anthropic/affiliate claims; added legal bases, AI processing, K2 account transfer, retention, deletion path, processors + transfers). /terms: operator, AI, reporting, deletion. Operator identity in `lib/legal.ts` is EMPTY — owner must fill legal name/address. AI query texts now purged after 30 days (opportunistic, in `writeCache`).
+- **Welcome-back login.** `legacy_account_needs_password()` (055): migrated K2 accounts that never signed in see «Καλώς ήρθες πίσω!» + «Όρισε νέο κωδικό» instead of «wrong password»; forgot-password page prefills the email with a welcome headline. Needs custom SMTP to actually deliver the reset email.
+
+### Open
+**User:** run 053 → 054 → 055, then deploy · fill `lib/legal.ts` operator + lawyer review · SMTP · AI Gateway credits.
+**Next:** redesign (when the user is ready) · cutover to www · Phase B days 3–5.
+
+---
+
+**Previous state — session 40 finished (2026-10-22 → 10-24):**
 
 Resumed after ~5 months (Supabase project had been paused; restored by the user). Goal set by the user: finish and replace the old Joomla/K2 site at www.proteino.gr with this app (www chosen as canonical). Full review artifact: https://claude.ai/artifact/FsDpeQ1Rj9jfF682reRFZ6
 

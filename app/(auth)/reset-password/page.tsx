@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { AuthHeader } from "@/components/auth/AuthHeader";
 import { ResetPasswordForm } from "@/components/auth/ResetPasswordForm";
 
-export const metadata: Metadata = { title: "Νέος κωδικός — Proteino" };
+export const metadata: Metadata = { title: "Νέος κωδικός" };
 
 export default function ResetPasswordPage() {
   return (

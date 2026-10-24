@@ -39,7 +39,12 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   // the browser tab without redeploy.
   const resolved = await getCategoryResolved(cat.slug);
   const label = resolved?.labelEl ?? cat.labelEl;
-  return { title: label };
+  return {
+    title: label,
+    description: `${label}: προτάσεις από την κοινότητα του Proteino, με κριτικές και βαθμολογίες μελών.`,
+    // Filtered / sorted variants (?tab=…) canonicalise to the plain list.
+    alternates: { canonical: `/${cat.slug}` },
+  };
 }
 
 export interface FilterData {

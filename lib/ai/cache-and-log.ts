@@ -79,6 +79,17 @@ async function writeCache(key: string, task: string, queryText: string, result: 
       },
       { onConflict: "cache_key" },
     );
+    // Opportunistic retention (~2% of writes, no cron): /privacy promises
+    // query texts are kept at most 30 days. Expired cache rows are
+    // dropped; usage-log rows keep their counts but lose the text.
+    if (Math.random() < 0.02) {
+      const cutoff = new Date(Date.now() - CACHE_TTL_MS).toISOString();
+      await (sb.from("ai_query_cache") as any).delete().lt("last_hit_at", cutoff);
+      await (sb.from("ai_usage_log") as any)
+        .update({ query_text: null })
+        .lt("created_at", cutoff)
+        .not("query_text", "is", null);
+    }
   } catch {
     /* fail silently — table missing or DB unreachable */
   }

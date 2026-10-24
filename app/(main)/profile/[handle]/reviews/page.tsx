@@ -8,7 +8,7 @@ interface Props { params: Promise<{ handle: string }> }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
   const params = await props.params;
-  return { title: `Αξιολογήσεις @${params.handle} — Proteino` };
+  return { title: `Αξιολογήσεις @${params.handle}` };
 }
 
 export default async function ReviewsPage(props: Props) {

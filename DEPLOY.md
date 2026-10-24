@@ -79,8 +79,15 @@ scripts/sql/048-rate-limits.sql
 scripts/sql/049-rate-limit-service-role-grant.sql
 scripts/sql/050-series-awards-column.sql
 scripts/sql/051-launch-data-fixes.sql   (run AFTER the session-40 code deploy)
-scripts/sql/052-home-layout-v2.sql      (home order + new widgets; needs the batch-3 code)
+scripts/sql/052-home-layout-v2.sql      (NOT run — superseded by the pending redesign)
+scripts/sql/053-account-deletion.sql    (run BEFORE the session-41 deploy — home filters on users.deleted_at)
+scripts/sql/054-similar-items.sql       (similar-items RPC + 9 related-section rules; needs embeddings)
+scripts/sql/055-legacy-login-hint.sql   (welcome-back hint for migrated K2 accounts)
 ```
+
+**Note:** Migration 053 adds `users.deleted_at` + `anonymize_user(uuid)` (service_role only) and re-creates `get_leaderboard` with a deleted filter. Self-service deletion (`DELETE /api/auth/account`) anonymises the profile (suggestions + reviews stay as «Πρώην μέλος»), deletes personal rows, then deletes the auth user. Admins can't delete themselves from the UI.
+
+**Note:** Migration 054 adds `similar_items(item_id, limit)` (exact cosine scan, same category) and seeds a `_vector_similar_` rule per category in `related_sections_config`. Items without an embedding just don't get the section. Run `npx tsx scripts/embed-items.ts` after adding items in bulk.
 
 **Note:** Migration 016 wipes the legacy `ratings` table and resets `items.rating_count` / `avg_rating` to 0 across all items. The legacy `comments` and `ratings` tables stay in the DB as archive but are NOT read by the new UI — all reviews from now on flow through the new `reviews` table (rating mandatory + reflection optional, one row per (user, item)).
 

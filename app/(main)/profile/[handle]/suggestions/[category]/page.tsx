@@ -14,7 +14,7 @@ function stripPrefix(slug: string): string {
 interface Props { params: Promise<{ handle: string; category: string }> }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  return { title: `Προτάσεις — Proteino` };
+  return { title: `Προτάσεις` };
 }
 
 export default async function CategoryPage(props: Props) {

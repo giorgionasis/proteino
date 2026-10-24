@@ -98,6 +98,8 @@ The 9 detail pages are visual variations of one archetype. Violating these break
 - **Every `/api/admin/*` handler opens with `requireAdmin()`** (`lib/admin/require-admin.ts`). The proxy skips `/api/` and admin routes write with the service-role client, so this is the only gate. `node scripts/check-admin-gates.mjs` fails on any ungated handler (`--fix` inserts it).
 - **`public.users` has column-level grants** (migration 047). anon/authenticated can SELECT only public-profile columns and UPDATE only `display_name, bio, gender, birthday, region, region_id`. A new `users` column is invisible to browser/user-session clients until added to the GRANT. Read your OWN private fields via `rpc("get_my_profile").select(...)`; other users' private fields only server-side with `createAdminClient()`.
 - **Public routes that spend AI tokens call `rateLimit()`** (`lib/rate-limit.ts`, migration 048, Postgres-backed per-IP, fails open).
+- **Account deletion anonymises, never hard-deletes `public.users`** (migration 053 `anonymize_user`) — a DELETE would cascade into suggestions + reviews. Public user lists filter `deleted_at IS NULL`. A new table holding personal per-user rows must be added to `anonymize_user`'s delete list.
+- **/privacy describes what the code does.** Adding a processor, cookie, tracked field or retention change means updating `app/(main)/privacy/page.tsx` in the same change.
 
 ### Reviews are the single source of truth
 - `reviews` table (migration 016) replaces both `ratings` and the user-on-item dimension of `comments`. Every user-on-item interaction = one row.
@@ -215,18 +217,18 @@ Full token reference + image pipeline + icon registry + motion system in `docs/d
 **Launch (session 40 plan — see PROGRESS.md §0):**
 - **Wave 2** — adopt `<ItemImage>` across surfaces (shapes table in the review artifact), new guest home. Needs user OK on shapes + home order.
 - **Cutover to www.proteino.gr** — Vercel domain, `NEXT_PUBLIC_SITE_URL`, web DNS only (keep MX), Search Console. Blocked on SMTP (password resets for 626 migrated users).
-- **User-side:** AI Gateway credits (5 req/min cap), Supabase SMTP, legal copy.
+- **User-side:** AI Gateway credits (5 req/min cap), Supabase SMTP (also needed for the migrated-user «Όρισε νέο κωδικό» flow), fill operator identity in `lib/legal.ts` + lawyer review of /privacy + /terms drafts.
+- **Redesign paused** — v1 + v2 mockups rejected (see memory `feedback_design_direction`). Don't start a new round unprompted.
 
 **Concrete + sized:**
 - **Phase B days 2-5** — item-to-item carousels on detail pages (day 2), user embeddings + offline batch (day 3), precomputed recs table (day 4), Haiku rerank (day 5). Day 1 infrastructure shipped in session 39. Plan in docs/architecture.md.
-- **Run `scripts/embed-items.ts`** on production (migration 046 is applied; 0/1,955 embedded). Dry-run with `--dry-run` first. Free (Google gemini-embedding-001 via direct API).
+- **Phase B day 2 shipped** (session 41): `_vector_similar_` related-section rule, migration 054. Re-run `scripts/embed-items.ts` after bulk item imports (only fills missing embeddings).
 
 **Blocked on user decisions:**
 - **Biblionet subcategory taxonomy** — expand to ~18 vs two-tier UI. Plan in docs/architecture.md.
 
 **Long tail:**
 - §39 SEO closing — admin fields for contentRating / ISBN / numberOfEpisodes / starRating / openingHours / organizer / recipe video; sitemap split at 5K; image sitemap; `noindex` on thin pages.
-- Real legal copy on `/terms` + `/privacy`.
 - Drop legacy `ratings` + `comments` tables once archive is confirmed unwanted.
 - Per-category visual identity polish.
 

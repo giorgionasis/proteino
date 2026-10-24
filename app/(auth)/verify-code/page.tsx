@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { AuthHeader } from "@/components/auth/AuthHeader";
 import { VerifyCodeForm } from "@/components/auth/VerifyCodeForm";
 
-export const metadata: Metadata = { title: "Επαλήθευση κωδικού — Proteino" };
+export const metadata: Metadata = { title: "Επαλήθευση κωδικού" };
 
 export default function VerifyCodePage() {
   return (

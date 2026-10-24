@@ -22,9 +22,10 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     .eq("is_published", true)
     .maybeSingle();
   const row = data as { title?: string; title_specific?: string | null } | null;
-  if (!row?.title) return { title: "Συλλογή — Proteino" };
+  // The root layout's title template already appends " — Proteino".
+  if (!row?.title) return { title: "Συλλογή" };
   const full = [row.title, row.title_specific].filter(Boolean).join(" ");
-  return { title: `${full} — Proteino` };
+  return { title: full, alternates: { canonical: `/collections/${params.alias}` } };
 }
 
 function stripPrefix(slug: string): string {

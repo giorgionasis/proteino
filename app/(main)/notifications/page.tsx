@@ -4,7 +4,7 @@ import { NotificationsPage } from "@/components/notifications/NotificationsPage"
 import { createClient } from "@/lib/supabase/server";
 import { fetchUserNotifications, groupNotifications } from "@/lib/notifications";
 
-export const metadata: Metadata = { title: "Ειδοποιήσεις — Proteino" };
+export const metadata: Metadata = { title: "Ειδοποιήσεις" };
 export const dynamic = "force-dynamic";
 
 export default async function Page() {

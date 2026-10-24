@@ -6,7 +6,7 @@ import { AuthHeader } from "@/components/auth/AuthHeader";
 import { AuthTrustBadge } from "@/components/auth/AuthTrustBadge";
 import { createClient } from "@/lib/supabase/server";
 
-export const metadata: Metadata = { title: "Σύνδεση — Proteino" };
+export const metadata: Metadata = { title: "Σύνδεση" };
 
 export default async function LoginPage() {
   // Real session validation — only redirect if the cookie actually decodes

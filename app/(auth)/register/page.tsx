@@ -5,7 +5,7 @@ import { AuthHeader } from "@/components/auth/AuthHeader";
 import { AuthTrustBadge } from "@/components/auth/AuthTrustBadge";
 import { createClient } from "@/lib/supabase/server";
 
-export const metadata: Metadata = { title: "Εγγραφή — Proteino" };
+export const metadata: Metadata = { title: "Εγγραφή" };
 
 export default async function RegisterPage() {
   // Real session validation — see comment in /login page.

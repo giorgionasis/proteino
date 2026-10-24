@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
+import { SITE_URL } from "@/lib/site-url";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://proteino.gr").replace(/\/$/, "");
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

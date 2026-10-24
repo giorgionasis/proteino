@@ -295,9 +295,9 @@ Locked architecture: 3 layers per CLAUDE.md "Architecture invariants".
 - Cost: **free** (Google text-embedding-004 via AI Gateway).
 - `GET /api/recommendations/similar?item_id=<uuid>&limit=<n>` — pgvector cosine top-N via `match_items` RPC. No auth required (works for guests).
 
-### Day 2 — Item-to-item carousels (detail pages)
-- Day-1 win, works for guests. Replace hardcoded "Σχετικά" / "Από τον ίδιο director" `<RelatedSections>` blocks with new `vector_similar_items` rule.
-- Add `vector_similar` widget to `lib/layout/widgets.ts`.
+### Day 2 — Item-to-item carousels (detail pages) — SHIPPED session 41
+- `_vector_similar_` field token in `related_sections_config` (migration 054), resolved in `lib/related-sections.ts:fetchSimilar` via `similar_items(p_item_id, p_limit)`: exact cosine scan within the same category (the "+ 0" in ORDER BY keeps the planner off HNSW, which under-returns for small categories when filtered). Neighbours below 0.66 similarity dropped (median pair ≈ 0.62); section hidden under `min_items` (3).
+- Works for guests, no LLM. Embedding text = category composer + tags + first member reflection (K2 venues have no other description). Task type RETRIEVAL_DOCUMENT so the same vectors can serve query search later.
 
 ### Day 3 — User embeddings + offline batch
 - Migration: column on `users.embedding` (already exists).

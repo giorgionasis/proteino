@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site-url";
 
 /**
  * robots.ts — App Router convention for /robots.txt.
@@ -7,7 +8,7 @@ import type { MetadataRoute } from "next";
  * Points crawlers at the sitemap so they discover all detail pages.
  */
 export default function robots(): MetadataRoute.Robots {
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://proteino.gr").replace(/\/$/, "");
+  const siteUrl = SITE_URL;
   return {
     rules: [
       {
