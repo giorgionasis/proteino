@@ -62,7 +62,7 @@ interface TierDef {
 
 const PROGRESS_TIERS: TierDef[] = [
   { min: 3,  icon: "badge-verified", label: "Verified", color: "#1D9E75" },
-  { min: 10, icon: "badge-gold",     label: "Έμπειρος", color: "#3B82F6" },
+  { min: 10, icon: "badge-gold",     label: "Gold",     color: "#3B82F6" },
   { min: 25, icon: "badge-expert",   label: "Expert",   color: "#7C3AED" },
   { min: 50, icon: "badge-platinum", label: "Platinum", color: "#64748B" },
 ];
@@ -279,7 +279,7 @@ export function UserProfile({
 
   const name = displayName ?? handle ?? "—";
 
-  // Next level milestone — extended to all 4 tiers (Verified 3, Έμπειρος
+  // Next level milestone — extended to all 4 tiers (Verified 3, Gold
   // 10, Expert 25, Platinum 50). The ProgressBar component does its own
   // tier resolution; this top-line headline mirrors it for the copy.
   const nextMilestone =

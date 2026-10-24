@@ -111,5 +111,22 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
     await (admin.from("items") as any).update({ suggestion_count: next }).eq("id", itemId);
   }
 
-  return NextResponse.json({ ok: true });
+  // Last recommendation gone and nobody else reviewed it → the item is
+  // just a title with no person behind it. Unpublish (not delete: an
+  // admin can restore it, and other members' bookmarks keep their row).
+  const [{ count: remainingSuggestions }, { count: visibleReviews }] = await Promise.all([
+    admin.from("suggestions").select("id", { count: "exact", head: true })
+      .eq("item_id", itemId).eq("is_published", true).is("hidden_at", null),
+    admin.from("reviews").select("id", { count: "exact", head: true })
+      .eq("item_id", itemId).eq("is_hidden", false),
+  ]);
+  let itemUnpublished = false;
+  if (remainingSuggestions === 0 && visibleReviews === 0) {
+    const { error: unpubErr } = await (admin.from("items") as any)
+      .update({ is_published: false })
+      .eq("id", itemId);
+    itemUnpublished = !unpubErr;
+  }
+
+  return NextResponse.json({ ok: true, item_unpublished: itemUnpublished });
 }

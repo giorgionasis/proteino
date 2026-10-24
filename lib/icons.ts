@@ -254,8 +254,8 @@ export function badgeIconForLevel(level: number): IconName {
  *
  * Tier thresholds (per CLAUDE.md §10 / HOOKS.md §3):
  *   < 3  → null (no badge)
- *   3-9  → verified  ("Επαληθευμένος")
- *   10-24 → gold     ("Έμπειρος")
+ *   3-9  → Verified
+ *   10-24 → Gold
  *   25-49 → expert
  *   50+  → platinum
  *

@@ -83,7 +83,7 @@ The 9 detail pages are visual variations of one archetype. Violating these break
 - **Suggester block is unboxed.** Avatar + name + badge + reflection text + date. No border, no fill.
 - **Featured suggester block is mandatory on all 9 categories.**
 - **1-column list across all 9 categories.** Carousels stay portrait for movies/series/books.
-- **Histogram + Top Rated** combine ratings from BOTH sources (`ratings` table + `suggestions.rating`), deduped by user. Server-side, overrides `item.rating_count + avg_rating`.
+- **One rating rule everywhere:** visible `reviews` + the stars in a published `suggestions.rating`, one per person (review wins). SQL `recompute_item_rating()` + triggers on reviews/suggestions keep `items.avg_rating`/`rating_count` (cards) correct on every write incl. moderation hides (migration 057); the detail page mirrors it with `combineRatings()` in `lib/ratings.ts`. Never recompute from reviews alone.
 - **Empty-state = hide, never "—".** If a metadata pair has both cells empty, hide the row including its divider. Conditional renders everywhere. `InfoCell` returns null for blank values (`isBlankValue` in `lib/display.ts`).
 - **Ratings show from 1 review up.** At 0: cards render no rating row; detail pages show the quiet muted `FIRST_REVIEW_INVITE` line, never "0.00" or a loud CTA. Use `hasRatings` / `ratingCountLabel` from `lib/ratings.ts`.
 - **No gray-circle placeholders for people.** Every actor/performer/director/writer bubble is `<PersonBubble>` — real image when available, deterministic colored-initial circle otherwise.
@@ -110,7 +110,7 @@ The 9 detail pages are visual variations of one archetype. Violating these break
 ### Bookmark v2 — two-state model
 - `bookmarks.status` ∈ {`'wishlist'`, `'done'`}. Migration 023 + 025.
 - Default save = `wishlist`. Tap top-right bookmark IconButton → lands on wishlist.
-- **Rating an item auto-flips wishlist → done.** Reverse flip is manual only.
+- **Rating an item auto-flips wishlist → done** (POST /api/reviews; page chips sync via `announceBookmarkStatus`). Reverse flip is manual only.
 - Chips always visible below the hero on every detail page (discoverability > minimalism).
 - Per-category labels in `lib/bookmarks/labels.ts`.
 

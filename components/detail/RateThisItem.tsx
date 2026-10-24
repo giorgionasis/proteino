@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { cn } from "@/lib/utils/cn";
+import { announceBookmarkStatus } from "@/hooks/useBookmark";
 import { composerCopy, STAR_LABELS } from "@/lib/reviews/composer-copy";
 import {
   evaluateQuality,
@@ -170,7 +171,11 @@ export function RateThisItem({
       }
       const body = (await res.json()) as Omit<PublishResult, "rating" | "reflection"> & {
         achievement?: unknown;
+        bookmark_status?: "done" | null;
       };
+      // The server moved a wishlist entry to done — tell this page's
+      // bookmark chips (useBookmark listens) without a refetch.
+      if (body.bookmark_status) announceBookmarkStatus(itemId, body.bookmark_status);
       return {
         review_id: body.review_id,
         avg_rating: body.avg_rating,

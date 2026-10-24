@@ -11,7 +11,7 @@ import type { ResolvedMoment } from "@/lib/moments";
  * constraint on the `reviews` table enforces this. Calling again upserts.
  *
  * Body: { item_id: uuid, rating: 1..5, reflection?: string }
- * Returns: { review_id, avg_rating, rating_count, achievement? }
+ * Returns: { review_id, avg_rating, rating_count, achievement?, bookmark_status }
  *
  * After the upsert, recomputes items.avg_rating + items.rating_count from
  * the reviews table (single source of truth going forward) so the detail
@@ -66,25 +66,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: upErr?.message ?? "review upsert failed" }, { status: 500 });
   }
 
-  // Recompute item aggregate from reviews — small N, cheap.
-  const { data: allRatings } = await admin
-    .from("reviews")
-    .select("rating")
+  // Rating = "I've done it": a wishlist entry for this item moves to
+  // done (CLAUDE.md bookmark v2). The reverse is manual only.
+  let bookmarkStatus: "done" | null = null;
+  const { data: flipped } = await (admin.from("bookmarks") as any)
+    .update({ status: "done" })
+    .eq("user_id", user.id)
     .eq("item_id", itemId)
-    .eq("is_hidden", false);
+    .eq("status", "wishlist")
+    .select("id");
+  if ((flipped ?? []).length > 0) bookmarkStatus = "done";
 
-  const ratings = (allRatings ?? []) as Array<{ rating: number }>;
-  const ratingCount = ratings.length;
-  const avgRating = ratingCount > 0
-    ? ratings.reduce((sum, r) => sum + Number(r.rating), 0) / ratingCount
-    : 0;
-
-  await (admin.from("items") as any)
-    .update({
-      avg_rating: Number(avgRating.toFixed(2)),
-      rating_count: ratingCount,
-    })
-    .eq("id", itemId);
+  const { avgRating, ratingCount } = await refreshItemRating(admin, itemId);
 
   // Review-milestone celebration. Only fires on the first publish per
   // (user, item). Counts the user's total non-hidden reviews including
@@ -190,6 +183,8 @@ export async function POST(req: NextRequest) {
     avg_rating: Number(avgRating.toFixed(2)),
     rating_count: ratingCount,
     achievement,
+    /** "done" when this rating moved the viewer's wishlist entry. */
+    bookmark_status: bookmarkStatus,
   });
 }
 
@@ -239,28 +234,44 @@ export async function DELETE(req: NextRequest) {
   if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
 
   const itemId = (existing as any).item_id;
-  const { data: allRatings } = await admin
-    .from("reviews")
-    .select("rating")
-    .eq("item_id", itemId)
-    .eq("is_hidden", false);
-
-  const ratings = (allRatings ?? []) as Array<{ rating: number }>;
-  const ratingCount = ratings.length;
-  const avgRating = ratingCount > 0
-    ? ratings.reduce((sum, r) => sum + Number(r.rating), 0) / ratingCount
-    : 0;
-
-  await (admin.from("items") as any)
-    .update({
-      avg_rating: Number(avgRating.toFixed(2)),
-      rating_count: ratingCount,
-    })
-    .eq("id", itemId);
+  const { avgRating, ratingCount } = await refreshItemRating(admin, itemId);
 
   return NextResponse.json({
     ok: true,
     avg_rating: Number(avgRating.toFixed(2)),
     rating_count: ratingCount,
   });
+}
+
+/**
+ * Bring items.avg_rating / rating_count up to date and return them.
+ * The rule (reviews + suggester stars, one per person) lives in SQL
+ * (recompute_item_rating, migration 057), which triggers also run on
+ * every review/suggestion write; calling it here just makes the value
+ * in this response current. Before 057 is applied, falls back to the
+ * old reviews-only computation.
+ */
+async function refreshItemRating(
+  admin: ReturnType<typeof createAdminClient>,
+  itemId: string,
+): Promise<{ avgRating: number; ratingCount: number }> {
+  const { error } = await (admin as any).rpc("recompute_item_rating", { p_item_id: itemId });
+  if (!error) {
+    const { data } = await admin.from("items").select("avg_rating, rating_count").eq("id", itemId).maybeSingle();
+    const row = data as { avg_rating: number | null; rating_count: number | null } | null;
+    return { avgRating: Number(row?.avg_rating ?? 0), ratingCount: Number(row?.rating_count ?? 0) };
+  }
+
+  const { data: allRatings } = await admin
+    .from("reviews")
+    .select("rating")
+    .eq("item_id", itemId)
+    .eq("is_hidden", false);
+  const ratings = (allRatings ?? []) as Array<{ rating: number }>;
+  const ratingCount = ratings.length;
+  const avgRating = ratingCount > 0 ? ratings.reduce((sum, r) => sum + Number(r.rating), 0) / ratingCount : 0;
+  await (admin.from("items") as any)
+    .update({ avg_rating: Number(avgRating.toFixed(2)), rating_count: ratingCount })
+    .eq("id", itemId);
+  return { avgRating, ratingCount };
 }

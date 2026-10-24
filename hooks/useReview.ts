@@ -12,11 +12,14 @@
  */
 
 import { useState, useRef, useEffect } from "react";
+import { announceBookmarkStatus } from "@/hooks/useBookmark";
 
 interface ReviewResult {
   review_id: string;
   avg_rating: number;
   rating_count: number;
+  /** "done" when this rating moved the viewer's wishlist entry. */
+  bookmark_status?: "done" | null;
 }
 
 interface InitialReview {
@@ -77,6 +80,7 @@ export function useReview(
       }
 
       const body = (await res.json()) as ReviewResult;
+      if (body.bookmark_status) announceBookmarkStatus(itemId, body.bookmark_status);
       setSavedRating(rating);
       setSavedReflection(reflection);
       onSavedRef.current?.(body, rating, reflection);

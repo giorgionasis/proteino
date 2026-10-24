@@ -14,11 +14,20 @@
  * failed save to be mis-announced as "removed").
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import type { ResolvedMoment } from "@/lib/moments";
 
 export type BookmarkStatus = "wishlist" | "done";
+
+const STATUS_EVENT = "proteino:bookmark-status";
+
+/** Another component changed this item's bookmark on the server (e.g. a
+ *  rating moved it wishlist → done). Every useBookmark for the item syncs. */
+export function announceBookmarkStatus(itemId: string, status: BookmarkStatus | null) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(STATUS_EVENT, { detail: { itemId, status } }));
+}
 
 export interface BookmarkUser {
   handle:       string;
@@ -68,6 +77,15 @@ export function useBookmark(
   const [busy,   setBusy]          = useState(false);
   const supabaseUser               = useAuthStore((s) => s.supabaseUser);
   const isGuest                    = supabaseUser === null;
+
+  useEffect(() => {
+    const onStatus = (e: Event) => {
+      const d = (e as CustomEvent<{ itemId: string; status: BookmarkStatus | null }>).detail;
+      if (d?.itemId === itemId) setLocalStatus(d.status);
+    };
+    window.addEventListener(STATUS_EVENT, onStatus);
+    return () => window.removeEventListener(STATUS_EVENT, onStatus);
+  }, [itemId]);
 
   const toggle = async (): Promise<ToggleResult> => {
     if (busy) return { ok: false, status, context: null, moment: null };

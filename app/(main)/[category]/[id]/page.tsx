@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fetchNearbyActivities, type NearbyActivity } from "@/lib/activities";
 import { safeImageUrl } from "@/lib/image-url";
 import { SITE_URL } from "@/lib/site-url";
+import { combineRatings } from "@/lib/ratings";
 import { fetchRelatedSections, type RelatedSection } from "@/lib/related-sections";
 import { buildItemStructuredData } from "@/lib/seo/structured-data";
 import { JsonLd } from "@/components/seo/JsonLd";
@@ -190,14 +191,20 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     my_vote: myVoteByReview.get(r.id) ?? null,
   }));
 
+  // Reviews + suggester stars, one per person (lib/ratings.ts) — the same
+  // rule the DB uses for items.avg_rating, so card and page agree.
+  const scored = combineRatings(
+    reviews.map((r) => ({ userId: r.user.id, rating: r.rating })),
+    suggestions.map((s: any) => ({ userId: s.user?.id ?? "", rating: s.rating == null ? null : Number(s.rating) })),
+  );
   const buckets: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   let scoreSum = 0;
-  for (const r of reviews) {
-    const b = Math.max(1, Math.min(5, Math.round(r.rating)));
+  for (const rating of scored) {
+    const b = Math.max(1, Math.min(5, Math.round(rating)));
     buckets[b] = (buckets[b] ?? 0) + 1;
-    scoreSum += r.rating;
+    scoreSum += rating;
   }
-  const totalScored = reviews.length;
+  const totalScored = scored.length;
 
   const ratingDistribution = [5, 4, 3, 2, 1].map((stars) => ({
     stars,
@@ -207,8 +214,8 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
   const avg = totalScored > 0 ? scoreSum / totalScored : 0;
   const isTopRated = avg >= 4.5 && totalScored >= 5;
 
-  // Override item aggregates (kept in sync by /api/reviews on each write,
-  // but compute fresh here in case the page is loaded before that runs).
+  // Override item aggregates with the fresh computation (the stored ones
+  // are trigger-maintained — migration 057 — but may lag a write).
   item.rating_count = totalScored;
   item.avg_rating = Number(avg.toFixed(2));
 

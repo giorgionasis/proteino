@@ -43,11 +43,12 @@ const TIER_ICON: Record<BadgeTier, IconName> = {
   platinum: "badge-platinum",
 };
 
-/** Greek display label per tier ("Επαληθευμένος χρήστης" under the hex).
- *  Two-word labels render on two lines. */
+/** Display label per tier ("Gold χρήστης" under the hex). Tier names
+ *  match the badge pill everywhere else (lib/icons.ts). Two-word labels
+ *  render on two lines. */
 const TIER_LABEL: Record<BadgeTier, [string, string]> = {
-  verified: ["Επαληθευμένος", "χρήστης"],
-  gold:     ["Έμπειρος",      "χρήστης"],
+  verified: ["Verified",      "χρήστης"],
+  gold:     ["Gold",          "χρήστης"],
   expert:   ["Expert",        "χρήστης"],
   platinum: ["Platinum",      "χρήστης"],
 };

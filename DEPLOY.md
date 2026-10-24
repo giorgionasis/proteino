@@ -84,6 +84,7 @@ scripts/sql/053-account-deletion.sql    (run BEFORE the session-41 deploy — ho
 scripts/sql/054-similar-items.sql       (similar-items RPC + 9 related-section rules; needs embeddings)
 scripts/sql/055-legacy-login-hint.sql   (welcome-back hint for migrated K2 accounts)
 scripts/sql/056-anonymize-notifications.sql (deletion also clears notifications that mention the user)
+scripts/sql/057-review-side-effects.sql (rating = reviews + suggester stars via triggers; wishlist→done backfill; user rating_count; follow-notification dedupe)
 ```
 
 **Note:** Migration 053 adds `users.deleted_at` + `anonymize_user(uuid)` (service_role only) and re-creates `get_leaderboard` with a deleted filter. Self-service deletion (`DELETE /api/auth/account`) anonymises the profile (suggestions + reviews stay as «Πρώην μέλος»), deletes personal rows, then deletes the auth user. Admins can't delete themselves from the UI.

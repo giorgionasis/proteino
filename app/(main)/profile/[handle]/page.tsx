@@ -74,12 +74,15 @@ export default async function ProfilePage(props: Props) {
       : Promise.resolve({ count: 0 }),
     // Sum of vote_up across all the user's reviews — drives the
     // "Θετικές ψήφοι" card on the profile.
-    db.from("reviews").select("vote_up").eq("user_id", profileData.id),
+    db.from("reviews").select("vote_up").eq("user_id", profileData.id).eq("is_hidden", false),
   ]);
   const initialFollowing = !!(followRow as any)?.data;
   const bookmarkCount = (bookmarksRes as any)?.count ?? 0;
   const voteUpCount = ((reviewsRes as any)?.data ?? [])
     .reduce((sum: number, r: { vote_up: number | null }) => sum + (r.vote_up ?? 0), 0);
+  // users.rating_count is a frozen K2-era counter (nothing updates it
+  // since reviews replaced ratings) — count the visible reviews instead.
+  const reviewCount = ((reviewsRes as any)?.data ?? []).length as number;
 
   // Fetch user's suggestions with items to find the highest-rated one
   const { data: userSuggestions } = (await (db.from("suggestions") as any)
@@ -136,7 +139,7 @@ export default async function ProfilePage(props: Props) {
         displayName={profileData.display_name ?? sessionDisplayName ?? undefined}
         bio={profileData.bio ?? undefined}
         suggestionCount={profileData.suggestion_count ?? 0}
-        ratingCount={profileData.rating_count ?? 0}
+        ratingCount={reviewCount}
         bookmarkCount={bookmarkCount}
         level={profileData.level ?? 1}
         followersCount={followerCount ?? 0}
@@ -154,7 +157,7 @@ export default async function ProfilePage(props: Props) {
       handle={params.handle}
       avatarUrl={profileData.avatar_url}
       suggestionCount={profileData.suggestion_count ?? 0}
-      ratingCount={profileData.rating_count ?? 0}
+      ratingCount={reviewCount}
       level={profileData.level ?? 1}
       avgRating={profileData.avg_quality_score ?? 0}
       followerCount={followerCount ?? 0}

@@ -1,6 +1,7 @@
 /**
  * Backfill item embeddings with Google gemini-embedding-001 (direct API,
- * free tier, ~95 req/min → ~20 min for 2K items). 768 dims, unit length.
+ * free tier: 1,000 requests/day, 100 texts per request → ~20 requests
+ * for the whole catalogue). 768 dims, unit length.
  *
  * Usage:
  *   npx tsx scripts/embed-items.ts              # embed items missing embeddings
@@ -21,7 +22,7 @@ import { createClient } from "@supabase/supabase-js";
 import { embedBatch } from "../lib/embeddings/google-direct";
 import { composeEmbeddingText } from "../lib/embeddings/compose";
 
-const BATCH_SIZE = 50;
+const BATCH_SIZE = 100; // = one batchEmbedContents request
 const PAGE = 1000;   // PostgREST max rows per request
 const IN_CHUNK = 150; // ids per .in() filter — keeps the URL short
 
@@ -185,7 +186,7 @@ async function main() {
   }
 
   if (dryRun) {
-    console.log(`\nDry run — nothing written. ~${Math.ceil(items.length / 95)} min at the free-tier rate.`);
+    console.log(`\nDry run — nothing written. ~${Math.ceil(items.length / 100)} API requests (free tier: 1,000/day).`);
     return;
   }
 

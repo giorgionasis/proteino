@@ -116,7 +116,7 @@ export function OwnSuggestionActions({ suggestion, itemTitle, question }: Props)
         <ConfirmDeleteDialog
           title="Διαγραφή πρότασης"
           itemTitle={itemTitle}
-          message="Η πρόταση και η βαθμολογία σου θα διαγραφούν οριστικά. Αυτή η ενέργεια δεν αναιρείται."
+          message="Η πρόταση και η βαθμολογία σου θα διαγραφούν οριστικά. Αν κανείς άλλος δεν το έχει προτείνει ή αξιολογήσει, θα αφαιρεθεί και από το Proteino. Η ενέργεια δεν αναιρείται."
           confirmLabel="Διαγραφή"
           pending={deleting}
           onCancel={() => {

@@ -27,10 +27,13 @@ interface Milestone {
 }
 
 const MILESTONES: Milestone[] = [
-  { threshold: 3,  badge: "Επαληθευμένος",  badgeIcon: "🛡️", badgeColor: "#1D9E75" },
-  { threshold: 10, badge: "Έμπειρος",       badgeIcon: "⭐", badgeColor: "#3b82f6" },
-  { threshold: 25, badge: "Gold",           badgeIcon: "🏆", badgeColor: "#F8D160" },
-  { threshold: 50, badge: "Platinum",       badgeIcon: "💎", badgeColor: "#a855f7" },
+  // Same names + colours as the badge pill (lib/icons.ts badgeLabelForSuggestions)
+  // and the profile progress bar. This list used to call 10 «Έμπειρος» and
+  // 25 «Gold», contradicting both.
+  { threshold: 3,  badge: "Verified",       badgeIcon: "🛡️", badgeColor: "#1D9E75" },
+  { threshold: 10, badge: "Gold",           badgeIcon: "⭐", badgeColor: "#3B82F6" },
+  { threshold: 25, badge: "Expert",         badgeIcon: "🏆", badgeColor: "#7C3AED" },
+  { threshold: 50, badge: "Platinum",       badgeIcon: "💎", badgeColor: "#64748B" },
 ];
 
 function findCurrent(count: number): { milestone: Milestone; isUnlock: boolean } | null {

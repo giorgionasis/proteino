@@ -25,6 +25,16 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient();
 
+  // Deleted accounts (migration 053) keep a profile row for their
+  // contributions but can't be followed.
+  const { data: target } = await (admin.from("users") as any)
+    .select("id, deleted_at")
+    .eq("id", targetId)
+    .maybeSingle();
+  if (!target || target.deleted_at) {
+    return NextResponse.json({ error: "Ο χρήστης δεν βρέθηκε" }, { status: 404 });
+  }
+
   const { error } = await (admin.from("follows") as any).upsert(
     { follower_id: user.id, following_id: targetId },
     { onConflict: "follower_id,following_id", ignoreDuplicates: true }

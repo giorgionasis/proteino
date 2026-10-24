@@ -16,3 +16,24 @@ export function ratingCountLabel(count: number): string {
 }
 
 export const FIRST_REVIEW_INVITE = "Γίνε ο πρώτος που θα το αξιολογήσει";
+
+/**
+ * The ratings that count for an item: every visible review, plus the
+ * stars a suggester gave in their published suggestion — one per person,
+ * the review wins when someone has both. Same rule as the SQL
+ * recompute_item_rating() (migration 057) that maintains
+ * items.avg_rating / rating_count for cards. Keep the two in sync.
+ */
+export function combineRatings(
+  reviews: Array<{ userId: string; rating: number }>,
+  suggestions: Array<{ userId: string; rating: number | null }>,
+): number[] {
+  const out = reviews.map((r) => r.rating);
+  const counted = new Set(reviews.map((r) => r.userId));
+  for (const s of suggestions) {
+    if (s.rating === null || s.rating < 1 || !s.userId || counted.has(s.userId)) continue;
+    counted.add(s.userId);
+    out.push(s.rating);
+  }
+  return out;
+}
