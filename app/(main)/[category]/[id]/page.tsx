@@ -19,6 +19,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { fetchNearbyActivities, type NearbyActivity } from "@/lib/activities";
 import { safeImageUrl } from "@/lib/image-url";
+import { SITE_URL } from "@/lib/site-url";
 import { fetchRelatedSections, type RelatedSection } from "@/lib/related-sections";
 import { buildItemStructuredData } from "@/lib/seo/structured-data";
 import { JsonLd } from "@/components/seo/JsonLd";
@@ -38,7 +39,6 @@ export type ItemDetailData = {
     created_at: string;
     user: { id: string; display_name: string; handle: string; avatar_url: string | null; level: number; suggestion_count: number };
   }>;
-  related: Array<Record<string, any>>;
   /** Populated only for hotels (proximity-based, sorted by distance asc). */
   nearbyActivities?: NearbyActivity[];
   /** True if the current user has bookmarked this item. False for guests. */
@@ -134,15 +134,6 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     created_at: s.created_at,
     user: s.users ?? { id: "", display_name: "Χρήστης", handle: "user", avatar_url: null, level: 1, suggestion_count: 0, avg_quality_score: null },
   }));
-
-  // Fetch related items in same category
-  const { data: relData } = (await (sb.from("items") as any)
-    .select(`id, title, slug, cover_url, avg_rating, rating_count, metadata, ${extTable}(*)`)
-    .eq("category", category)
-    .eq("is_published", true)
-    .neq("id", item.id)
-    .order("avg_rating", { ascending: false })
-    .limit(7)) as { data: any[] | null };
 
   // Hotels only: proximity-based nearby activities (admin-curated)
   let nearbyActivities: NearbyActivity[] | undefined;
@@ -341,11 +332,6 @@ async function fetchItemData(slug: string, category: string): Promise<ItemDetail
     item: normalizedItem,
     extension: withoutDuplicateSynopsis(ext, suggestions),
     suggestions,
-    related: (relData ?? []).map((r: any) => {
-      const rExt = Array.isArray(r[extTable]) ? r[extTable]?.[0] : r[extTable];
-      const cleanSlug = r.slug?.includes("/") ? r.slug.split("/").pop() : r.slug;
-      return { ...r, slug: cleanSlug, ext: rExt, [extTable]: undefined, cover_url: safeImageUrl(r.cover_url) };
-    }),
     nearbyActivities,
     isBookmarked,
     bookmarkStatus,
@@ -366,7 +352,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   const data = await fetchItemData(params.id, params.category);
   if (!data) return { title: "Δεν βρέθηκε" };
 
-  const siteOrigin = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://proteino.gr").replace(/\/$/, "");
+  const siteOrigin = SITE_URL;
   const pageUrl    = `${siteOrigin}/${data.item.slug}`;
   // The root layout's template appends " — Proteino"; share cards don't
   // use the template, so they get the suffix explicitly.
@@ -385,6 +371,13 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     (data.item.description_seo as string | undefined) ??
     `${data.item.title}: πρόταση στο Proteino`;
   const truncated = description.length > 200 ? description.slice(0, 197) + "…" : description;
+
+  // Thin page: no member text and no synopsis — keep it out of the index
+  // until someone writes about it (links still followed).
+  const hasSubstance =
+    data.suggestions.some((s) => plain(s.reflection ?? "").length >= 60) ||
+    [data.extension?.plot, data.extension?.description, data.item.description_seo]
+      .some((t) => typeof t === "string" && plain(t).length >= 60);
 
   // Prefer the pre-composed 1200×630 share image (images.og, written by
   // the image pipeline). The hero fallback is whatever shape it is, so
@@ -414,6 +407,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     alternates: {
       canonical: pageUrl,
     },
+    ...(hasSubstance ? {} : { robots: { index: false, follow: true } }),
     openGraph: {
       type:        ogType,
       url:         pageUrl,
@@ -476,7 +470,7 @@ export default async function ItemDetailPage(props: Props) {
   // Schema.org JSON-LD — emit once per page so Google can build rich
   // results. Site origin pulled from env so the @id is absolute (which
   // Schema.org validators require) without hardcoding the prod URL.
-  const siteOrigin = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://proteino.gr").replace(/\/$/, "");
+  const siteOrigin = SITE_URL;
   const pageUrl    = `${siteOrigin}/${data.item.slug}`;
   // Original suggester — used as Recipe.author (and dateCreated). For
   // other categories Schema.org expects domain-specific actors (director

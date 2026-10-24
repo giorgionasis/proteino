@@ -12,6 +12,8 @@
  *   - "director"        → ext.director
  *   - "actors[0].name"  → ext.actors[0]?.name
  *   - "performers[0]"   → ext.performers[0]              (string array)
+ *   - "_nearby_radius_" → venues within radius_km (lat/lng)
+ *   - "_vector_similar_"→ embedding neighbours, same category (migration 054)
  *
  * Title template interpolates `{value}` so admin can write a single
  * Greek phrase like "Άλλες ταινίες από {value}" that renders as
@@ -23,6 +25,7 @@ import type { CategorySlug } from "@/types";
 
 type SupabaseLike = {
   from: (table: string) => any;
+  rpc?: (...args: any[]) => any;
 };
 
 const EXT_TABLES: Record<string, string> = {
@@ -63,6 +66,12 @@ interface RuleRow {
 /** Special field tokens that don't follow the value-match pattern.
  *  Resolver branches on these before the regular parseFieldPath path. */
 const NEARBY_FIELD = "_nearby_radius_";
+const SIMILAR_FIELD = "_vector_similar_";
+
+/** Below this cosine similarity a neighbour reads as random (median pair
+ *  ≈ 0.62, good neighbours ≥ 0.70 on the movie catalogue), so it's
+ *  dropped (and the section with it, when fewer than min_items remain). */
+const MIN_SIMILARITY = 0.66;
 
 interface FetchInput {
   /** Item's UUID — excluded from sibling results. */
@@ -134,6 +143,12 @@ async function buildSection(
       title: rule.title_template.replaceAll("{km}", `${radiusKm}`),
       items,
     };
+  }
+
+  if (rule.field === SIMILAR_FIELD) {
+    const items = await fetchSimilar(sb, itemId, rule.item_limit);
+    if (items.length < rule.min_items) return null;
+    return { ruleId: rule.id, title: rule.title_template, items };
   }
 
   const parsed = parseFieldPath(rule.field);
@@ -275,6 +290,43 @@ async function fetchSiblings(
 function stripPrefix(slug: string): string {
   const i = slug.indexOf("/");
   return i >= 0 ? slug.slice(i + 1) : slug;
+}
+
+/* ─── Embedding neighbours ───────────────────────────────────────── */
+
+async function fetchSimilar(sb: SupabaseLike, itemId: string, limit: number): Promise<RelatedItem[]> {
+  if (!sb.rpc) return [];
+  const { data: hits, error } = await sb.rpc("similar_items", { p_item_id: itemId, p_limit: limit });
+  if (error) {
+    // Before migration 054 / the embedding backfill this is expected.
+    if (!/similar_items/.test(error.message ?? "")) {
+      console.error("[related-sections] similar_items failed:", error.message);
+    }
+    return [];
+  }
+  const ranked = ((hits ?? []) as Array<{ id: string; similarity: number }>)
+    .filter((h) => h.similarity >= MIN_SIMILARITY);
+  if (ranked.length === 0) return [];
+
+  const { data: rows } = await sb
+    .from("items")
+    .select("id, title, slug, category, cover_url, avg_rating, rating_count")
+    .in("id", ranked.map((h) => h.id))
+    .eq("is_published", true);
+  const byId = new Map<string, any>(((rows ?? []) as any[]).map((r) => [r.id, r]));
+
+  return ranked
+    .map((h) => byId.get(h.id))
+    .filter(Boolean)
+    .map((raw: any) => ({
+      id: raw.id,
+      title: raw.title,
+      slug: stripPrefix(raw.slug),
+      category: raw.category,
+      cover_url: safeImageUrl(raw.cover_url),
+      avg_rating: raw.avg_rating ?? 0,
+      rating_count: raw.rating_count ?? 0,
+    }));
 }
 
 /* ─── Nearby (lat/lng + radius) sibling query ──────────────────── */

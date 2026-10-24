@@ -5,7 +5,12 @@
  *
  * Design: include every field that helps distinguish "what this item
  * IS" — title, plot/description, genre, cast, origin. Exclude noisy
- * or user-generated fields (ratings, suggestion text, admin notes).
+ * fields (ratings, admin notes).
+ *
+ * Exception: the first member reflection is appended (truncated). Most
+ * migrated K2 items — venues especially — have no description other
+ * than the suggester's text, so without it their vectors are just
+ * "title · address".
  */
 
 interface BaseItem {
@@ -219,11 +224,28 @@ const COMPOSERS: Record<string, (item: BaseItem, ext: any) => string> = {
   events: composeEventsText,
 };
 
+const REFLECTION_MAX_CHARS = 1200;
+
+export interface EmbeddingExtras {
+  /** Item tags (items.metadata.tags). */
+  tags?: string[] | null;
+  /** First published member reflection on the item. */
+  reflection?: string | null;
+}
+
 export function composeEmbeddingText(
   item: BaseItem,
   ext: Record<string, unknown> | null,
+  extras: EmbeddingExtras = {},
 ): string {
   const fn = COMPOSERS[item.category];
-  if (!fn) return clean([item.title, item.description_seo]);
-  return fn(item, ext ?? {});
+  const base = fn ? fn(item, ext ?? {}) : clean([item.title, item.description_seo]);
+
+  const tags = (extras.tags ?? []).filter((t) => typeof t === "string" && t.trim()).join(", ");
+  let reflection = (extras.reflection ?? "").replace(/\s+/g, " ").trim();
+  // K2 copied many reflections verbatim into the plot — don't double them.
+  if (reflection && base.includes(reflection.slice(0, 80))) reflection = "";
+  if (reflection.length > REFLECTION_MAX_CHARS) reflection = reflection.slice(0, REFLECTION_MAX_CHARS);
+
+  return clean([base, tags || null, reflection || null]);
 }

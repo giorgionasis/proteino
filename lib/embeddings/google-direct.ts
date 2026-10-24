@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, TaskType } from "@google/generative-ai";
 
 const MODEL = "gemini-embedding-001";
 const TRUNCATE_DIMS = 768;
@@ -17,21 +17,40 @@ function client(): GoogleGenerativeAI {
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Matryoshka truncation, re-normalised to unit length (Google's guidance
+ *  for gemini-embedding-001 below 3072 dims). */
 function truncate(v: number[]): number[] {
-  return v.slice(0, TRUNCATE_DIMS);
+  const out = v.slice(0, TRUNCATE_DIMS);
+  const norm = Math.sqrt(out.reduce((s, x) => s + x * x, 0)) || 1;
+  return out.map((x) => x / norm);
 }
 
-async function embedWithRetry(model: any, text: string, retries = 3): Promise<number[]> {
+/** Items are embedded as retrieval documents so the same vectors serve
+ *  item-to-item similarity now and query search (RETRIEVAL_QUERY) later. */
+async function embedWithRetry(model: any, text: string, title?: string, retries = 5): Promise<number[]> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const res = await model.embedContent(text);
+      const res = await model.embedContent({
+        content:  { role: "user", parts: [{ text }] },
+        taskType: TaskType.RETRIEVAL_DOCUMENT,
+        ...(title ? { title } : {}),
+      });
       return truncate(res.embedding.values);
     } catch (err: any) {
-      if (err?.status === 429 && attempt < retries - 1) {
-        const backoff = (attempt + 1) * 30_000;
-        console.log(`    Rate limited, waiting ${backoff / 1000}s...`);
-        await delay(backoff);
-        continue;
+      if (attempt < retries - 1) {
+        if (err?.status === 429) {
+          const backoff = (attempt + 1) * 30_000;
+          console.log(`    Rate limited, waiting ${backoff / 1000}s...`);
+          await delay(backoff);
+          continue;
+        }
+        // Network drops ("fetch failed") and 5xx are transient on long runs.
+        if (!err?.status || err.status >= 500) {
+          const backoff = (attempt + 1) * 5_000;
+          console.log(`    ${err?.message ?? "network error"}, retrying in ${backoff / 1000}s...`);
+          await delay(backoff);
+          continue;
+        }
       }
       throw err;
     }
@@ -39,17 +58,17 @@ async function embedWithRetry(model: any, text: string, retries = 3): Promise<nu
   throw new Error("Exhausted retries");
 }
 
-export async function embedText(text: string): Promise<number[]> {
+export async function embedText(text: string, title?: string): Promise<number[]> {
   const model = client().getGenerativeModel({ model: MODEL });
-  return embedWithRetry(model, text);
+  return embedWithRetry(model, text, title);
 }
 
-export async function embedBatch(texts: string[]): Promise<number[][]> {
+export async function embedBatch(texts: string[], titles?: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
   const model = client().getGenerativeModel({ model: MODEL });
   const results: number[][] = [];
-  for (const text of texts) {
-    results.push(await embedWithRetry(model, text));
+  for (let i = 0; i < texts.length; i++) {
+    results.push(await embedWithRetry(model, texts[i], titles?.[i]));
     await delay(INTERVAL_MS);
   }
   return results;

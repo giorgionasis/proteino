@@ -37,47 +37,59 @@ interface Rule {
  *  within radius_km km of the current item's lat/lng". Added to the
  *  venue category presets so admins can pick it from the same UI. */
 const NEARBY_FIELD = "_nearby_radius_";
+const SIMILAR_FIELD = "_vector_similar_";
+const similarPreset = (suggestedTitle: string) =>
+  ({ value: SIMILAR_FIELD, label: "Παρόμοια (AI)", suggestedTitle });
 
 /** Per-category presets the admin can pick from. Each entry maps to an
  *  extension-table path the fetcher understands (lib/related-sections.ts). */
 const FIELD_PRESETS: Record<string, { value: string; label: string; suggestedTitle: string }[]> = {
   books: [
+    similarPreset("Βιβλία σαν αυτό"),
     { value: "writer",          label: "Συγγραφέας",       suggestedTitle: "Περισσότερα από {value}" },
     { value: "publication",     label: "Εκδότης",          suggestedTitle: "Άλλα από τις εκδόσεις {value}" },
   ],
   movies: [
+    similarPreset("Ταινίες σαν αυτή"),
     { value: "director",        label: "Σκηνοθέτης",       suggestedTitle: "Άλλες ταινίες από {value}" },
     { value: "actors[0].name",  label: "Πρώτος ηθοποιός",  suggestedTitle: "Παίζει επίσης ο {value}" },
     { value: "actors[1].name",  label: "Δεύτερος ηθοποιός", suggestedTitle: "Με {value}" },
   ],
   series: [
+    similarPreset("Σειρές σαν αυτή"),
     { value: "director",        label: "Σκηνοθέτης",       suggestedTitle: "Άλλες σειρές από {value}" },
     { value: "actors[0].name",  label: "Πρώτος ηθοποιός",  suggestedTitle: "Παίζει επίσης ο {value}" },
     { value: "channel",         label: "Κανάλι / Πλατφόρμα", suggestedTitle: "Από {value}" },
   ],
   theater: [
+    similarPreset("Παραστάσεις σαν αυτή"),
     { value: "director",        label: "Σκηνοθέτης",       suggestedTitle: "Άλλες παραστάσεις από {value}" },
     { value: "writer",          label: "Συγγραφέας",       suggestedTitle: "Άλλα έργα του {value}" },
     { value: "actors[0].name",  label: "Πρώτος ηθοποιός",  suggestedTitle: "Με τον/την {value}" },
   ],
   events: [
+    similarPreset("Παρόμοιες εκδηλώσεις"),
     { value: "performers[0]",   label: "Καλλιτέχνης",      suggestedTitle: "Άλλες εμφανίσεις του {value}" },
     { value: "event_type",      label: "Τύπος εκδήλωσης",  suggestedTitle: "Άλλες εκδηλώσεις: {value}" },
   ],
   food: [
+    similarPreset("Παρόμοια μαγαζιά"),
     { value: "cuisine",         label: "Κουζίνα",          suggestedTitle: "Άλλα {value}" },
     { value: "type",            label: "Τύπος μαγαζιού",   suggestedTitle: "Άλλα {value}" },
     { value: NEARBY_FIELD,      label: "Κοντινά (km)",     suggestedTitle: "Άλλα μέρη εδώ κοντά" },
   ],
   bars: [
+    similarPreset("Παρόμοια μαγαζιά"),
     { value: "type",            label: "Τύπος",            suggestedTitle: "Άλλα {value}" },
     { value: NEARBY_FIELD,      label: "Κοντινά (km)",     suggestedTitle: "Άλλα μέρη εδώ κοντά" },
   ],
   hotels: [
+    similarPreset("Παρόμοια καταλύματα"),
     { value: "type",            label: "Τύπος ξενοδοχείου", suggestedTitle: "Άλλα {value}" },
     { value: NEARBY_FIELD,      label: "Κοντινά (km)",     suggestedTitle: "Άλλα καταλύματα εδώ κοντά" },
   ],
   recipes: [
+    similarPreset("Συνταγές σαν αυτή"),
     { value: "level",           label: "Επίπεδο",          suggestedTitle: "Άλλες {value} συνταγές" },
     { value: "origin",          label: "Προέλευση",        suggestedTitle: "Άλλες {value} συνταγές" },
   ],

@@ -11,7 +11,6 @@ import { AchievementUnlockedModal } from "@/components/submission/AchievementUnl
 import { useFlipReorder } from "@/hooks/useFlipReorder";
 import type { AchievementData } from "@/hooks/useSubmission";
 import { ExpandableText } from "@/components/ui/ExpandableText";
-import { CarouselPortrait, type PortraitItem } from "@/components/recommendation/CarouselPortrait";
 import { cn } from "@/lib/utils/cn";
 import { UserAvatarWithPopup } from "@/components/detail/UserAvatarWithPopup";
 import { DetailHeaderActions } from "@/components/detail/DetailHeaderActions";
@@ -119,7 +118,7 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
     const t = setTimeout(() => setAchievementOpen(true), delay);
     return () => clearTimeout(t);
   }, [achievement]);
-  const { item, extension: ext, suggestions, related } = data;
+  const { item, extension: ext, suggestions } = data;
   const mySuggestion = data.currentUserId ? suggestions.find(s => s.user.id === data.currentUserId) ?? null : null;
 
   const title = item.title ?? "-";
@@ -227,17 +226,6 @@ export function MovieDetail({ data }: { data: ItemDetailData }) {
   // is prepended (FLIP). Keyed on the joined id list so any
   // membership/order change fires the effect.
   useFlipReorder(reviewsCarouselRef, "data-review-id", [reviews.map((r) => r.id).join(",")]);
-
-  // Related items
-  const relatedItems: PortraitItem[] = related.map(r => ({
-    id: r.id,
-    title: r.title,
-    genre: r.metadata?.tags?.[0],
-    year: r.ext?.release_date ? new Date(r.ext.release_date).getFullYear() : undefined,
-    platform: r.ext?.channel ?? undefined,
-    href: `/movies/${r.slug}`,
-    cover_url: r.cover_url,
-  }));
 
   return (
     <div className="pb-8">
