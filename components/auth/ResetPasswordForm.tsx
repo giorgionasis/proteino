@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -39,17 +38,20 @@ function SuccessScreen() {
           Ο κωδικός άλλαξε!
         </h2>
         <p className="text-sm text-zinc-500 leading-relaxed">
-          Μπορείς τώρα να συνδεθείς με τον νέο σου κωδικό.
+          Είσαι ήδη συνδεδεμένος/η. Από εδώ και πέρα μπαίνεις με τον νέο σου κωδικό.
         </p>
       </div>
 
-      <Link
-        href="/login"
+      {/* The recovery session is live after updateUser — no second login.
+          Full navigation so the server layout sees the new session (and
+          sends first-timers to onboarding). */}
+      <a
+        href="/"
         className="w-full flex items-center justify-center rounded-sm h-14 text-lg font-bold text-white active:opacity-90 transition-opacity"
         style={{ backgroundColor: "#27272A" }}
       >
-        Σύνδεση
-      </Link>
+        Συνέχεια
+      </a>
     </div>
   );
 }

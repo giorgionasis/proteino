@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { checkEmailExists, checkLegacyAccount } from "@/lib/auth/checkEmail";
+import { safeRedirect } from "@/lib/auth/redirect";
 import { Input } from "@/components/ui/Input";
 
 import { Button } from "@/components/ui/Button";
@@ -33,10 +34,14 @@ export function LoginForm() {
   /** Migrated from the old proteino.gr and never signed in here — the
    *  old password was never transferred (migration 055). */
   const [legacy,        setLegacy]       = useState(false);
+  /** Arrived from an email link that expired / opened in another browser. */
+  const [linkNotice,    setLinkNotice]   = useState(false);
 
   useEffect(() => {
     if (searchParams.get("error") === "oauth") {
-      setPasswordError("Η σύνδεση με OAuth απέτυχε. Δοκίμασε ξανά.");
+      setPasswordError("Η σύνδεση με Google απέτυχε. Δοκίμασε ξανά.");
+    } else if (searchParams.get("error") === "link") {
+      setLinkNotice(true);
     }
   }, [searchParams]);
 
@@ -78,7 +83,8 @@ export function LoginForm() {
     });
 
     if (!authError) {
-      router.push("/");
+      // Back to where the guest prompt sent them from (rate, follow, …).
+      router.push(safeRedirect(searchParams.get("redirect")));
       router.refresh();
       return;
     }
@@ -124,6 +130,13 @@ export function LoginForm() {
       noValidate
       className={cn("space-y-4 pt-4", shake && "animate-shake")}
     >
+      {linkNotice && (
+        <div className="rounded-xl bg-zinc-100 px-4 py-3 text-[14px] text-zinc-700 leading-[150%]" role="status">
+          Ο σύνδεσμος από το email έληξε ή άνοιξε σε άλλο browser. Αν μόλις επιβεβαίωσες το
+          email σου, απλώς συνδέσου εδώ.
+        </div>
+      )}
+
       {/* OAuth */}
       <OAuthButtons mode="login" />
       <AuthDivider />
@@ -206,7 +219,11 @@ export function LoginForm() {
       {/* Footer */}
       <p className="text-center pt-1" style={{ fontSize: 16, color: "#18181B" }}>
         Δεν έχεις λογαριασμό;{" "}
-        <Link href="/register" className="font-bold underline" style={{ color: "#FE6F5E" }}>
+        <Link
+          href={searchParams.get("redirect") ? `/register?redirect=${encodeURIComponent(safeRedirect(searchParams.get("redirect")))}` : "/register"}
+          className="font-bold underline"
+          style={{ color: "#FE6F5E" }}
+        >
           Κάνε Εγγραφή
         </Link>
       </p>

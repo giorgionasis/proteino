@@ -5,13 +5,15 @@ import { AuthHeader } from "@/components/auth/AuthHeader";
 export const metadata: Metadata = { title: "Επαναφορά κωδικού" };
 
 export default async function ForgotPasswordPage(props: {
-  searchParams: Promise<{ email?: string; welcome?: string }>;
+  searchParams: Promise<{ email?: string; welcome?: string; error?: string }>;
 }) {
   const sp = await props.searchParams;
   const initialEmail = typeof sp.email === "string" ? sp.email.slice(0, 254) : "";
   // ?welcome=1 comes from the login form for accounts migrated from the
   // old proteino.gr (their password was never transferred).
   const welcome = sp.welcome === "1";
+  // ?error=link — a recovery link expired or opened in another browser.
+  const linkExpired = sp.error === "link";
   return (
     <div className="bg-white min-h-screen">
       <AuthHeader closeHref="/login" closeLabel="Πίσω" />
@@ -36,6 +38,12 @@ export default async function ForgotPasswordPage(props: {
 
       {/* Form */}
       <div className="px-6 pb-12">
+        {linkExpired && (
+          <div className="mb-5 rounded-xl bg-zinc-100 px-4 py-3 text-[14px] text-zinc-700 leading-[150%]" role="status">
+            Ο σύνδεσμος έληξε ή άνοιξε σε άλλο browser. Ζήτα νέο email παρακάτω και γράψε τον
+            6ψήφιο κωδικό που περιέχει. Δουλεύει σε όποια συσκευή κι αν είσαι.
+          </div>
+        )}
         <ForgotPasswordForm initialEmail={initialEmail} />
       </div>
     </div>

@@ -22,7 +22,8 @@ export default function VerifyCodePage() {
           Έλεγξε το email σου
         </h1>
         <p style={{ fontSize: 16, fontWeight: 400, color: "#18181B", lineHeight: "120%" }}>
-          Στείλαμε έναν 6ψήφιο κωδικό επαλήθευσης στο email σου.
+          Σου στείλαμε email με έναν 6ψήφιο κωδικό. Γράψε τον εδώ ή πάτησε τον σύνδεσμο του
+          email από αυτή τη συσκευή.
         </p>
       </div>
 

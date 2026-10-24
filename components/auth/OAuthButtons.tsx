@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { redirectParam } from "@/lib/auth/redirect";
 import { createClient } from "@/lib/supabase/client";
 import { Spinner } from "@/components/ui/Spinner";
 
@@ -40,7 +41,7 @@ export function OAuthButtons({ mode }: OAuthButtonsProps) {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo:          `${window.location.origin}/auth/callback`,
+          redirectTo:          `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectParam())}`,
           skipBrowserRedirect: true,
         },
       });

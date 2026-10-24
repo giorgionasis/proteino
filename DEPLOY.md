@@ -83,6 +83,7 @@ scripts/sql/052-home-layout-v2.sql      (NOT run — superseded by the pending r
 scripts/sql/053-account-deletion.sql    (run BEFORE the session-41 deploy — home filters on users.deleted_at)
 scripts/sql/054-similar-items.sql       (similar-items RPC + 9 related-section rules; needs embeddings)
 scripts/sql/055-legacy-login-hint.sql   (welcome-back hint for migrated K2 accounts)
+scripts/sql/056-anonymize-notifications.sql (deletion also clears notifications that mention the user)
 ```
 
 **Note:** Migration 053 adds `users.deleted_at` + `anonymize_user(uuid)` (service_role only) and re-creates `get_leaderboard` with a deleted filter. Self-service deletion (`DELETE /api/auth/account`) anonymises the profile (suggestions + reviews stay as «Πρώην μέλος»), deletes personal rows, then deletes the auth user. Admins can't delete themselves from the UI.
@@ -203,3 +204,17 @@ Migrations are forward-only. To roll back the schema:
 - **Runtime: Node 22 LTS + React 19 + Next 16 (Turbopack)** as of session 27. `engines.node` is `>=22.0.0 <25`. Vercel's default is already Node 22+; this just sheds local EBADENGINE warnings. Turbopack is the default bundler for both `dev` and `build` — there is no webpack escape hatch in `next.config.mjs` anymore (old dev-cache hack removed; `turbopack: {}` silences the bare-config warning). If you re-introduce webpack-only config, also set `turbopack: { /* … */ }` or the build will error out.
 - **Middleware → proxy** — Next 16 prints a deprecation warning telling us to rename `middleware.ts` to `proxy.ts`. The compat shim still loads our file (build output even labels it `Proxy (Middleware)`), so the rename is non-urgent. When done, also verify the existing matcher config still applies under the new entry point.
 - **CSS `@import` placement** — Turbopack enforces the CSS-spec rule that `@import` must precede all other rules. `app/globals.css` keeps the Google Fonts `@import` at the very top, BEFORE `@tailwind base/components/utilities`. If you ever move a stylesheet `@import` below a Tailwind directive, prod build will fail with "Parsing CSS source code failed".
+
+
+## Auth emails (with custom SMTP)
+
+Paste the templates from `supabase/templates/` into Supabase → Authentication → Email Templates:
+
+| Template | File | Subject |
+|---|---|---|
+| Reset Password | `reset-password.html` | Ο κωδικός σου για το Proteino |
+| Confirm signup | `confirm-signup.html` | Επιβεβαίωσε το email σου στο Proteino |
+
+The reset template **must** contain `{{ .Token }}`: `/verify-code` asks for the 6-digit code, which works on any device. The link alone only works in the browser that requested it (PKCE). Keep Auth → Email OTP length at **6** (VerifyCodeForm expects 6 digits).
+
+Auth → URL Configuration at cutover: Site URL `https://www.proteino.gr`; redirect URLs `https://www.proteino.gr/**` (+ keep `https://proteino.vercel.app/**` for previews).

@@ -56,8 +56,12 @@ export async function PUT(request: NextRequest) {
   const { error } = await supabase
     .from("users")
     .update({
-      display_name: body.display_name ?? null,
-      bio:          body.bio ?? null,
+      // Blank name → leave the current one (undefined is dropped from the
+      // JSON body); a nameless profile renders as an empty heading.
+      display_name: typeof body.display_name === "string" && body.display_name.trim()
+        ? body.display_name.trim().slice(0, 60)
+        : undefined,
+      bio:          typeof body.bio === "string" ? body.bio.trim().slice(0, 500) || null : null,
       gender:       body.gender ?? null,
       birthday:     body.birthday ?? null,
       region:       resolvedRegionText,

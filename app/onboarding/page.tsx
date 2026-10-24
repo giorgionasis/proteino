@@ -44,7 +44,22 @@ export default async function OnboardingPage() {
     redirect("/");
   }
 
-  const initialInterests = data?.preferences?.interests ?? [];
+  let initialInterests = data?.preferences?.interests ?? [];
+  // Members migrated from the old proteino.gr already have suggestions —
+  // pre-select the categories they wrote about instead of a blank grid.
+  if (initialInterests.length === 0) {
+    const { data: mine } = await (admin.from("suggestions") as any)
+      .select("items!inner(category)")
+      .eq("user_id", user.id)
+      .eq("is_published", true)
+      .limit(200);
+    const counts = new Map<string, number>();
+    for (const r of (mine ?? []) as Array<{ items: { category: string } | null }>) {
+      const c = r.items?.category;
+      if (c) counts.set(c, (counts.get(c) ?? 0) + 1);
+    }
+    initialInterests = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([c]) => c);
+  }
   const displayName      = data?.display_name ?? data?.handle ?? null;
   const cats             = await getNavPublishedCategories();
 

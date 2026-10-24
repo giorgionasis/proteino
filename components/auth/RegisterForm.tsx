@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { redirectParam } from "@/lib/auth/redirect";
 import { checkEmailExists } from "@/lib/auth/checkEmail";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -92,6 +93,7 @@ export function RegisterForm() {
   const [loading,       setLoading]       = useState(false);
   const [serverError,   setServerError]   = useState("");
   const [success,       setSuccess]       = useState(false);
+  const [handleTaken,   setHandleTaken]   = useState(false);
 
   /* ── email blur check ────────────────────────────────── */
   async function handleEmailBlur() {
@@ -107,6 +109,24 @@ export function RegisterForm() {
     } else {
       setEmailState(exists ? "taken" : "available");
     }
+  }
+
+  /* ── handle blur check ────────────────────────────────── */
+  // The profile insert fails on a taken handle (626 migrated K2 handles
+  // exist), so catch it here instead of after the confirmation email.
+  async function isHandleTaken(v: string): Promise<boolean> {
+    try {
+      const { data } = await createClient().from("users").select("id").eq("handle", v).limit(1);
+      return (data?.length ?? 0) > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  async function handleHandleBlur() {
+    const v = handle.trim().toLowerCase();
+    if (!v || validateHandle(v)) return;
+    setHandleTaken(await isHandleTaken(v));
   }
 
   /* ── derived errors ──────────────────────────────────── */
@@ -135,6 +155,11 @@ export function RegisterForm() {
     if (!email.trim() || !EMAIL_RE.test(email.trim())) { setEmailState("invalid"); triggerShake(); return; }
     if (emailState === "taken") { triggerShake(); return; }
     if (handleError) { triggerShake(); return; }
+    if (handleTaken || (await isHandleTaken(handle.trim().toLowerCase()))) {
+      setHandleTaken(true);
+      triggerShake();
+      return;
+    }
     if (!allRulesMet(passwordRules)) { triggerShake(); return; }
     if (password !== confirmPassword) { triggerShake(); return; }
     if (!termsAccepted) { triggerShake(); return; }
@@ -151,7 +176,7 @@ export function RegisterForm() {
           handle:       handle.trim().toLowerCase(),
           display_name: handle.trim(),
         },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${window.location.origin}/auth/callback?type=signup&next=${encodeURIComponent(redirectParam())}`,
       },
     });
 
@@ -207,8 +232,9 @@ export function RegisterForm() {
         label="Username"
         placeholder="your_handle"
         value={handle}
-        onChange={(e) => { setHandle(e.target.value.toLowerCase()); setServerError(""); }}
-        error={handle.length > 2 ? handleError : undefined}
+        onChange={(e) => { setHandle(e.target.value.toLowerCase()); setServerError(""); setHandleTaken(false); }}
+        onBlur={handleHandleBlur}
+        error={handle.length > 2 ? (handleError || (handleTaken ? "Αυτό το username χρησιμοποιείται ήδη" : undefined)) : undefined}
         hint={!handle ? "3–30 χαρακτήρες, χωρίς κενά" : undefined}
         autoComplete="username"
         autoCapitalize="none"

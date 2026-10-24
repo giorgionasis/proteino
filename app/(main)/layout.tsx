@@ -1,5 +1,6 @@
 import { createClient }        from "@/lib/supabase/server";
 import { createAdminClient }    from "@/lib/supabase/admin";
+import { ensureProfile }        from "@/lib/auth/ensure-profile";
 import { redirect }             from "next/navigation";
 import { AuthProvider }         from "@/components/layout/AuthProvider";
 import { ClientAwareHeader }    from "@/components/layout/ClientAwareHeader";
@@ -66,6 +67,16 @@ export default async function MainLayout({ children }: { children: React.ReactNo
             row = (byEmail as UserRow | null) ?? null;
           }
         }
+        // Signed in but no profile (handle collision or cross-device email
+        // confirmation skipped the callback insert) — create it now, then
+        // the onboarding gate below sends them to /onboarding.
+        if (!row && !byIdErr && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          // getSession() only decodes the cookie — verify with the auth
+          // server before writing anything.
+          const { data: { user: verified } } = await sb.auth.getUser();
+          const created = verified ? await ensureProfile(verified) : null;
+          if (created) row = { avatar_url: null, display_name: null, handle: created.handle, preferences: null };
+        }
         avatarUrl = avatarUrl ?? row?.avatar_url ?? null;
         displayName = displayName ?? row?.display_name ?? row?.handle ?? null;
         // Onboarding gate. Only fires when we successfully read the
@@ -121,6 +132,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
           categories={resolvedCategories.map((c) => ({
             slug: c.slug, labelEl: c.labelEl, icon: c.icon,
           }))}
+          isRegistered={isRegistered}
         />
       </div>
       </div>
